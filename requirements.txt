@@ -1,0 +1,44 @@
+# =============================================================================
+# ARCHIVO: requirements.txt
+# =============================================================================
+#
+# QUÉ ES ESTE ARCHIVO:
+#   Es la "lista de compras" de librerías que necesita este programa.
+#   Antes de correr la app, tenés que instalar estas librerías una sola vez.
+#
+# ANALOGÍA CON PLCs:
+#   En TIA Portal o Codesys, para usar un bloque de función (FB) de una
+#   librería externa (por ejemplo, comunicación Modbus o un bloque PID
+#   avanzado), primero tenés que instalar esa librería en tu entorno y
+#   agregarla al proyecto. Acá es lo mismo: Flask es una "librería" que
+#   le enseña a Python a funcionar como servidor web.
+#
+# CÓMO SE USA:
+#   Abrís una terminal (cmd o PowerShell) en la carpeta del proyecto y corrés:
+#
+#       pip install -r requirements.txt
+#
+#   Eso le dice a Python: "instalame todo lo que está en esta lista".
+#   pip es el gestor de paquetes de Python (como una "tienda de librerías").
+#
+# DÓNDE ESTÁ FLASK:
+#   Flask se descarga de internet (de pypi.org) y se instala en tu Python.
+#   Después de instalarlo, Python sabe qué es "from flask import Flask".
+#   Sin esta instalación, Python diría: "no sé qué es Flask" y fallaría.
+#
+# TIPOS DE LIBRERÍAS EN ESTE PROYECTO:
+#   - flask: el framework web (backend). Maneja URLs, peticiones HTTP, etc.
+#     Flask a su vez tiene sus propias dependencias que pip instala solo:
+#       - Werkzeug: manejo de peticiones HTTP
+#       - Jinja2:   motor de templates HTML (los archivos en /templates)
+#       - click:    herramientas de línea de comandos
+#   - sqlite3: base de datos. NO aparece acá porque ya viene incluida
+#              en Python por defecto (como un bloque estándar del PLC)
+#
+# =============================================================================
+
+flask
+pyngrok
+python-dotenv
+pywin32
+psutil

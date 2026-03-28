@@ -1,0 +1,443 @@
+{# Página principal: tabla de saldos + carga rápida + gastos fijos + tabla de movimientos #}
+
+{% extends 'base.html' %}
+
+{% block titulo %}Inicio{% endblock %}
+
+{% block contenido %}
+
+{# ── BANNER DE PRIMER INICIO ─────────────────────────────────────────────── #}
+{% if cfg and cfg.first_run %}
+<div class="banner-primer-inicio" role="alert">
+  ⚙ <strong>Primera configuración</strong> — La app está corriendo solo en localhost.
+  <a href="{{ url_for('settings') }}">Ir a Settings para configurar el entorno.</a>
+</div>
+{% endif %}
+
+<div class="layout-desktop">
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# COLUMNA IZQUIERDA — Formulario + Saldos                                   #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="col-izquierda">
+
+{# ── FORMULARIO RÁPIDO DE CARGA ──────────────────────────────────────────── #}
+<div class="carga-rapida">
+  <h2 class="carga-rapida-titulo">➕ Nuevo movimiento</h2>
+
+  <form action="{{ url_for('agregar') }}" method="POST" class="form-rapido">
+
+    {# Mes actual — se preserva al volver después del POST #}
+    <input type="hidden" name="mes" value="{{ mes }}">
+
+    {# Fila 1: Descripción — full-width #}
+    <div class="form-fila">
+      <div class="campo-rapido campo-rapido-descripcion">
+        <label for="descripcion">Descripción</label>
+        <input type="text" id="descripcion" name="descripcion"
+               placeholder="Ej: Sueldo, Supermercado..." maxlength="200" required>
+        <select id="descripcion-fijo" name="descripcion" disabled style="display:none"></select>
+      </div>
+    </div>
+
+    {# Fila 2: Monto + Tipo #}
+    <div class="form-fila">
+      <div class="campo-rapido campo-rapido-monto">
+        <label for="monto-display">Monto</label>
+        <input type="text" id="monto-display"
+               placeholder="0" maxlength="16"
+               inputmode="numeric" autocomplete="off" required>
+        <input type="hidden" id="monto" name="monto">
+      </div>
+      <div class="campo-rapido campo-rapido-tipo">
+        <label for="tipo">Tipo</label>
+        <select id="tipo" name="tipo" required>
+          <option value="gasto" selected>Gasto</option>
+          <option value="ingreso">Ingreso</option>
+          <option value="cambio">Cambio</option>
+        </select>
+      </div>
+    </div>
+
+    {# Fila 3: Persona + Moneda (con colores dinámicos via JS) #}
+    <div class="form-fila">
+      <div class="campo-rapido campo-rapido-persona">
+        <label for="persona">Persona</label>
+        <select id="persona" name="persona" required>
+          <option value="elias">Elías</option>
+          <option value="mari">Mari</option>
+        </select>
+      </div>
+      <div class="campo-rapido campo-rapido-moneda">
+        <label for="moneda">Moneda</label>
+        <select id="moneda" name="moneda" required>
+          <option value="ars">AR$</option>
+          <option value="usd">USD</option>
+        </select>
+      </div>
+    </div>
+
+    {# Fila 3b: Flecha indicadora (solo Cambio) #}
+    <div class="form-fila form-fila-cambio" id="fila-flecha-cambio" style="display:none">
+      <div class="cambio-flecha-indicador">↓</div>
+    </div>
+
+    {# Fila 3c: Persona final + Moneda final (solo Cambio) #}
+    <div class="form-fila form-fila-cambio" id="fila-cambio-destino" style="display:none">
+      <div class="campo-rapido campo-rapido-persona">
+        <label for="persona_final">Persona final</label>
+        <select id="persona_final" name="persona_final">
+          <option value="elias">Elías</option>
+          <option value="mari">Mari</option>
+        </select>
+      </div>
+      <div class="campo-rapido campo-rapido-moneda">
+        <label for="moneda_final">Moneda final</label>
+        <select id="moneda_final" name="moneda_final">
+          <option value="ars">AR$</option>
+          <option value="usd">USD</option>
+        </select>
+      </div>
+    </div>
+
+    {# Fila 3d: Monto final (solo si monedas son diferentes) #}
+    <div class="form-fila form-fila-cambio" id="fila-monto-final" style="display:none">
+      <div class="campo-rapido" style="flex:1">
+        <label for="monto_final">Monto final</label>
+        <input type="number" id="monto_final" name="monto_final"
+               placeholder="Monto en moneda destino" step="0.01" min="0">
+      </div>
+    </div>
+
+    {# Fila 4: Categoría + Fecha #}
+    <div class="form-fila">
+      <div class="campo-rapido campo-rapido-categoria">
+        <label for="categoria">Categoría</label>
+        <select id="categoria" name="categoria"></select>
+      </div>
+      <div class="campo-rapido campo-rapido-fecha">
+        <label for="fecha">Fecha</label>
+        <input type="date" id="fecha" name="fecha" min="2000-01-01" required>
+      </div>
+    </div>
+
+    {# Extras: Envío y Cuotas en una sola fila inline — visible solo para gastos #}
+    <div class="form-rapido-extras" id="seccion-envio">
+      <label class="checkbox-envio">
+        <input type="checkbox" id="incluye-envio"> Incluye envío
+      </label>
+      <div id="campo-costo-envio" style="visibility:hidden;" class="campo-extra-inline">
+        <input type="number" id="costo_envio" name="costo_envio"
+               step="0.01" min="0" placeholder="$ envío">
+      </div>
+      <div id="seccion-cuotas" style="display:none;" class="extra-cuotas-grupo">
+        <label class="checkbox-envio">
+          <input type="checkbox" id="incluye-cuotas" name="cuotas_checkbox" value="1"> En cuotas
+        </label>
+        <div id="campo-total-cuotas" style="visibility:hidden;" class="campo-extra-inline">
+          <input type="number" id="total_cuotas" name="total_cuotas"
+                 step="1" min="2" max="999" placeholder="# cuotas">
+        </div>
+      </div>
+    </div>
+
+    {# Botón Agregar — full-width, último elemento #}
+    <button type="submit" class="btn btn-primario btn-guardar-rapido">
+      Agregar
+    </button>
+
+  </form>
+</div>
+
+{# ── TARJETA DE SALDOS ────────────────────────────────────────────────────── #}
+<div class="tarjeta-saldos">
+  <h3 class="carga-rapida-titulo">💰 Saldos actuales</h3>
+  <table class="tabla-saldos">
+    <thead>
+      <tr>
+        <th></th>
+        <th class="col-saldo-elias">Elías</th>
+        <th class="col-saldo-mari">Mari</th>
+        <th class="col-saldo-total">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th class="saldo-moneda-label">AR$</th>
+        <td id="saldo-elias-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_ars < 0 else 'saldo-positivo' }}">
+          {{ saldos.elias_ars | fmt_ars }}
+        </td>
+        <td id="saldo-mari-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_ars < 0 else 'saldo-positivo' }}">
+          {{ saldos.mari_ars | fmt_ars }}
+        </td>
+        {% set total_ars = saldos.elias_ars + saldos.mari_ars %}
+        <td id="saldo-total-ars" class="saldo-monto {{ 'saldo-negativo' if total_ars < 0 else 'saldo-positivo' }}">
+          {{ total_ars | fmt_ars }}
+        </td>
+      </tr>
+      <tr>
+        <th class="saldo-moneda-label">USD</th>
+        <td id="saldo-elias-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_usd < 0 else 'saldo-positivo' }}">
+          {{ saldos.elias_usd | fmt_usd }}
+        </td>
+        <td id="saldo-mari-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_usd < 0 else 'saldo-positivo' }}">
+          {{ saldos.mari_usd | fmt_usd }}
+        </td>
+        {% set total_usd = saldos.elias_usd + saldos.mari_usd %}
+        <td id="saldo-total-usd" class="saldo-monto {{ 'saldo-negativo' if total_usd < 0 else 'saldo-positivo' }}">
+          {{ total_usd | fmt_usd }}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{# ── GAUGES DE DISTRIBUCIÓN ───────────────────────────────────────────────── #}
+<div class="gauges-saldos">
+
+  {# — Gauge ARS: Elías vs Mari — #}
+  {% set ga = gauges.ars %}
+  <div class="gauge-wrap">
+    <svg viewBox="0 0 36 36" class="gauge-svg">
+      <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
+      <circle class="gauge-arc gauge-arc-elias" cx="18" cy="18" r="15.9"
+        stroke-dasharray="{{ ga.elias }} 100"
+        transform="rotate(-90 18 18)"/>
+      <circle class="gauge-arc gauge-arc-mari" cx="18" cy="18" r="15.9"
+        stroke-dasharray="{{ ga.mari }} 100"
+        stroke-dashoffset="-{{ ga.elias }}"
+        transform="rotate(-90 18 18)"/>
+      <text x="18" y="16.5" class="gauge-text-title">AR$</text>
+      <text x="18" y="21.5" class="gauge-text-sub">{{ ga.elias|int }}% / {{ ga.mari|int }}%</text>
+    </svg>
+    <div class="gauge-legend">
+      <span class="gauge-dot gauge-dot-elias"></span>Elías&nbsp;{{ ga.elias }}%
+      <span class="gauge-dot gauge-dot-mari"></span>Mari&nbsp;{{ ga.mari }}%
+    </div>
+  </div>
+
+  {# — Gauge USD: Elías vs Mari — #}
+  {% set gu = gauges.usd %}
+  <div class="gauge-wrap">
+    <svg viewBox="0 0 36 36" class="gauge-svg">
+      <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
+      <circle class="gauge-arc gauge-arc-elias" cx="18" cy="18" r="15.9"
+        stroke-dasharray="{{ gu.elias }} 100"
+        transform="rotate(-90 18 18)"/>
+      <circle class="gauge-arc gauge-arc-mari" cx="18" cy="18" r="15.9"
+        stroke-dasharray="{{ gu.mari }} 100"
+        stroke-dashoffset="-{{ gu.elias }}"
+        transform="rotate(-90 18 18)"/>
+      <text x="18" y="16.5" class="gauge-text-title">USD</text>
+      <text x="18" y="21.5" class="gauge-text-sub">{{ gu.elias|int }}% / {{ gu.mari|int }}%</text>
+    </svg>
+    <div class="gauge-legend">
+      <span class="gauge-dot gauge-dot-elias"></span>Elías&nbsp;{{ gu.elias }}%
+      <span class="gauge-dot gauge-dot-mari"></span>Mari&nbsp;{{ gu.mari }}%
+    </div>
+  </div>
+
+  {# — Gauge TOTAL: ARS vs USD (en ARS) — #}
+  {% set gt = gauges.total %}
+  <div class="gauge-wrap">
+    <svg viewBox="0 0 36 36" class="gauge-svg">
+      <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
+      <circle class="gauge-arc gauge-arc-ars" cx="18" cy="18" r="15.9"
+        stroke-dasharray="{{ gt.ars }} 100"
+        transform="rotate(-90 18 18)"/>
+      <circle class="gauge-arc gauge-arc-usd" cx="18" cy="18" r="15.9"
+        stroke-dasharray="{{ gt.usd }} 100"
+        stroke-dashoffset="-{{ gt.ars }}"
+        transform="rotate(-90 18 18)"/>
+      <text x="18" y="16.5" class="gauge-text-title">Total</text>
+      <text x="18" y="21.5" class="gauge-text-sub">{{ gt.ars|int }}% / {{ gt.usd|int }}%</text>
+    </svg>
+    <div class="gauge-legend">
+      <span class="gauge-dot gauge-dot-ars"></span>AR$&nbsp;{{ gt.ars }}%
+      <span class="gauge-dot gauge-dot-usd"></span>USD&nbsp;{{ gt.usd }}%
+    </div>
+    <div class="gauge-tasa">@ ${{ gauges.usd_a_ars }}/USD</div>
+  </div>
+
+</div>
+
+</div>{# /col-izquierda #}
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# COLUMNA DERECHA — Movimientos                                              #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="col-derecha">
+<div class="movimientos-card">
+
+  {# ── HEADER UNIFICADO: título + navegador de mes + contador ────────────── #}
+  <div class="movimientos-card-header">
+    <span class="movimientos-card-titulo">📋 Movimientos</span>
+    <div class="mes-nav-inline">
+      <a class="btn-mes-nav" href="/?mes={{ mes_prev }}" title="Mes anterior">&#8592;</a>
+      <span class="mes-titulo">{{ mes_nombre }}</span>
+      <a class="btn-mes-nav" href="/?mes={{ mes_next }}" title="Mes siguiente">&#8594;</a>
+    </div>
+    <span class="movimientos-card-contador">{{ total_movimientos }} movimiento{% if total_movimientos != 1 %}s{% endif %}</span>
+  </div>
+
+  {# ── CHECKLIST DE GASTOS FIJOS ──────────────────────────────────────────── #}
+  {% if checklist %}
+  <div class="seccion-gastos-fijos">
+    <div class="gastos-fijos-header">
+      <span class="gastos-fijos-titulo">📌 Gastos Fijos — {{ mes_nombre }}</span>
+      <a href="{{ url_for('settings') }}#gastos-fijos" class="gastos-fijos-editar-link">Administrar</a>
+    </div>
+    <ul class="checklist-gastos-fijos">
+      {% for item in checklist %}
+      <li class="checklist-item {{ 'item-ok' if item.encontrado else 'item-faltante' }}">
+        <span class="checklist-icono">{{ '✓' if item.encontrado else '✕' }}</span>
+        <span class="checklist-desc">{{ item.descripcion }}</span>
+        {% if item.es_cuota %}
+          {% if item.encontrado %}
+            <span class="badge-cuota" style="margin-left:0.4rem;">Cuota {{ item.cuota_actual }}/{{ item.total_cuotas }}</span>
+          {% else %}
+            <span class="badge-cuota" style="margin-left:0.4rem;">Cuota {{ item.cuota_actual + 1 }}/{{ item.total_cuotas }}</span>
+          {% endif %}
+        {% endif %}
+        {% if item.encontrado and item.moneda %}
+        <span class="checklist-monto">
+          {{ item.monto | fmt_ars if item.moneda == 'ars' else item.monto | fmt_usd }}
+          <span class="badge-persona badge-{{ item.persona }}">
+            {{ 'Elías' if item.persona == 'elias' else 'Mari' }}
+          </span>
+        </span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <div class="gastos-fijos-vacio">
+    <a href="{{ url_for('settings') }}#gastos-fijos">📌 Definir gastos fijos en Settings</a>
+  </div>
+  {% endif %}
+
+  {# ── BARRA DE FILTROS — una sola línea ─────────────────────────────────── #}
+  <div class="filtros-tabla">
+    <div class="filtros-fila">
+
+      <div class="filtros-grupo">
+        <span class="filtros-label">Persona:</span>
+        <button class="btn-filtro filtro-activo" data-filtro-persona="todos">Todos</button>
+        <button class="btn-filtro" data-filtro-persona="elias">Elías</button>
+        <button class="btn-filtro" data-filtro-persona="mari">Mari</button>
+      </div>
+
+      <div class="filtros-grupo">
+        <span class="filtros-label">Moneda:</span>
+        <button class="btn-filtro filtro-activo" data-filtro-moneda="todos">Todos</button>
+        <button class="btn-filtro" data-filtro-moneda="ars">AR$</button>
+        <button class="btn-filtro" data-filtro-moneda="usd">USD</button>
+      </div>
+
+      <div class="filtros-grupo">
+        <span class="filtros-label">Ver:</span>
+        <select id="select-vista" class="select-filtro">
+          <option value="mes"        {% if vista == 'mes' %}selected{% endif %}>Mes actual</option>
+          <option value="ultimos100" {% if vista == 'ultimos100' %}selected{% endif %}>Últimos 100</option>
+          <option value="todos"      {% if vista == 'todos' %}selected{% endif %}>Todos</option>
+        </select>
+      </div>
+
+      <div class="filtros-grupo filtros-grupo-orden">
+        <span class="filtros-label">Orden:</span>
+        <button id="btn-orden-carga" class="btn-filtro filtro-activo">Carga ↓</button>
+        <button id="btn-orden-fecha" class="btn-filtro">Fecha ↓</button>
+      </div>
+
+    </div>
+  </div>
+
+  {# ── TABLA DE MOVIMIENTOS ───────────────────────────────────────────────── #}
+  {% if movimientos %}
+  <div class="tabla-scroll-wrapper">
+  <table class="tabla-gastos" id="tabla-movimientos">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Descripción</th>
+        <th class="col-info"></th>
+        <th>Categoría</th>
+        <th class="col-monto">Monto</th>
+        <th class="col-acciones"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for mov in movimientos %}
+      <tr data-persona="{{ mov['persona'] }}"
+          data-moneda="{{ mov['moneda'] }}"
+          data-id="{{ mov['id'] }}"
+          data-fecha="{{ mov['fecha'] }}"
+          data-descripcion="{{ mov['descripcion'] | e }}"
+          data-tipo="{{ mov['tipo'] }}"
+          data-monto="{{ mov['monto'] }}"
+          data-categoria="{{ mov['categoria'] or '' }}"
+          data-costo-envio="{{ mov['costo_envio'] or '' }}">
+        <td data-label="Fecha">{{ mov['fecha'] | fmt_fecha }}</td>
+        <td class="col-descripcion" data-label="Descripción">{{ mov['descripcion'] }}</td>
+        <td class="col-info" data-label="Info">
+          <span class="badge-persona badge-{{ mov['persona'] }}">{{ 'Elías' if mov['persona'] == 'elias' else 'Mari' }}</span>
+          <span class="badge-moneda badge-moneda-{{ mov['moneda'] }}">{{ 'AR$' if mov['moneda'] == 'ars' else 'USD' }}</span>
+          <span class="badge-tipo badge-{{ mov['tipo'] }}">{{ 'Ingreso' if mov['tipo'] == 'ingreso' else 'Gasto' }}</span>
+        </td>
+        <td data-label="Categoría">{{ mov['categoria'] or '—' }}</td>
+        <td class="col-monto" data-label="Monto">
+          {% if mov['factor_aplicado'] is not none %}
+            {% set monto_efectivo = mov['monto'] * mov['factor_aplicado'] %}
+            {{ monto_efectivo | fmt_ars if mov['moneda'] == 'ars' else monto_efectivo | fmt_usd }}
+            <span class="badge-envio">
+              Sueldo: {{ mov['monto'] | fmt_ars if mov['moneda'] == 'ars' else mov['monto'] | fmt_usd }} × {{ mov['factor_aplicado'] }}
+            </span>
+          {% else %}
+            {{ mov['monto'] | fmt_ars if mov['moneda'] == 'ars' else mov['monto'] | fmt_usd }}
+            {% if mov['costo_envio'] %}
+              <span class="badge-envio">
+                📦 {{ mov['costo_envio'] | fmt_ars if mov['moneda'] == 'ars' else mov['costo_envio'] | fmt_usd }}
+              </span>
+            {% endif %}
+            {% if mov['cuota_numero'] %}
+              <span class="badge-cuota">Cuota {{ mov['cuota_numero'] }}/{{ mov['cuota_total'] }}</span>
+            {% endif %}
+          {% endif %}
+        </td>
+        <td class="col-acciones">
+          <button type="button" class="btn btn-editar btn-editar-fila" title="Editar">✎</button>
+          <form action="{{ url_for('eliminar', id=mov['id']) }}?mes={{ mes }}"
+                method="POST"
+                class="form-inline">
+            <button type="button" class="btn btn-borrar" title="Eliminar"
+                    onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>{# /tabla-scroll-wrapper #}
+
+  {% else %}
+  <div class="sin-datos">
+    <p>📭 No hay movimientos en {{ mes_nombre }}.</p>
+  </div>
+  {% endif %}
+
+</div>{# /movimientos-card #}
+</div>{# /col-derecha #}
+
+</div>{# /layout-desktop #}
+
+{# Contenedor de notificaciones toast — los agrega JS dinámicamente #}
+<div class="toast-container" id="toast-container"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var GASTOS_FIJOS = {{ gastos_fijos_json | safe }};
+</script>
+{% endblock %}

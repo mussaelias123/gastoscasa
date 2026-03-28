@@ -1,0 +1,8 @@
+{
+  "port": 5000,
+  "first_run": true,
+  "ngrok_enabled": false,
+  "ngrok_authtoken": "",
+  "ngrok_domain": "",
+  "app_name": "Gastos Casa"
+}

@@ -1,0 +1,102 @@
+{# Formulario para editar un movimiento existente (pre-rellena todos los campos) #}
+
+{% extends 'base.html' %}
+
+{% block titulo %}Editar Movimiento — Saldos{% endblock %}
+
+{% block contenido %}
+
+<div class="pagina-header">
+  <h2>✏️ Editar Movimiento</h2>
+  <a href="{{ url_for('index') }}" class="btn btn-secundario">← Volver</a>
+</div>
+
+<form method="POST"
+      action="{{ url_for('editar', id=mov['id']) }}"
+      class="formulario-gasto">
+
+  <div class="campo">
+    <label for="fecha">📅 Fecha</label>
+    <input type="date" id="fecha" name="fecha"
+           value="{{ mov['fecha'] }}" min="2000-01-01" required>
+  </div>
+
+  <div class="campo">
+    <label for="descripcion">📝 Descripción</label>
+    <input type="text" id="descripcion" name="descripcion"
+           value="{{ mov['descripcion'] }}" maxlength="200" required>
+  </div>
+
+  <div class="campo">
+    <label for="persona">👤 Persona</label>
+    <select id="persona" name="persona" required>
+      <option value="elias" {% if mov['persona'] == 'elias' %}selected{% endif %}>Elías</option>
+      <option value="mari"  {% if mov['persona'] == 'mari'  %}selected{% endif %}>Mari</option>
+    </select>
+  </div>
+
+  <div class="campo">
+    <label for="moneda">💱 Moneda</label>
+    <select id="moneda" name="moneda" required>
+      <option value="ars" {% if mov['moneda'] == 'ars' %}selected{% endif %}>AR$ — Pesos argentinos</option>
+      <option value="usd" {% if mov['moneda'] == 'usd' %}selected{% endif %}>USD — Dólares</option>
+    </select>
+  </div>
+
+  <div class="campo">
+    <label for="tipo">↕️ Tipo</label>
+    <select id="tipo" name="tipo" required>
+      <option value="ingreso" {% if mov['tipo'] == 'ingreso' %}selected{% endif %}>Ingreso (suma al saldo)</option>
+      <option value="gasto"   {% if mov['tipo'] == 'gasto'   %}selected{% endif %}>Gasto (resta al saldo)</option>
+    </select>
+  </div>
+
+  <div class="campo">
+    <label for="monto-display">💰 Monto</label>
+    <input type="text" id="monto-display"
+           placeholder="0" maxlength="16"
+           inputmode="numeric" autocomplete="off" required>
+    <input type="hidden" id="monto" name="monto" value="{{ mov['monto'] }}">
+  </div>
+
+  {# Categoría — opciones llenadas por JS según el tipo seleccionado #}
+  <div class="campo">
+    <label for="categoria">🏷️ Categoría</label>
+    <select id="categoria" name="categoria"
+            data-valor="{{ mov['categoria'] or '' }}">
+    </select>
+  </div>
+
+  {# Envío — visible solo cuando tipo es gasto #}
+  <div class="campo" id="seccion-envio"
+       style="{{ '' if mov['tipo'] == 'gasto' else 'display:none' }}">
+    <label class="checkbox-envio">
+      <input type="checkbox" id="incluye-envio"
+             {{ 'checked' if mov['costo_envio'] else '' }}> Incluye envío
+    </label>
+    <div id="campo-costo-envio"
+         style="{{ '' if mov['costo_envio'] else 'display:none' }}"
+         class="campo">
+      <label for="costo_envio">Costo del envío ($)</label>
+      <input type="number" id="costo_envio" name="costo_envio"
+             value="{{ mov['costo_envio'] or '' }}"
+             step="0.01" min="0" placeholder="0">
+    </div>
+  </div>
+
+  <div class="campo info-gasto">
+    <small>📌 Editando movimiento ID: <strong>#{{ mov['id'] }}</strong></small>
+  </div>
+
+  <div class="campo campo-botones">
+    <button type="submit" class="btn btn-primario">💾 Guardar Cambios</button>
+    <button type="button"
+            onclick="window.location.href='{{ url_for('index') }}'"
+            class="btn btn-secundario">
+      ✖ Cancelar
+    </button>
+  </div>
+
+</form>
+
+{% endblock %}

@@ -1,0 +1,342 @@
+{# Página de resumen: dashboard con saldos, balance mensual y gráficos #}
+
+{% extends 'base.html' %}
+
+{% block titulo %}Resumen{% endblock %}
+
+{% block contenido %}
+
+{# Chart.js debe cargar ANTES del script de inicialización — va al tope del bloque #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+{# Datos para los gráficos, serializados como JSON para el JS #}
+<script>
+var MOVIMIENTOS = {{ movimientos_json | tojson }};
+</script>
+
+<div class="pagina-header">
+  <h2>📊 Dashboard</h2>
+</div>
+
+{# ── SALDOS ACUMULADOS (todos los tiempos) ─────────────────────────────── #}
+<div class="grid-saldos">
+
+  <div class="tarjeta-saldo">
+    <div class="saldo-persona">Elías</div>
+    <div class="saldo-moneda-label">Pesos argentinos · AR$</div>
+    <div class="saldo-monto {{ 'saldo-negativo' if saldos.elias_ars < 0 else 'saldo-positivo' }}">
+      {{ saldos.elias_ars | fmt_ars }}
+    </div>
+  </div>
+
+  <div class="tarjeta-saldo">
+    <div class="saldo-persona">Elías</div>
+    <div class="saldo-moneda-label">Dólares · USD</div>
+    <div class="saldo-monto {{ 'saldo-negativo' if saldos.elias_usd < 0 else 'saldo-positivo' }}">
+      {{ saldos.elias_usd | fmt_usd }}
+    </div>
+  </div>
+
+  <div class="tarjeta-saldo">
+    <div class="saldo-persona">Mari</div>
+    <div class="saldo-moneda-label">Pesos argentinos · AR$</div>
+    <div class="saldo-monto {{ 'saldo-negativo' if saldos.mari_ars < 0 else 'saldo-positivo' }}">
+      {{ saldos.mari_ars | fmt_ars }}
+    </div>
+  </div>
+
+  <div class="tarjeta-saldo">
+    <div class="saldo-persona">Mari</div>
+    <div class="saldo-moneda-label">Dólares · USD</div>
+    <div class="saldo-monto {{ 'saldo-negativo' if saldos.mari_usd < 0 else 'saldo-positivo' }}">
+      {{ saldos.mari_usd | fmt_usd }}
+    </div>
+  </div>
+
+</div>
+
+{% if movimientos_json %}
+
+{# ── BALANCE DEL MES ───────────────────────────────────────────────────── #}
+<section class="dash-seccion">
+
+  <div class="dash-mes-nav">
+    <button class="btn-mes-nav" id="btn-mes-ant" title="Mes anterior">&#8249;</button>
+    <h3 class="dash-mes-titulo" id="titulo-mes">—</h3>
+    <button class="btn-mes-nav" id="btn-mes-sig" title="Mes siguiente">&#8250;</button>
+  </div>
+
+  <div class="dash-balance-grid">
+
+    <div class="dash-bc-grupo">
+      <div class="dash-bc-moneda-label">AR$</div>
+      <div class="dash-bc-card">
+        <div class="dash-bc-label">Ingresos</div>
+        <div class="dash-bc-valor texto-positivo" id="mes-ing-ars">—</div>
+      </div>
+      <div class="dash-bc-card">
+        <div class="dash-bc-label">Gastos</div>
+        <div class="dash-bc-valor texto-negativo" id="mes-gas-ars">—</div>
+      </div>
+      <div class="dash-bc-card dash-bc-neto">
+        <div class="dash-bc-label">Neto</div>
+        <div class="dash-bc-valor" id="mes-neto-ars">—</div>
+      </div>
+    </div>
+
+    <div class="dash-bc-grupo">
+      <div class="dash-bc-moneda-label">USD</div>
+      <div class="dash-bc-card">
+        <div class="dash-bc-label">Ingresos</div>
+        <div class="dash-bc-valor texto-positivo" id="mes-ing-usd">—</div>
+      </div>
+      <div class="dash-bc-card">
+        <div class="dash-bc-label">Gastos</div>
+        <div class="dash-bc-valor texto-negativo" id="mes-gas-usd">—</div>
+      </div>
+      <div class="dash-bc-card dash-bc-neto">
+        <div class="dash-bc-label">Neto</div>
+        <div class="dash-bc-valor" id="mes-neto-usd">—</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+{# ── GRÁFICOS ──────────────────────────────────────────────────────────── #}
+<div class="dash-graficos-grid">
+
+  <section class="dash-seccion">
+    <h3 class="dash-chart-titulo">📈 Últimos 6 meses · AR$</h3>
+    <div class="dash-chart-contenedor">
+      <canvas id="chart-barras"></canvas>
+    </div>
+  </section>
+
+  <section class="dash-seccion">
+    <h3 class="dash-chart-titulo" id="donut-titulo">🍩 Distribución del mes · AR$</h3>
+    <div class="dash-chart-contenedor dash-donut-contenedor">
+      <canvas id="chart-donut"></canvas>
+      <div class="dash-donut-centro" id="donut-centro"></div>
+    </div>
+  </section>
+
+</div>
+
+{% else %}
+<div class="sin-datos">
+  <p>📭 No hay movimientos registrados todavía.</p>
+  <p><a href="{{ url_for('index') }}" class="btn btn-primario">➕ Agregar el primer movimiento</a></p>
+</div>
+{% endif %}
+
+
+<script>
+(function () {
+  if (!MOVIMIENTOS.length) return;
+
+  // ── FORMATTERS ──────────────────────────────────────────────────────────
+  function fmtARS(v) {
+    var signo = v < 0 ? '-' : '';
+    var n = new Intl.NumberFormat('de-DE').format(Math.abs(Math.round(v)));
+    return '$ ' + signo + n;
+  }
+
+  function fmtUSD(v) {
+    var signo = v < 0 ? '-' : '';
+    var n = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(v));
+    return 'USD ' + signo + n;
+  }
+
+  // Formato corto para ejes del gráfico
+  function fmtARSCorto(v) {
+    if (v >= 1000000)  return '$ ' + new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v / 1000000) + 'M';
+    if (v >= 1000)     return '$ ' + new Intl.NumberFormat('de-DE').format(Math.round(v / 1000)) + 'K';
+    return '$ ' + new Intl.NumberFormat('de-DE').format(Math.round(v));
+  }
+
+  // ── ESTADO DEL MES ──────────────────────────────────────────────────────
+  var HOY  = new Date();
+  var mesAno = { anio: HOY.getFullYear(), mes: HOY.getMonth() + 1 };  // mes 1-based
+
+  var NOMBRES_MES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+
+  function mesKey(m)    { return m.anio + '-' + String(m.mes).padStart(2, '0'); }
+  function mesLabel(m)  { return NOMBRES_MES[m.mes - 1] + ' ' + m.anio; }
+  function mesAbrev(m)  { return NOMBRES_MES[m.mes - 1].slice(0, 3) + ' ' + String(m.anio).slice(2); }
+
+  function mesAnterior(m)  { return m.mes === 1  ? { anio: m.anio - 1, mes: 12 } : { anio: m.anio, mes: m.mes - 1 }; }
+  function mesSiguiente(m) { return m.mes === 12 ? { anio: m.anio + 1, mes: 1  } : { anio: m.anio, mes: m.mes + 1 }; }
+
+  function esMesActual(m) {
+    return m.anio === HOY.getFullYear() && m.mes === HOY.getMonth() + 1;
+  }
+
+  // ── CÁLCULO POR MES ─────────────────────────────────────────────────────
+  function calcularMes(m) {
+    var clave = mesKey(m);
+    var movMes = MOVIMIENTOS.filter(function (mv) { return mv.fecha.startsWith(clave); });
+
+    function suma(moneda, tipo) {
+      return movMes
+        .filter(function (mv) { return mv.moneda === moneda && mv.tipo === tipo; })
+        .reduce(function (s, mv) { return s + mv.monto; }, 0);
+    }
+
+    return {
+      ingARS: suma('ars', 'ingreso'),
+      gasARS: suma('ars', 'gasto'),
+      ingUSD: suma('usd', 'ingreso'),
+      gasUSD: suma('usd', 'gasto'),
+    };
+  }
+
+  // ── ACTUALIZAR TARJETAS DE BALANCE ──────────────────────────────────────
+  function actualizarBalance(m) {
+    var d       = calcularMes(m);
+    var netoARS = d.ingARS - d.gasARS;
+    var netoUSD = d.ingUSD - d.gasUSD;
+
+    document.getElementById('titulo-mes').textContent = mesLabel(m);
+
+    document.getElementById('mes-ing-ars').textContent = fmtARS(d.ingARS);
+    document.getElementById('mes-gas-ars').textContent = fmtARS(d.gasARS);
+
+    var netoARSEl = document.getElementById('mes-neto-ars');
+    netoARSEl.textContent = fmtARS(netoARS);
+    netoARSEl.className   = 'dash-bc-valor ' + (netoARS >= 0 ? 'texto-positivo' : 'texto-negativo');
+
+    document.getElementById('mes-ing-usd').textContent = fmtUSD(d.ingUSD);
+    document.getElementById('mes-gas-usd').textContent = fmtUSD(d.gasUSD);
+
+    var netoUSDEl = document.getElementById('mes-neto-usd');
+    netoUSDEl.textContent = fmtUSD(netoUSD);
+    netoUSDEl.className   = 'dash-bc-valor ' + (netoUSD >= 0 ? 'texto-positivo' : 'texto-negativo');
+
+    // Botón siguiente: deshabilitado si ya estamos en el mes actual
+    document.getElementById('btn-mes-sig').disabled = esMesActual(m);
+
+    actualizarDonut(d, m);
+  }
+
+  // ── GRÁFICO DE BARRAS: últimos 6 meses, AR$ ─────────────────────────────
+  function getUltimos6Meses() {
+    var meses = [];
+    for (var i = 5; i >= 0; i--) {
+      var d = new Date(HOY.getFullYear(), HOY.getMonth() - i, 1);
+      meses.push({ anio: d.getFullYear(), mes: d.getMonth() + 1 });
+    }
+    return meses;
+  }
+
+  var ultimos6   = getUltimos6Meses();
+  var labBarras  = ultimos6.map(mesAbrev);
+  var datIngARS  = ultimos6.map(function (m) { return calcularMes(m).ingARS; });
+  var datGasARS  = ultimos6.map(function (m) { return calcularMes(m).gasARS; });
+
+  var ctxBar = document.getElementById('chart-barras').getContext('2d');
+  new Chart(ctxBar, {
+    type: 'bar',
+    data: {
+      labels: labBarras,
+      datasets: [
+        {
+          label: 'Ingresos',
+          data: datIngARS,
+          backgroundColor: 'rgba(39, 174, 96, 0.72)',
+          borderColor: '#27ae60',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: 'Gastos',
+          data: datGasARS,
+          backgroundColor: 'rgba(220, 53, 69, 0.72)',
+          borderColor: '#dc3545',
+          borderWidth: 1,
+          borderRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 12 } } },
+        tooltip: { callbacks: { label: function (ctx) { return '  ' + fmtARS(ctx.raw); } } }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: function (v) { return fmtARSCorto(v); }, font: { size: 11 } },
+          grid: { color: 'rgba(0,0,0,0.06)' }
+        },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+
+  // ── GRÁFICO DONUT: ingreso vs gasto del mes seleccionado, AR$ ───────────
+  var ctxDonut = document.getElementById('chart-donut').getContext('2d');
+  var chartDonut = new Chart(ctxDonut, {
+    type: 'doughnut',
+    data: {
+      labels: ['Ingresos', 'Gastos'],
+      datasets: [{
+        data: [0, 0],
+        backgroundColor: ['rgba(39, 174, 96, 0.78)', 'rgba(220, 53, 69, 0.78)'],
+        borderColor: ['#27ae60', '#dc3545'],
+        borderWidth: 2,
+        hoverOffset: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 12 } } },
+        tooltip: { callbacks: { label: function (ctx) { return '  ' + fmtARS(ctx.raw); } } }
+      }
+    }
+  });
+
+  function actualizarDonut(d, m) {
+    chartDonut.data.datasets[0].data = [d.ingARS, d.gasARS];
+    chartDonut.update();
+
+    // Texto central: % ahorrado (o "Sin datos")
+    var centro = document.getElementById('donut-centro');
+    if (d.ingARS > 0) {
+      var pct = Math.round(((d.ingARS - d.gasARS) / d.ingARS) * 100);
+      centro.innerHTML = '<span class="donut-pct ' + (pct >= 0 ? 'texto-positivo' : 'texto-negativo') + '">' + pct + '%</span><span class="donut-pct-label">ahorro</span>';
+    } else {
+      centro.innerHTML = '<span class="donut-sin-datos">Sin datos</span>';
+    }
+
+    document.getElementById('donut-titulo').textContent = '🍩 Distribución del mes · AR$';
+  }
+
+  // ── NAVEGACIÓN DE MES ───────────────────────────────────────────────────
+  document.getElementById('btn-mes-ant').addEventListener('click', function () {
+    mesAno = mesAnterior(mesAno);
+    actualizarBalance(mesAno);
+  });
+
+  document.getElementById('btn-mes-sig').addEventListener('click', function () {
+    if (!esMesActual(mesAno)) {
+      mesAno = mesSiguiente(mesAno);
+      actualizarBalance(mesAno);
+    }
+  });
+
+  // Inicializar con el mes actual
+  actualizarBalance(mesAno);
+
+}());
+</script>
+
+{% endblock %}

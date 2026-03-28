@@ -1,0 +1,640 @@
+{# Página de configuración del entorno #}
+
+{% extends 'base.html' %}
+
+{% block titulo %}Settings{% endblock %}
+
+{% block contenido %}
+
+<div class="pagina-header">
+  <h2>⚙ Settings</h2>
+</div>
+
+{% with mensajes = get_flashed_messages() %}
+  {% if mensajes %}
+    <div class="banner-exito" role="alert">
+      {% for msg in mensajes %}{{ msg }}{% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<form action="{{ url_for('settings') }}" method="POST" class="form-settings">
+
+  {# ── SECCIÓN: GENERAL ──────────────────────────────────────────────────── #}
+  <div class="tarjeta settings-seccion">
+    <h3 class="settings-titulo-seccion">General</h3>
+
+    <div class="settings-campo">
+      <label for="app_name">Nombre de la aplicación</label>
+      <input type="text" id="app_name" name="app_name"
+             value="{{ cfg.app_name }}" maxlength="100" required>
+    </div>
+
+    <div class="settings-campo">
+      <label for="port">Puerto</label>
+      <input type="number" id="port" name="port"
+             value="{{ cfg.port }}" min="1024" max="65535" required>
+      <span class="settings-ayuda">Número de puerto donde corre la app (default: 5000).</span>
+    </div>
+
+    <div class="settings-campo">
+      <label for="factor_sueldo">Factor de sueldo (0.0 – 1.0)</label>
+      <input type="number" id="factor_sueldo" name="factor_sueldo"
+             value="{{ cfg.factor_sueldo }}" min="0" max="1" step="0.01" required>
+      <span class="settings-ayuda">
+        Porcentaje del sueldo bruto que ingresa al fondo común.
+        Ejemplo: <strong>0.7</strong> significa que el 70% del sueldo se suma al saldo.
+        Se aplica automáticamente a movimientos de tipo <em>Ingreso / Sueldo</em>.
+      </span>
+    </div>
+
+    <div class="settings-campo">
+      <label for="usd_a_ars">Tipo de cambio USD → ARS</label>
+      <input type="number" id="usd_a_ars" name="usd_a_ars"
+             value="{{ cfg.usd_a_ars | default(1500) }}" min="1" step="1" required>
+      <span class="settings-ayuda">
+        Cuántos pesos vale 1 dólar. Se usa en el indicador "Total" de los gauges de saldos
+        para comparar el patrimonio en ARS vs USD en una misma unidad.
+      </span>
+    </div>
+  </div>
+
+  {# ── SECCIÓN: ACCESO REMOTO (NGROK) ────────────────────────────────────── #}
+  <div class="tarjeta settings-seccion">
+    <h3 class="settings-titulo-seccion">Acceso remoto (ngrok)</h3>
+
+    <p class="settings-info">
+      Sin ngrok, la app solo es accesible desde esta PC.
+      Activalo para generar una URL pública y acceder desde cualquier dispositivo.
+    </p>
+
+    <div class="settings-campo settings-campo-toggle">
+      <label class="toggle-label">
+        <input type="checkbox" id="ngrok_enabled" name="ngrok_enabled"
+               {% if cfg.ngrok_enabled %}checked{% endif %}>
+        <span class="toggle-texto">Habilitar ngrok</span>
+      </label>
+    </div>
+
+    <div class="settings-campo">
+      <label for="ngrok_authtoken">Auth Token</label>
+      <div class="input-con-boton">
+        <input type="password" id="ngrok_authtoken" name="ngrok_authtoken"
+               value="{{ cfg.ngrok_authtoken }}" placeholder="Pegá tu token de ngrok.com"
+               autocomplete="off">
+        <button type="button" class="btn-secundario btn-toggle-pass"
+                onclick="togglePass('ngrok_authtoken', this)">Mostrar</button>
+      </div>
+      <span class="settings-ayuda">Conseguilo gratis en <strong>ngrok.com → Dashboard → Your Authtoken</strong>.</span>
+    </div>
+
+    <div class="settings-campo">
+      <label for="ngrok_domain">Dominio personalizado <span class="settings-opcional">(opcional)</span></label>
+      <input type="text" id="ngrok_domain" name="ngrok_domain"
+             value="{{ cfg.ngrok_domain }}" placeholder="Ej: mi-app.ngrok-free.app">
+      <span class="settings-ayuda">Solo para planes pagos de ngrok. Dejá vacío para usar un dominio generado.</span>
+    </div>
+  </div>
+
+  {# ── SECCIÓN: ESTADO DEL ENTORNO ───────────────────────────────────────── #}
+  <div class="tarjeta settings-seccion">
+    <h3 class="settings-titulo-seccion">Estado del entorno</h3>
+
+    <div class="settings-campo">
+      <label>Primer inicio</label>
+      <div class="settings-estado">
+        {% if cfg.first_run %}
+          <span class="badge-estado badge-estado-pendiente">⚠ Sí — pendiente de configuración</span>
+        {% else %}
+          <span class="badge-estado badge-estado-ok">✓ No — entorno configurado</span>
+        {% endif %}
+      </div>
+      <span class="settings-ayuda">
+        Mientras sea "primer inicio", la app solo escucha en localhost (127.0.0.1).
+      </span>
+    </div>
+
+    {% if cfg.first_run %}
+    <div class="settings-campo">
+      <button type="submit" name="accion" value="marcar_configurado"
+              class="btn btn-secundario">
+        Marcar como configurado
+      </button>
+      <span class="settings-ayuda">
+        Esto setea first_run = false. La app podrá servir en 0.0.0.0 al reiniciar.
+      </span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="settings-acciones">
+    <button type="submit" class="btn btn-primario">Guardar configuración</button>
+    <a href="{{ url_for('index') }}" class="btn btn-secundario">Cancelar</a>
+  </div>
+
+</form>
+
+{# ── SECCIÓN: GASTOS FIJOS ───────────────────────────────────────────────── #}
+<div class="tarjeta settings-seccion" id="gastos-fijos">
+  <h3 class="settings-titulo-seccion">📌 Gastos Fijos</h3>
+  <p class="settings-info">
+    Definí los gastos que se repiten todos los meses. Al cargar un movimiento con
+    categoría <strong>Fijo</strong>, la descripción se selecciona desde esta lista.
+    En la página de inicio verás cuáles ya están cargados en el mes seleccionado.
+  </p>
+
+  {# Agregar nuevo #}
+  <form action="{{ url_for('settings') }}" method="POST" class="form-fijo-nuevo">
+    <input type="hidden" name="accion" value="agregar_fijo">
+    <div class="fijo-nuevo-campos">
+      <input type="text" name="descripcion_fijo"
+             placeholder="Ej: Alquiler, EPEC, Netflix..." maxlength="200" required
+             class="fijo-input-desc">
+      <button type="submit" class="btn btn-primario btn-sm">Agregar</button>
+    </div>
+  </form>
+
+  {# Lista de gastos fijos existentes #}
+  {% if fijos %}
+  <ul class="lista-fijos-settings">
+    {% for fijo in fijos %}
+    <li class="fijo-settings-item {{ '' if fijo['activo'] else 'fijo-inactivo' }}">
+      <form action="{{ url_for('settings') }}" method="POST" class="form-fijo-editar">
+        <input type="hidden" name="accion" value="editar_fijo">
+        <input type="hidden" name="fijo_id" value="{{ fijo['id'] }}">
+        <input type="text" name="descripcion_fijo" value="{{ fijo['descripcion'] }}"
+               maxlength="200" required class="fijo-input-desc">
+        <label class="fijo-activo-label">
+          <input type="checkbox" name="activo" {{ 'checked' if fijo['activo'] }}> Activo
+        </label>
+        <button type="submit" class="btn btn-secundario btn-sm">Guardar</button>
+      </form>
+      <form action="{{ url_for('settings') }}" method="POST" class="form-fijo-eliminar">
+        <input type="hidden" name="accion" value="eliminar_fijo">
+        <input type="hidden" name="fijo_id" value="{{ fijo['id'] }}">
+        <button type="button" class="btn btn-borrar btn-sm"
+                onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="sin-datos-inline">No hay gastos fijos definidos todavía.</p>
+  {% endif %}
+</div>
+
+{# ── SECCIÓN: GIT / BACKUP ───────────────────────────────────────────────── #}
+<div class="tarjeta settings-seccion" id="git-backup">
+  <h3 class="settings-titulo-seccion">💾 Backup del código</h3>
+  <p class="settings-info">
+    Guardá el estado actual de la aplicación con un commit de Git.
+    Si en el futuro algo se rompe, podés volver a este punto exacto.
+  </p>
+
+  <div class="settings-campo">
+    <label for="git-descripcion">Descripción <span class="settings-opcional">(opcional)</span></label>
+    <input type="text" id="git-descripcion" placeholder="Ej: agrego filtro por categoría" maxlength="200">
+    <span class="settings-ayuda">Se suma al backup junto con la fecha y hora automáticamente.</span>
+  </div>
+
+  <div class="settings-campo">
+    <button type="button" class="btn btn-primario" id="btn-git-commit" onclick="hacerCommit()">
+      Hacer commit
+    </button>
+  </div>
+
+  <div id="git-resultado" class="git-resultado" style="display:none;"></div>
+</div>
+
+{# ── SECCIÓN: MONITOR DE RECURSOS ───────────────────────────────────────── #}
+<div class="tarjeta settings-seccion monitor-recursos" id="monitor-recursos">
+  <div class="monitor-header">
+    <h3 class="settings-titulo-seccion">Monitor de recursos</h3>
+    <span class="monitor-badge" id="monitor-estado">Cargando...</span>
+  </div>
+
+  <div class="monitor-grilla">
+
+    {# Tarjeta: Proceso #}
+    <div class="monitor-tarjeta">
+      <h4 class="monitor-tarjeta-titulo">Proceso (esta app)</h4>
+
+      <div class="monitor-metrica">
+        <div class="monitor-metrica-header">
+          <span class="monitor-label">CPU</span>
+          <span class="monitor-valor" id="proc-cpu">—</span>
+        </div>
+        <div class="monitor-barra-fondo">
+          <div class="monitor-barra" id="proc-cpu-barra"></div>
+        </div>
+      </div>
+
+      <div class="monitor-metrica">
+        <div class="monitor-metrica-header">
+          <span class="monitor-label">Memoria</span>
+          <span class="monitor-valor" id="proc-mem">—</span>
+        </div>
+        <div class="monitor-barra-fondo">
+          <div class="monitor-barra" id="proc-mem-barra"></div>
+        </div>
+      </div>
+
+      <div class="monitor-pid">
+        PID: <span id="proc-pid">—</span>
+      </div>
+    </div>
+
+    {# Tarjeta: Host #}
+    <div class="monitor-tarjeta">
+      <h4 class="monitor-tarjeta-titulo">Host (PC)</h4>
+
+      <div class="monitor-metrica">
+        <div class="monitor-metrica-header">
+          <span class="monitor-label">CPU total</span>
+          <span class="monitor-valor" id="host-cpu">—</span>
+        </div>
+        <div class="monitor-barra-fondo">
+          <div class="monitor-barra" id="host-cpu-barra"></div>
+        </div>
+      </div>
+
+      <div class="monitor-metrica">
+        <div class="monitor-metrica-header">
+          <span class="monitor-label">Memoria</span>
+          <span class="monitor-valor" id="host-mem">—</span>
+        </div>
+        <div class="monitor-barra-fondo">
+          <div class="monitor-barra" id="host-mem-barra"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>{# fin grilla #}
+</div>
+
+{# ── SECCIÓN: PALETA DE COLORES ───────────────────────────────────────────── #}
+<div class="tarjeta settings-seccion" id="paleta-colores">
+  <h3 class="settings-titulo-seccion">Paleta de colores</h3>
+  <p class="settings-info">
+    Los 15 colores de la app. Cada uno está definido como variable CSS en
+    <code>:root</code> dentro de <code>static/style.css</code> — modificar
+    un valor ahí afecta toda la interfaz.
+  </p>
+
+  <p class="paleta-grupo-titulo">Acento e interfaz</p>
+  <div class="paleta-grilla">
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#4f46e5;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Acento</div>
+        <div class="paleta-chip-var">--color-acento</div>
+        <div class="paleta-chip-hex">#4f46e5</div>
+        <div class="paleta-chip-uso">Botones primarios, links, focus ring</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#4338ca;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Acento oscuro</div>
+        <div class="paleta-chip-var">--color-acento-oscuro</div>
+        <div class="paleta-chip-hex">#4338ca</div>
+        <div class="paleta-chip-uso">Hover de botones primarios</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#f9fafb; border-bottom:1px solid #e5e7eb;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Fondo</div>
+        <div class="paleta-chip-var">--color-fondo</div>
+        <div class="paleta-chip-hex">#f9fafb</div>
+        <div class="paleta-chip-uso">Fondo general de página</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#ffffff; border-bottom:1px solid #e5e7eb;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Superficie</div>
+        <div class="paleta-chip-var">--color-superficie</div>
+        <div class="paleta-chip-hex">#ffffff</div>
+        <div class="paleta-chip-uso">Tarjetas, inputs, modales</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#111827;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Texto</div>
+        <div class="paleta-chip-var">--color-texto</div>
+        <div class="paleta-chip-hex">#111827</div>
+        <div class="paleta-chip-uso">Texto principal</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#6b7280;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Texto muted</div>
+        <div class="paleta-chip-var">--color-texto-muted</div>
+        <div class="paleta-chip-hex">#6b7280</div>
+        <div class="paleta-chip-uso">Texto secundario, ayuda, labels</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#e5e7eb;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Borde</div>
+        <div class="paleta-chip-var">--color-borde</div>
+        <div class="paleta-chip-hex">#e5e7eb</div>
+        <div class="paleta-chip-uso">Bordes de tarjetas, inputs, separadores</div>
+      </div>
+    </div>
+
+  </div>{# fin grilla interfaz #}
+
+  <p class="paleta-grupo-titulo">Semánticos</p>
+  <div class="paleta-grilla">
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#10b981;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Éxito</div>
+        <div class="paleta-chip-var">--color-exito</div>
+        <div class="paleta-chip-hex">#10b981</div>
+        <div class="paleta-chip-uso">Ingresos, saldo positivo, OK, semáforo verde</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#f59e0b;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Alerta</div>
+        <div class="paleta-chip-var">--color-alerta</div>
+        <div class="paleta-chip-hex">#f59e0b</div>
+        <div class="paleta-chip-uso">Pendiente, advertencia, semáforo amarillo</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#ef4444;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Peligro</div>
+        <div class="paleta-chip-var">--color-peligro</div>
+        <div class="paleta-chip-hex">#ef4444</div>
+        <div class="paleta-chip-uso">Eliminar, errores, saldo negativo, semáforo rojo</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#d1fae5;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Éxito suave</div>
+        <div class="paleta-chip-var">--color-exito-suave</div>
+        <div class="paleta-chip-hex">#d1fae5</div>
+        <div class="paleta-chip-uso">Fondo de badges y banners OK/éxito</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#fef3c7;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Alerta suave</div>
+        <div class="paleta-chip-var">--color-alerta-suave</div>
+        <div class="paleta-chip-hex">#fef3c7</div>
+        <div class="paleta-chip-uso">Fondo de badges y banners pendiente/alerta</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#fee2e2;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Peligro suave</div>
+        <div class="paleta-chip-var">--color-peligro-suave</div>
+        <div class="paleta-chip-hex">#fee2e2</div>
+        <div class="paleta-chip-uso">Fondo de badges y banners error/peligro</div>
+      </div>
+    </div>
+
+  </div>{# fin grilla semánticos #}
+
+  <p class="paleta-grupo-titulo">Personas</p>
+  <div class="paleta-grilla">
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#0284c7;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Elías</div>
+        <div class="paleta-chip-var">--color-persona-elias</div>
+        <div class="paleta-chip-hex">#0284c7</div>
+        <div class="paleta-chip-uso">Gauge, badge, encabezado de columna en tabla de saldos</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#7c3aed;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Mari</div>
+        <div class="paleta-chip-var">--color-persona-mari</div>
+        <div class="paleta-chip-hex">#7c3aed</div>
+        <div class="paleta-chip-uso">Gauge, badge, encabezado de columna en tabla de saldos</div>
+      </div>
+    </div>
+
+  </div>{# fin grilla personas #}
+
+  <p class="paleta-grupo-titulo">Monedas</p>
+  <div class="paleta-grilla">
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#74acdf;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">AR$ — Celeste argentina</div>
+        <div class="paleta-chip-var">--color-moneda-ars</div>
+        <div class="paleta-chip-hex">#74acdf</div>
+        <div class="paleta-chip-uso">Badge AR$ en tabla, selector Moneda, gauge Total (arco ARS)</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#3d8b37;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">USD — Verde dólar</div>
+        <div class="paleta-chip-var">--color-moneda-usd</div>
+        <div class="paleta-chip-hex">#3d8b37</div>
+        <div class="paleta-chip-uso">Badge USD en tabla, selector Moneda, gauge Total (arco USD)</div>
+      </div>
+    </div>
+
+  </div>{# fin grilla monedas #}
+
+  <p class="paleta-grupo-titulo">Grises decorativos</p>
+  <div class="paleta-grilla">
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#1f2937;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Deco 1 — muy oscuro</div>
+        <div class="paleta-chip-var">--color-deco-1</div>
+        <div class="paleta-chip-hex">#1f2937</div>
+        <div class="paleta-chip-uso">Barra de título (header superior)</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#374151;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Deco 2 — oscuro</div>
+        <div class="paleta-chip-var">--color-deco-2</div>
+        <div class="paleta-chip-hex">#374151</div>
+        <div class="paleta-chip-uso">Barra de navegación (tabs Inicio / Resumen / Settings)</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#6b7280;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Deco 3 — medio</div>
+        <div class="paleta-chip-var">--color-deco-3</div>
+        <div class="paleta-chip-hex">#6b7280</div>
+        <div class="paleta-chip-uso">Separadores, iconos secundarios, texto de apoyo</div>
+      </div>
+    </div>
+
+    <div class="paleta-chip">
+      <div class="paleta-chip-muestra" style="background:#d1d5db; border-bottom:1px solid #e5e7eb;"></div>
+      <div class="paleta-chip-info">
+        <div class="paleta-chip-nombre">Deco 4 — suave</div>
+        <div class="paleta-chip-var">--color-deco-4</div>
+        <div class="paleta-chip-hex">#d1d5db</div>
+        <div class="paleta-chip-uso">Hover backgrounds, fondos sutiles, divisores ligeros</div>
+      </div>
+    </div>
+
+  </div>{# fin grilla grises decorativos #}
+
+</div>{# fin paleta-colores #}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+// ── Git commit ───────────────────────────────────────────────────────────────
+
+async function hacerCommit() {
+  const btn        = document.getElementById('btn-git-commit');
+  const descripcion = document.getElementById('git-descripcion').value.trim();
+  const resultado  = document.getElementById('git-resultado');
+
+  btn.disabled    = true;
+  btn.textContent = 'Guardando...';
+  resultado.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('descripcion', descripcion);
+
+  try {
+    const resp = await fetch('/git/commit', { method: 'POST', body: formData });
+    const data = await resp.json();
+
+    resultado.style.display = 'block';
+    if (data.ok) {
+      resultado.className = 'git-resultado git-resultado-ok';
+      resultado.textContent = '✓ ' + data.mensaje;
+      document.getElementById('git-descripcion').value = '';
+    } else {
+      resultado.className = 'git-resultado git-resultado-error';
+      resultado.textContent = '✗ ' + data.mensaje;
+    }
+  } catch (e) {
+    resultado.style.display  = 'block';
+    resultado.className      = 'git-resultado git-resultado-error';
+    resultado.textContent    = '✗ Error inesperado. Revisá la consola.';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Hacer commit';
+  }
+}
+
+function togglePass(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = 'Ocultar';
+  } else {
+    input.type = 'password';
+    btn.textContent = 'Mostrar';
+  }
+}
+
+// ── Monitor de recursos ─────────────────────────────────────────────────────
+
+function colorClase(valor, umbraAmarillo, umbraRojo) {
+  if (valor >= umbraRojo)    return 'barra-rojo';
+  if (valor >= umbraAmarillo) return 'barra-amarillo';
+  return 'barra-verde';
+}
+
+function actualizarBarra(barraId, porcentaje, umbraAmarillo, umbraRojo) {
+  const barra = document.getElementById(barraId);
+  if (!barra) return;
+  barra.style.width = Math.min(porcentaje, 100) + '%';
+  barra.className = 'monitor-barra ' + colorClase(porcentaje, umbraAmarillo, umbraRojo);
+}
+
+function actualizarValor(elemId, texto, porcentaje, umbraAmarillo, umbraRojo) {
+  const el = document.getElementById(elemId);
+  if (!el) return;
+  el.textContent = texto;
+  el.className = 'monitor-valor ' + colorClase(porcentaje, umbraAmarillo, umbraRojo);
+}
+
+async function fetchMetrics() {
+  try {
+    const resp = await fetch('/api/metrics');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const d = await resp.json();
+
+    // Proceso
+    actualizarValor('proc-cpu',  d.proceso.cpu_percent + '%',
+                    d.proceso.cpu_percent, 50, 80);
+    actualizarBarra('proc-cpu-barra', d.proceso.cpu_percent, 50, 80);
+
+    actualizarValor('proc-mem',
+                    d.proceso.memoria_mb + ' MB (' + d.proceso.memoria_percent + '%)',
+                    d.proceso.memoria_percent, 70, 90);
+    actualizarBarra('proc-mem-barra', d.proceso.memoria_percent, 70, 90);
+
+    document.getElementById('proc-pid').textContent = d.proceso.pid;
+
+    // Host
+    actualizarValor('host-cpu', d.host.cpu_percent + '%',
+                    d.host.cpu_percent, 50, 80);
+    actualizarBarra('host-cpu-barra', d.host.cpu_percent, 50, 80);
+
+    const hostMemTexto = d.host.memoria_usada_mb + ' MB de '
+                       + d.host.memoria_total_mb + ' MB ('
+                       + d.host.memoria_percent + '%)';
+    actualizarValor('host-mem', hostMemTexto, d.host.memoria_percent, 70, 90);
+    actualizarBarra('host-mem-barra', d.host.memoria_percent, 70, 90);
+
+    const badge = document.getElementById('monitor-estado');
+    badge.textContent = 'Actualizado ' + new Date().toLocaleTimeString();
+    badge.className = 'monitor-badge monitor-badge-ok';
+
+  } catch (e) {
+    const badge = document.getElementById('monitor-estado');
+    badge.textContent = 'Error al obtener métricas';
+    badge.className = 'monitor-badge monitor-badge-error';
+  }
+}
+
+fetchMetrics();
+setInterval(fetchMetrics, 3000);
+
+</script>
+{% endblock %}

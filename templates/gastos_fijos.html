@@ -1,0 +1,124 @@
+{# Página de gestión de Gastos Fijos recurrentes #}
+
+{% extends 'base.html' %}
+
+{% block titulo %}Gastos Fijos{% endblock %}
+
+{% block contenido %}
+
+<div class="pagina-header">
+  <h2>📌 Gastos Fijos</h2>
+</div>
+
+<p class="gastos-fijos-ayuda">
+  Definí acá los gastos e ingresos que esperás cada mes (alquiler, sueldos, servicios, cuotas, etc.).
+  En la página de inicio verás un ✓ si ya los cargaste en el mes seleccionado, o ✕ si todavía falta.
+  El match se hace por descripción exacta (sin distinguir mayúsculas).
+</p>
+
+{% with mensajes = get_flashed_messages() %}
+  {% if mensajes %}
+    <div class="banner-exito" role="alert">
+      {% for msg in mensajes %}{{ msg }}{% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+{# ── FORMULARIO PARA AGREGAR ─────────────────────────────────────────────── #}
+<div class="tarjeta settings-seccion">
+  <h3 class="settings-titulo-seccion">Agregar gasto/ingreso fijo</h3>
+  <form action="{{ url_for('gastos_fijos') }}" method="POST" class="form-settings form-gasto-fijo-nuevo">
+    <input type="hidden" name="accion" value="agregar">
+    <div class="gasto-fijo-campos">
+      <div class="settings-campo">
+        <label for="nueva-desc">Descripción</label>
+        <input type="text" id="nueva-desc" name="descripcion"
+               placeholder="Ej: Alquiler, EPEC, Sueldo..." maxlength="200" required>
+        <span class="settings-ayuda">Debe coincidir exactamente con el nombre que usás al cargar el movimiento.</span>
+      </div>
+      <div class="settings-campo">
+        <label for="nueva-persona">Persona</label>
+        <select id="nueva-persona" name="persona">
+          <option value="elias">Elías</option>
+          <option value="mari">Mari</option>
+        </select>
+      </div>
+      <div class="settings-campo">
+        <label for="nueva-moneda">Moneda</label>
+        <select id="nueva-moneda" name="moneda">
+          <option value="ars">AR$</option>
+          <option value="usd">USD</option>
+        </select>
+      </div>
+      <div class="settings-campo">
+        <label for="nuevo-tipo">Tipo</label>
+        <select id="nuevo-tipo" name="tipo">
+          <option value="gasto">Gasto</option>
+          <option value="ingreso">Ingreso</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primario">Agregar</button>
+  </form>
+</div>
+
+{# ── LISTA DE GASTOS FIJOS EXISTENTES ────────────────────────────────────── #}
+<div class="tarjeta settings-seccion">
+  <h3 class="settings-titulo-seccion">Gastos fijos definidos</h3>
+
+  {% if fijos %}
+  <div class="lista-gastos-fijos">
+    {% for fijo in fijos %}
+    <div class="gasto-fijo-item {{ '' if fijo['activo'] else 'gasto-fijo-inactivo' }}">
+      <form action="{{ url_for('editar_gasto_fijo', id=fijo['id']) }}" method="POST" class="form-gasto-fijo-editar">
+        <div class="gasto-fijo-campos">
+          <div class="settings-campo">
+            <label>Descripción</label>
+            <input type="text" name="descripcion" value="{{ fijo['descripcion'] }}" maxlength="200" required>
+          </div>
+          <div class="settings-campo">
+            <label>Persona</label>
+            <select name="persona">
+              <option value="elias" {{ 'selected' if fijo['persona'] == 'elias' }}>Elías</option>
+              <option value="mari"  {{ 'selected' if fijo['persona'] == 'mari' }}>Mari</option>
+            </select>
+          </div>
+          <div class="settings-campo">
+            <label>Moneda</label>
+            <select name="moneda">
+              <option value="ars" {{ 'selected' if fijo['moneda'] == 'ars' }}>AR$</option>
+              <option value="usd" {{ 'selected' if fijo['moneda'] == 'usd' }}>USD</option>
+            </select>
+          </div>
+          <div class="settings-campo">
+            <label>Tipo</label>
+            <select name="tipo">
+              <option value="gasto"   {{ 'selected' if fijo['tipo'] == 'gasto' }}>Gasto</option>
+              <option value="ingreso" {{ 'selected' if fijo['tipo'] == 'ingreso' }}>Ingreso</option>
+            </select>
+          </div>
+          <div class="settings-campo campo-activo">
+            <label>
+              <input type="checkbox" name="activo" {{ 'checked' if fijo['activo'] }}> Activo
+            </label>
+          </div>
+        </div>
+        <div class="gasto-fijo-acciones">
+          <button type="submit" class="btn btn-primario btn-sm">Guardar</button>
+        </div>
+      </form>
+      <form action="{{ url_for('eliminar_gasto_fijo', id=fijo['id']) }}" method="POST" class="form-inline">
+        <button type="button" class="btn btn-borrar btn-sm"
+                onclick="mostrarModalBorrado(this.closest('form'))">Eliminar</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="sin-datos-inline">No hay gastos fijos definidos todavía. Usá el formulario de arriba para agregar el primero.</p>
+  {% endif %}
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+{% endblock %}

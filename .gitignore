@@ -1,0 +1,24 @@
+# Configuración local (contiene tokens y ajustes del entorno)
+config.json
+config.dev.json
+
+# Variables de entorno
+.env
+
+# Base de datos local
+gastos.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# Build
+build/dist/
+*.exe

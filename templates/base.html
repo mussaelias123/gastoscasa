@@ -1,0 +1,73 @@
+{#
+================================================================================
+ARCHIVO: templates/base.html
+================================================================================
+Plantilla base: header, nav y footer compartidos por todas las páginas.
+Cada página hija define su propio {% block contenido %}.
+================================================================================#}
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fondo - {% block titulo %}Saldos{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body{% if cfg and cfg.app_name and 'DEV' in cfg.app_name %} class="has-dev-banner"{% endif %}>
+
+  {% if cfg and cfg.app_name and 'DEV' in cfg.app_name %}
+  <div id="dev-banner">⚙ APP — MODO DESARROLLO</div>
+  {% endif %}
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <div class="header-content">
+      <h1>💰 Fondo</h1>
+      <p class="subtitulo">El fondo familiar más lindo</p>
+    </div>
+  </header>
+
+  <!-- NAVEGACIÓN -->
+  <nav class="site-nav">
+    <ul>
+      <li><a href="{{ url_for('index') }}">🏠 Inicio</a></li>
+      <li><a href="{{ url_for('resumen') }}">📊 Resumen</a></li>
+      <li><a href="{{ url_for('settings') }}">⚙ Settings</a></li>
+    </ul>
+  </nav>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="contenido-principal">
+    {% block contenido %}{% endblock %}
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <p>Proyecto educativo — Python + Flask + SQLite</p>
+    <p class="stack-info">
+      Backend: Python/Flask &nbsp;|&nbsp;
+      Frontend: HTML/CSS/JS &nbsp;|&nbsp;
+      Base de datos: SQLite
+    </p>
+  </footer>
+
+  <div id="modal-confirmacion" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div class="tarjeta" style="max-width:400px; width:90%; text-align:center; padding:2rem;">
+      <h3 style="margin-bottom:1rem;">¿Confirmar eliminación?</h3>
+      <p style="margin-bottom:1.5rem; color:var(--color-texto-suave);">Esta acción no se puede deshacer.</p>
+      <div style="display:flex; gap:1rem; justify-content:center;">
+        <button id="modal-cancelar" class="btn-secundario">Cancelar</button>
+        <button id="modal-confirmar" class="btn-eliminar">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+
+</body>
+</html>

@@ -1,0 +1,2749 @@
+/*
+================================================================================
+ARCHIVO: static/style.css
+================================================================================
+
+QUÉ ES ESTE ARCHIVO:
+  Define la apariencia visual de toda la aplicación: colores, tamaños,
+  fuentes, espaciados, layout (distribución de elementos en pantalla).
+
+ROL EN EL PROYECTO:
+  Frontend → Capa de presentación visual (lo que VE el usuario)
+  Este archivo corre en el NAVEGADOR (cliente), no en el servidor.
+  Flask lo sirve como un archivo estático: lo descarga tal cual al navegador.
+
+ANALOGÍA CON PLCs:
+  En una pantalla HMI (ej: Siemens TP, Proface), hay propiedades visuales:
+  color de fondo, color de texto, fuente, bordes. CSS es exactamente eso,
+  pero para páginas web.
+
+CÓMO SE REFERENCIA EN EL HTML:
+  En base.html hay esta línea:
+    <link rel="stylesheet" href="/static/style.css">
+  Eso le dice al navegador que descargue y aplique este archivo.
+
+CÓMO FUNCIONA CSS:
+  CSS trabaja con "reglas". Cada regla tiene:
+    selector { propiedad: valor; }
+
+  SELECTORES (a qué elementos HTML aplica la regla):
+    body          → el elemento <body> (toda la página)
+    .clase        → elementos con class="clase"
+    #id           → el elemento con id="id"
+    a             → todos los elementos <a> (enlaces)
+    .padre .hijo  → elementos .hijo que estén dentro de .padre
+
+  PROPIEDADES comunes:
+    color:            color del texto
+    background-color: color de fondo
+    font-size:        tamaño de fuente
+    margin:           espacio AFUERA del elemento
+    padding:          espacio ADENTRO del elemento (entre el borde y el contenido)
+    border:           borde del elemento
+    width / height:   ancho / alto
+    display:          cómo se muestra el elemento (flex, block, inline, etc.)
+
+VARIABLES CSS (Custom Properties):
+  --variable: valor;         → define una variable
+  var(--variable)            → usa la variable
+  Las variables están definidas en :root (como variables globales).
+  Si querés cambiar los colores de toda la app, solo cambiás los valores acá.
+
+================================================================================
+*/
+
+
+/* ============================================================================
+   BANNER DE MODO DESARROLLO
+   ============================================================================ */
+#dev-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-alerta);
+  color: var(--color-texto);
+  text-align: center;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 4px 0;
+  z-index: 9999;
+  letter-spacing: 1px;
+}
+body.has-dev-banner {
+  padding-top: 24px;
+}
+
+
+/* ============================================================================
+   VARIABLES GLOBALES DE COLOR Y ESTILO
+   :root es el selector del elemento raíz (el <html>). Las variables definidas
+   acá son accesibles en todo el CSS.
+   ============================================================================ */
+:root {
+  /* ── Paleta de colores — 15 variables semánticas ──────────────────────────
+     Para cambiar el tema de la app, solo modificar los valores de acá.
+     Cada variable tiene un propósito específico definido en Settings → Paleta.
+     ──────────────────────────────────────────────────────────────────────── */
+
+  /* Acento */
+  --color-acento:         #4f46e5;   /* Botones primarios, links, focus ring */
+  --color-acento-oscuro:  #4338ca;   /* Hover de botones, fondo del nav */
+
+  /* Superficies */
+  --color-fondo:          #f9fafb;   /* Fondo general de página */
+  --color-superficie:     #ffffff;   /* Tarjetas, inputs, modales */
+
+  /* Texto */
+  --color-texto:          #111827;   /* Texto principal */
+  --color-texto-muted:    #6b7280;   /* Texto secundario, ayuda, labels */
+
+  /* Estructura */
+  --color-borde:          #e5e7eb;   /* Bordes de tarjetas, inputs, separadores */
+
+  /* Semánticos — estado */
+  --color-exito:          #10b981;   /* Ingresos, saldo positivo, OK, semáforo verde */
+  --color-alerta:         #f59e0b;   /* Pendiente, advertencia, semáforo amarillo */
+  --color-peligro:        #ef4444;   /* Eliminar, saldo negativo, error, semáforo rojo */
+
+  /* Semánticos — fondos suaves */
+  --color-exito-suave:    #d1fae5;   /* Fondo de badges/banners OK/éxito */
+  --color-alerta-suave:   #fef3c7;   /* Fondo de badges/banners pendiente/alerta */
+  --color-peligro-suave:  #fee2e2;   /* Fondo de badges/banners error/peligro */
+
+  /* Personas */
+  --color-persona-elias:  #0284c7;   /* Identificador visual Elías (sky blue) */
+  --color-persona-mari:   #7c3aed;   /* Identificador visual Mari (violet) */
+
+  /* Monedas */
+  --color-moneda-ars:     #74acdf;   /* Celeste argentina — badge AR$, selector, gauge Total */
+  --color-moneda-usd:     #3d8b37;   /* Verde dólar — badge USD, selector, gauge Total */
+
+  /* Grises decorativos (estructural / no-semántico) */
+  --color-deco-1:         #1f2937;   /* Muy oscuro — barra de título (header) */
+  --color-deco-2:         #374151;   /* Oscuro — barra de navegación */
+  --color-deco-3:         #6b7280;   /* Medio — separadores, iconos secundarios */
+  --color-deco-4:         #d1d5db;   /* Suave — hover backgrounds, fondos sutiles */
+
+  /* Alias estructurales → apuntan a grises decorativos (no a colores) */
+  --color-primario:       var(--color-deco-2);   /* Estructura principal: botones, bordes, headers */
+  --color-primario-hover: var(--color-deco-1);   /* Hover de estructura */
+  --color-secundario:     var(--color-deco-3);   /* Estructura secundaria */
+
+  /* Alias semánticos → apuntan a colores base de la paleta */
+  --color-fondo-card:     var(--color-superficie);  /* Fondo de tarjetas */
+  --color-texto-suave:    var(--color-texto-muted);  /* Texto secundario suave */
+
+  /* ── No-color: tipografía, espaciado, sombras ──────────────────────────── */
+  --fuente-principal: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --radio-borde:       8px;
+  --espaciado-base:    1rem;
+  --sombra-card:       0 2px 8px rgba(31, 41, 55, 0.10);
+  --sombra-focus:      0 0 0 3px rgba(55, 65, 81, 0.25);
+}
+
+
+/* ============================================================================
+   RESET Y ESTILOS BASE
+   Los navegadores aplican estilos por defecto a los elementos HTML.
+   Acá normalizamos los más importantes para que se vean igual en todos.
+   ============================================================================ */
+* {
+  box-sizing: border-box;
+  /* box-sizing: border-box → el padding y border se incluyen en el width/height.
+     Esto hace los cálculos de tamaño mucho más predecibles. */
+}
+
+body {
+  font-family: var(--fuente-principal);
+  font-size: 16px;
+  color: var(--color-texto);
+  background-color: var(--color-fondo);
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;  /* Espacio entre líneas de texto: 1.6 × el tamaño de fuente */
+}
+
+h1, h2, h3 {
+  margin-top: 0;
+  color: var(--color-texto);
+}
+
+a {
+  color: var(--color-primario);
+  text-decoration: none; /* Quita el subrayado de los enlaces */
+}
+
+a:hover {
+  /* :hover → se aplica cuando el mouse está encima del elemento */
+  text-decoration: underline;
+}
+
+code {
+  /* Texto de código — como el SQL en resumen.html */
+  background: var(--color-borde);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: var(--color-acento);
+}
+
+
+/* ============================================================================
+   LAYOUT GENERAL — Estructura de la página
+   Usamos Flexbox para organizar los elementos principales verticalmente.
+   ============================================================================ */
+body {
+  display: flex;
+  flex-direction: column; /* Apila los hijos verticalmente: header, nav, main, footer */
+  min-height: 100vh;      /* 100vh = 100% de la altura visible del navegador */
+}
+
+.contenido-principal {
+  flex: 1;
+  width: 100%;
+  margin: 0;
+  padding: 0.8rem 1rem;
+}
+
+
+/* ============================================================================
+   HEADER (encabezado superior)
+   ============================================================================ */
+.site-header {
+  background-color: var(--color-deco-1);
+  color: white;
+  padding: 0.5rem 2rem;
+  text-align: center;
+}
+
+.site-header h1 {
+  color: white;
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.site-header .subtitulo {
+  margin: 0.1rem 0 0;
+  opacity: 0.85;
+  font-size: 0.8rem;
+}
+
+
+/* ============================================================================
+   NAVEGACIÓN (barra de menú)
+   ============================================================================ */
+.site-nav {
+  background-color: var(--color-deco-2);  /* Gris oscuro decorativo */
+  padding: 0 1rem;
+}
+
+.site-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.5rem;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.site-nav li a {
+  display: block;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radio-borde) var(--radio-borde) 0 0;
+  /* Radio solo arriba: para efecto de "pestaña" */
+  transition: background-color 0.2s, color 0.2s;
+  /* transition: animación suave al cambiar propiedades */
+}
+
+.site-nav li a:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: white;
+  text-decoration: none;
+}
+
+/* Clase agregada por app.js para resaltar el enlace de la página actual */
+.site-nav li a.nav-activo {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: white;
+  font-weight: 600;
+  border-bottom: 3px solid white;
+}
+
+
+/* ============================================================================
+   FOOTER (pie de página)
+   ============================================================================ */
+.site-footer {
+  background-color: var(--color-texto);
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+  padding: 1.2rem;
+  font-size: 0.85rem;
+}
+
+.site-footer p {
+  margin: 0.2rem 0;
+}
+
+.site-footer .stack-info {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+
+/* ============================================================================
+   ENCABEZADO DE PÁGINA (título + botón en la misma línea)
+   ============================================================================ */
+.pagina-header {
+  display: flex;
+  justify-content: space-between;  /* Título a la izq, botón a la der */
+  align-items: center;             /* Alineados verticalmente al centro */
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--color-borde);
+}
+
+.pagina-header h2 {
+  margin: 0;
+}
+
+
+/* ============================================================================
+   BOTONES
+   Todos los botones usan la clase base .btn más una clase modificadora:
+   .btn-primario, .btn-secundario, .btn-editar, .btn-borrar
+   ============================================================================ */
+.btn {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: var(--radio-borde);
+  cursor: pointer;          /* Cambia el cursor a "manito" al pasar el mouse */
+  font-size: 0.9rem;
+  font-family: var(--fuente-principal);
+  text-decoration: none;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn:hover {
+  transform: translateY(-1px);  /* Se mueve 1px hacia arriba: efecto de "elevación" */
+}
+
+.btn:active {
+  /* :active → mientras se hace click */
+  transform: translateY(0);     /* Vuelve a su posición */
+}
+
+.btn-primario {
+  background-color: var(--color-primario);
+  color: white;
+}
+
+.btn-primario:hover {
+  background-color: var(--color-primario-hover);
+  color: white;
+  text-decoration: none;
+}
+
+.btn-secundario {
+  background-color: var(--color-secundario);
+  color: white;
+}
+
+.btn-secundario:hover {
+  background-color: var(--color-primario-hover);
+  color: white;
+  text-decoration: none;
+}
+
+.btn-editar {
+  background-color: var(--color-borde);  /* gris neutro — ISA 101: informativo */
+  color: white;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.7rem;
+}
+
+.btn-editar:hover {
+  background-color: var(--color-texto-muted);
+  color: white;
+  text-decoration: none;
+}
+
+.btn-borrar {
+  background-color: var(--color-borde);  /* gris neutro — ISA 101: acción sin alarma */
+  color: white;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.7rem;
+  border: none;
+  border-radius: var(--radio-borde);
+  cursor: pointer;
+  font-family: var(--fuente-principal);
+  transition: background-color 0.2s;
+}
+
+.btn-borrar:hover {
+  background-color: var(--color-texto-muted);  /* oscurece al hacer hover para confirmar intención */
+}
+
+
+/* ============================================================================
+   TABLA DE GASTOS (index.html)
+   ============================================================================ */
+.tabla-gastos {
+  width: 100%;
+  border-collapse: collapse;  /* Junta los bordes de celdas adyacentes */
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  overflow: hidden;           /* Para que el border-radius afecte a las celdas */
+  box-shadow: var(--sombra-card);
+}
+
+.tabla-gastos th,
+.tabla-gastos td {
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.tabla-gastos th {
+  background-color: var(--color-primario);
+  color: white;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.tabla-gastos tbody tr:hover {
+  background-color: var(--color-borde);  /* Azul muy claro al pasar el mouse */
+}
+
+.tabla-gastos tfoot td {
+  background-color: var(--color-borde);
+  border-top: 2px solid var(--color-primario);
+}
+
+.col-monto {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.col-acciones {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.col-descripcion {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#modal-confirmacion {
+  display: none;
+}
+
+#modal-confirmacion.visible {
+  display: flex;
+}
+
+.tarjeta {
+  background-color: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  color: var(--color-texto);
+}
+
+.btn-eliminar {
+  background-color: var(--color-peligro);
+  color: white;
+  border: none;
+  padding: 0.5rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.btn-eliminar:hover {
+  background-color: var(--color-peligro);
+}
+
+/* form-inline: hace que el <form> del botón borrar no ocupe toda la línea */
+.form-inline {
+  display: inline;
+}
+
+
+/* ============================================================================
+   BADGES DE CATEGORÍA
+   Cada categoría tiene su propio color de fondo.
+   El nombre de clase se genera dinámicamente en el HTML con Jinja2:
+   categoria-{{ gasto['categoria']|lower }} → ej: categoria-comida
+   ============================================================================ */
+.categoria-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;    /* Redondeo total: cápsula */
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-texto-muted);
+  background-color: var(--color-borde);  /* Color por defecto */
+}
+
+/* Color específico por categoría: */
+.categoria-comida          { background-color: var(--color-borde); }
+.categoria-servicios       { background-color: var(--color-borde); }
+.categoria-transporte      { background-color: var(--color-borde); }
+.categoria-salud           { background-color: var(--color-borde); }
+.categoria-entretenimiento { background-color: var(--color-borde); }
+.categoria-ropa            { background-color: var(--color-borde); }
+.categoria-educacion       { background-color: var(--color-borde); }
+.categoria-hogar           { background-color: var(--color-borde); }
+.categoria-otro            { background-color: var(--color-borde); }
+
+
+/* ============================================================================
+   MENSAJE "SIN DATOS"
+   ============================================================================ */
+.sin-datos {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--color-texto-suave);
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+}
+
+.sin-datos p {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+}
+
+
+/* ============================================================================
+   FORMULARIOS (nuevo.html y editar.html)
+   ============================================================================ */
+.formulario-gasto {
+  background: var(--color-fondo-card);
+  padding: 2rem;
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  max-width: 560px;       /* Formulario no muy ancho */
+}
+
+.campo {
+  margin-bottom: 1.2rem;
+}
+
+.campo label {
+  display: block;         /* El label ocupa su propia línea */
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: var(--color-texto);
+}
+
+.campo input,
+.campo select {
+  width: 100%;            /* Ocupa todo el ancho del formulario */
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 1rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.campo input:focus,
+.campo select:focus {
+  /* :focus → cuando el campo está seleccionado (tiene el foco) */
+  outline: none;           /* Quita el borde azul por defecto del navegador */
+  border-color: var(--color-primario);
+  box-shadow: var(--sombra-focus);  /* Halo azul suave */
+}
+
+.campo-botones {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-borde);
+}
+
+.info-gasto {
+  color: var(--color-texto-suave);
+}
+
+
+/* ============================================================================
+   PÁGINA DE RESUMEN (resumen.html)
+   ============================================================================ */
+
+/* Tarjeta del total general */
+.tarjeta-total {
+  background: var(--color-primario);
+  color: white;
+  border-radius: var(--radio-borde);
+  padding: 1.5rem 2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+  box-shadow: var(--sombra-card);
+}
+
+.tarjeta-total-label {
+  font-size: 1rem;
+  opacity: 0.85;
+}
+
+.tarjeta-total-monto {
+  font-size: 2.5rem;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+}
+
+/* Secciones de resumen */
+.seccion-resumen {
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: var(--sombra-card);
+}
+
+.seccion-resumen h3 {
+  margin-bottom: 0.5rem;
+  color: var(--color-primario);
+}
+
+.nota-sql {
+  font-size: 0.82rem;
+  color: var(--color-texto-suave);
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background: var(--color-borde);
+  border-left: 3px solid var(--color-primario);
+}
+
+/* Tabla de resumen */
+.tabla-resumen {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabla-resumen th,
+.tabla-resumen td {
+  padding: 0.7rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.tabla-resumen th {
+  background-color: var(--color-borde);
+  color: var(--color-primario);
+  font-weight: 600;
+}
+
+.tabla-resumen tfoot td {
+  background-color: var(--color-borde);
+  border-top: 2px solid var(--color-primario);
+}
+
+.col-centro {
+  text-align: center;
+}
+
+/* Barras de progreso visual */
+.col-barra {
+  width: 200px;
+}
+
+.barra-contenedor {
+  background: var(--color-borde);
+  border-radius: 20px;
+  height: 22px;
+  overflow: hidden;
+}
+
+.barra-progreso {
+  height: 100%;
+  background: var(--color-primario);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+  font-size: 0.75rem;
+  color: white;
+  font-weight: bold;
+  transition: width 0.5s ease;
+  /* transition: anima el cambio de ancho suavemente al cargar la página */
+  min-width: 30px;
+}
+
+
+/* ============================================================================
+   TARJETA DE SALDO (index.html — arriba del todo)
+   ============================================================================ */
+.tarjeta-saldo {
+  background: var(--color-primario);
+  color: white;
+  border-radius: var(--radio-borde);
+  padding: 1.4rem 1.6rem;
+  text-align: center;
+  box-shadow: var(--sombra-card);
+}
+
+.saldo-label {
+  font-size: 0.95rem;
+  opacity: 0.85;
+  margin-bottom: 0.2rem;
+}
+
+.saldo-monto {
+  font-size: 2.4rem;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 1px;
+}
+
+
+/* ============================================================================
+   CARGA RÁPIDA DE GASTO (index.html)
+   ============================================================================ */
+.carga-rapida {
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  padding: 1.2rem 1.5rem 1.4rem;
+  margin-bottom: 2rem;
+  box-shadow: var(--sombra-card);
+  border-left: 4px solid var(--color-primario);
+}
+
+.carga-rapida-titulo {
+  margin: 0 0 1rem;
+  font-size: 1.05rem;
+  color: var(--color-primario);
+}
+
+/* Fila de campos en una sola línea */
+.form-rapido-fila {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-end;
+  flex-wrap: wrap;  /* En pantallas chicas los campos se apilan */
+}
+
+.campo-rapido {
+  display: flex;
+  flex-direction: column;
+}
+
+.campo-rapido label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  color: var(--color-texto-suave);
+}
+
+.campo-rapido input,
+.campo-rapido select {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.95rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background-color: white;
+  opacity: 1;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
+}
+
+.campo-rapido input:focus,
+.campo-rapido select:focus {
+  outline: none;
+  border-color: var(--color-primario);
+  box-shadow: var(--sombra-focus);
+}
+
+/* Anchos de cada campo */
+.campo-rapido-descripcion { flex: 2; min-width: 160px; }
+.campo-rapido-monto       { flex: 1; min-width: 100px; }
+.campo-rapido-categoria   { flex: 1; min-width: 130px; }
+.campo-rapido-fecha       { flex: 1; min-width: 130px; }
+.campo-rapido-btn         { flex: 0 0 auto; }
+
+
+.btn-guardar-rapido {
+  width: 100%;
+  padding: 0.65rem 1.3rem;
+  font-size: 1rem;
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+/* Anchos para los nuevos campos del formulario rápido */
+.campo-rapido-persona { flex: 1; min-width: 90px; }
+.campo-rapido-moneda  { flex: 1; min-width: 80px; }
+.campo-rapido-tipo    { flex: 1; min-width: 90px; }
+
+/* Flecha decorativa entre origen y destino en formulario de Cambio */
+.cambio-flecha-indicador {
+  text-align: center;
+  color: var(--color-texto-suave);
+  opacity: 0.45;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.1rem 0;
+  user-select: none;
+}
+
+
+/* ============================================================================
+   GRILLA DE SALDOS (2×2) — index.html y resumen.html
+   ============================================================================ */
+.grid-saldos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* En pantallas chicas (< 500px) los saldos se apilan en una columna */
+@media (max-width: 500px) {
+  .grid-saldos {
+    grid-template-columns: 1fr;
+  }
+}
+
+.saldo-persona {
+  font-size: 1.1rem;
+  font-weight: 700;
+  opacity: 0.9;
+  margin-bottom: 0.1rem;
+}
+
+.saldo-moneda-label {
+  font-size: 0.78rem;
+  opacity: 0.65;
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.03em;
+}
+
+/* ISA 101: positivo = estado normal (gris legible), negativo = alerta roja */
+.saldo-monto.saldo-positivo { color: var(--color-texto-muted); }  /* gris-azulado oscuro — más oscuro que el label "AR$" */
+.saldo-monto.saldo-negativo { color: var(--color-peligro); }  /* rojo — llamada de atención */
+
+
+/* Wrapper para scroll horizontal en pantallas chicas */
+.tabla-scroll-wrapper {
+  overflow-x: auto;
+  width: 100%;
+}
+
+/* Separador vertical dentro de la barra de filtros */
+.filtros-separador {
+  width: 1px;
+  height: 1.4rem;
+  background: var(--color-borde);
+  flex-shrink: 0;
+}
+
+/* Los links btn-filtro (selector de vista) no deben tener text-decoration */
+a.btn-filtro {
+  text-decoration: none;
+}
+
+/* ============================================================================
+   FILTROS DE TABLA
+   ============================================================================ */
+.filtros-tabla {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+}
+
+/* Cada fila dentro del bloque de filtros */
+.filtros-fila {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* Segunda fila: separador sutil arriba */
+.filtros-fila-sep {
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--color-borde);
+}
+
+.filtros-grupo {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.filtros-label {
+  font-size: 0.82rem;
+  color: var(--color-texto-suave);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.btn-filtro {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--color-texto-suave);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--fuente-principal);
+  text-decoration: none;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-filtro:hover {
+  background: var(--color-secundario);
+  color: white;
+  border-color: var(--color-secundario);
+}
+
+.btn-filtro.filtro-activo {
+  background: var(--color-primario);
+  color: white;
+  border-color: var(--color-primario);
+  font-weight: 600;
+}
+
+.filtros-grupo-orden {
+  margin-left: auto;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--color-borde);
+}
+
+
+/* ============================================================================
+   BADGES DE TIPO (ingreso / gasto)
+   ============================================================================ */
+.badge-tipo {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: white;
+}
+
+.badge-ingreso { background-color: var(--color-texto-muted); }  /* gris-azulado — ISA 101 */
+.badge-gasto   { background-color: var(--color-texto-muted); }  /* gris neutro — ISA 101 */
+
+/* Fila de ingreso: fondo verde suave — estado positivo, no alarmante */
+.tabla-gastos tbody tr[data-tipo="ingreso"] {
+  background-color: var(--color-exito-suave);
+}
+.tabla-gastos tbody tr[data-tipo="ingreso"]:hover {
+  background-color: var(--color-exito-suave);
+}
+
+
+/* ============================================================================
+   BADGES DE PERSONA
+   ============================================================================ */
+.badge-persona {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: white;
+}
+
+.badge-elias { background-color: var(--color-persona-elias); }
+.badge-mari  { background-color: var(--color-persona-mari); }
+
+
+/* ============================================================================
+   BADGES DE MONEDA
+   ============================================================================ */
+.badge-moneda {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.badge-moneda-ars {
+  background-color: var(--color-moneda-ars);
+  color: white;
+}
+
+.badge-moneda-usd {
+  background-color: var(--color-moneda-usd);
+  color: white;
+}
+
+
+/* ============================================================================
+   COLORES DE TEXTO PARA TABLA DE RESUMEN
+   ============================================================================ */
+.texto-positivo { color: var(--color-exito); font-weight: 600; }
+.texto-negativo { color: var(--color-peligro); font-weight: 600; }
+
+
+/* ============================================================================
+   DASHBOARD — resumen.html
+   ============================================================================ */
+
+/* Sección genérica del dashboard: card con sombra */
+.dash-seccion {
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  padding: 1.4rem 1.6rem;
+  margin-bottom: 1.4rem;
+  box-shadow: var(--sombra-card);
+}
+
+/* Navegación de mes: ‹ Marzo 2026 › */
+.dash-mes-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+
+.dash-mes-titulo {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--color-primario);
+  min-width: 200px;
+  text-align: center;
+}
+
+.btn-mes-nav {
+  background: var(--color-primario);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+
+.btn-mes-nav:hover:not(:disabled) {
+  background-color: var(--color-primario-hover);
+  transform: scale(1.1);
+}
+
+.btn-mes-nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Grilla de balance: 2 grupos (AR$ / USD) en fila */
+.dash-balance-grid {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.dash-bc-grupo {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-bc-moneda-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-texto-suave);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  padding-right: 0.3rem;
+  border-right: 2px solid var(--color-borde);
+  margin-right: 0.2rem;
+}
+
+.dash-bc-card {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-fondo);
+  border-radius: var(--radio-borde);
+  padding: 0.9rem 0.6rem;
+  text-align: center;
+  border: 1px solid var(--color-borde);
+  overflow: hidden;
+}
+
+.dash-bc-neto {
+  background: var(--color-fondo);
+  border-color: var(--color-secundario);
+}
+
+.dash-bc-label {
+  font-size: 0.75rem;
+  color: var(--color-texto-suave);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4rem;
+}
+
+.dash-bc-valor {
+  font-size: 0.83rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Grid de 2 gráficos lado a lado */
+.dash-graficos-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2rem;
+  margin-bottom: 1.4rem;
+}
+
+@media (max-width: 640px) {
+  .dash-graficos-grid {
+    grid-template-columns: 1fr;
+  }
+  .dash-bc-grupo {
+    min-width: 100%;
+  }
+}
+
+.dash-chart-titulo {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  color: var(--color-primario);
+}
+
+/* Contenedor de canvas con altura fija para Chart.js responsive */
+.dash-chart-contenedor {
+  position: relative;
+  height: 230px;
+}
+
+/* Contenedor del donut con texto central superpuesto */
+.dash-donut-contenedor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dash-donut-centro {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.donut-pct {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  line-height: 1.1;
+}
+
+.donut-pct-label {
+  font-size: 0.72rem;
+  color: var(--color-texto-suave);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.donut-sin-datos {
+  font-size: 0.8rem;
+  color: var(--color-texto-suave);
+}
+
+
+/* ============================================================================
+   EDICIÓN INLINE DE MOVIMIENTOS (tabla en index.html)
+   ============================================================================ */
+
+/* Fila en modo edición: fondo azul claro para destacarla del resto */
+.tabla-gastos tbody tr.fila-editando {
+  background-color: var(--color-borde) !important;
+}
+
+/* Wrapper para los 3 selects (persona+moneda+tipo) en edición inline */
+.inline-edit-info {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Selects mini dentro de la celda Info en edición inline */
+.input-inline-mini {
+  width: auto !important;
+  min-width: 0;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.8rem;
+}
+
+/* Inputs y selects dentro de la fila en edición */
+.input-inline {
+  padding: 0.28rem 0.45rem;
+  border: 1px solid var(--color-primario);
+  border-radius: 4px;
+  font-size: 0.87rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background-color: white;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input-inline:focus {
+  outline: none;
+  box-shadow: var(--sombra-focus);
+}
+
+/* Campo descripción: más ancho */
+.input-descripcion {
+  min-width: 120px;
+}
+
+/* Campo monto: alineado a la derecha, ancho contenido */
+.input-monto {
+  text-align: right;
+  max-width: 110px;
+}
+
+/* Botón Guardar (verde) */
+.btn-guardar-inline {
+  background-color: var(--color-exito);
+  color: white;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.65rem;
+  margin-right: 3px;
+}
+
+.btn-guardar-inline:hover {
+  background-color: var(--color-exito);
+  color: white;
+  text-decoration: none;
+}
+
+/* Botón Cancelar (gris) */
+.btn-cancelar-inline {
+  background-color: var(--color-texto-muted);
+  color: white;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.65rem;
+}
+
+.btn-cancelar-inline:hover {
+  background-color: var(--color-texto-muted);
+  color: white;
+  text-decoration: none;
+}
+
+.btn-guardar-inline:disabled,
+.btn-cancelar-inline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+/* ============================================================================
+   FORMULARIO: SECCIÓN DE ENVÍO
+   ============================================================================ */
+
+/* Fila única de extras (Envío + Cuotas) debajo del formulario rápido */
+.form-rapido-extras {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.8rem;
+  padding: 0.5rem 0.2rem 0;
+  min-height: 2.4rem;
+}
+
+/* Grupo de cuotas: separado visualmente con borde izquierdo */
+.extra-cuotas-grupo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding-left: 0.8rem;
+  border-left: 1px solid var(--color-borde);
+}
+
+/* Input inline (envío o cuotas) que aparece al tildar el checkbox */
+.campo-extra-inline {
+  display: inline-flex;
+  align-items: center;
+}
+
+.campo-extra-inline input {
+  width: 100px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo-tarjeta);
+  color: var(--color-texto);
+  height: 2rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.campo-extra-inline input:focus {
+  outline: none;
+  border-color: var(--color-primario);
+  box-shadow: var(--sombra-focus);
+}
+
+/* Label con checkbox integrado */
+.checkbox-envio,
+.checkbox-envio-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-texto);
+  cursor: pointer;
+  white-space: nowrap;
+  margin-top: 0.3rem;
+}
+
+.checkbox-envio input[type="checkbox"],
+.checkbox-envio-inline input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-primario);
+  cursor: pointer;
+}
+
+
+
+/* ============================================================================
+   BADGE DE ENVÍO (aparece en la columna Monto de la tabla)
+   ============================================================================ */
+.badge-envio {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: var(--color-alerta-suave);
+  color: var(--color-texto);
+  border: 1px solid var(--color-alerta);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* En la columna monto, todo en línea */
+.col-monto {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.col-monto .badge-envio {
+  display: inline-block;
+}
+
+.badge-cuota {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: var(--color-exito-suave);
+  color: var(--color-exito);
+  border: 1px solid var(--color-exito);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.col-monto .badge-cuota {
+  display: inline-block;
+}
+
+
+/* ============================================================================
+   TOAST NOTIFICATIONS — confirmación de carga rápida AJAX
+   ============================================================================ */
+
+/* Contenedor fijo en esquina superior derecha; apila toasts verticalmente */
+.toast-container {
+  position: fixed;
+  top: 1.2rem;
+  right: 1.2rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  pointer-events: none;   /* no bloquea clics en la página */
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.75rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--color-superficie);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+  max-width: 380px;
+  pointer-events: auto;
+  /* Estado inicial: invisible y desplazado hacia la derecha */
+  opacity: 0;
+  transform: translateX(110%);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+/* JS agrega esta clase un tick después de crear el elemento */
+.toast-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* JS agrega esta clase antes de eliminar el elemento */
+.toast-saliendo {
+  opacity: 0;
+  transform: translateX(110%);
+}
+
+/* Gasto → azul del proyecto */
+.toast-gasto {
+  background-color: var(--color-primario);
+}
+
+/* Ingreso → verde */
+.toast-ingreso {
+  background-color: var(--color-exito);
+}
+
+.toast-icono {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.toast-texto strong {
+  font-weight: 700;
+}
+
+/* =============================================================================
+   BANNER DE PRIMER INICIO
+   ============================================================================= */
+
+.banner-primer-inicio {
+  background: var(--color-alerta-suave);
+  border: 1px solid var(--color-alerta);
+  border-radius: var(--radio-borde);
+  color: var(--color-texto);
+  padding: 0.85rem 1.2rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+.banner-primer-inicio a {
+  color: var(--color-texto);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* =============================================================================
+   BANNER DE ÉXITO (flash messages)
+   ============================================================================= */
+
+.banner-exito {
+  background: var(--color-exito-suave);
+  border: 1px solid var(--color-exito);
+  border-radius: var(--radio-borde);
+  color: var(--color-exito);
+  padding: 0.85rem 1.2rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+/* =============================================================================
+   PÁGINA SETTINGS
+   ============================================================================= */
+
+.form-settings {
+  max-width: 680px;
+}
+
+.settings-seccion {
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+}
+
+.settings-titulo-seccion {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-texto);
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.settings-campo {
+  margin-bottom: 1.1rem;
+}
+
+.settings-campo label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.35rem;
+  color: var(--color-texto);
+}
+
+.settings-campo input[type="text"],
+.settings-campo input[type="number"],
+.settings-campo input[type="password"] {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.95rem;
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  box-sizing: border-box;
+}
+
+.settings-ayuda {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-texto-suave);
+  margin-top: 0.3rem;
+}
+
+.settings-info {
+  font-size: 0.9rem;
+  color: var(--color-texto-suave);
+  margin-bottom: 1rem;
+}
+
+.settings-opcional {
+  font-weight: 400;
+  color: var(--color-texto-suave);
+  font-size: 0.8rem;
+}
+
+.settings-campo-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.toggle-label input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
+
+.input-con-boton {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-con-boton input {
+  flex: 1;
+}
+
+.btn-toggle-pass {
+  white-space: nowrap;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.8rem;
+}
+
+.settings-estado {
+  margin: 0.3rem 0;
+}
+
+.badge-estado {
+  display: inline-block;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.badge-estado-pendiente {
+  background: var(--color-alerta-suave);
+  color: var(--color-texto);
+}
+
+.badge-estado-ok {
+  background: var(--color-exito-suave);
+  color: var(--color-exito);
+}
+
+.settings-acciones {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+
+/* ============================================================================
+   MONITOR DE RECURSOS
+   ============================================================================ */
+
+.monitor-recursos {
+  margin-top: 1.5rem;
+}
+
+.monitor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.monitor-header .settings-titulo-seccion {
+  margin-bottom: 0;
+}
+
+.monitor-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: var(--color-borde);
+  color: var(--color-texto-muted);
+  transition: background 0.3s, color 0.3s;
+}
+
+.monitor-badge-ok {
+  background: var(--color-exito-suave);
+  color: var(--color-exito);
+}
+
+.monitor-badge-error {
+  background: var(--color-peligro-suave);
+  color: var(--color-peligro);
+}
+
+.monitor-grilla {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .monitor-grilla {
+    grid-template-columns: 1fr;
+  }
+}
+
+.monitor-tarjeta {
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: 0.5rem;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.monitor-tarjeta-titulo {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-texto-suave);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.25rem;
+}
+
+.monitor-metrica {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.monitor-metrica-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.monitor-label {
+  font-size: 0.8rem;
+  color: var(--color-texto-suave);
+}
+
+.monitor-valor {
+  font-size: 0.9rem;
+  font-weight: 700;
+  transition: color 0.4s;
+}
+
+.monitor-valor.barra-verde   { color: var(--color-exito); }
+.monitor-valor.barra-amarillo { color: var(--color-alerta); }
+.monitor-valor.barra-rojo    { color: var(--color-peligro); }
+
+.monitor-barra-fondo {
+  height: 6px;
+  background: var(--color-borde);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.monitor-barra {
+  height: 100%;
+  border-radius: 999px;
+  width: 0%;
+  transition: width 0.5s ease, background-color 0.4s ease;
+}
+
+.monitor-barra.barra-verde    { background: var(--color-exito); }
+.monitor-barra.barra-amarillo { background: var(--color-alerta); }
+.monitor-barra.barra-rojo     { background: var(--color-peligro); }
+
+.monitor-pid {
+  font-size: 0.75rem;
+  color: var(--color-texto-suave);
+  margin-top: 0.25rem;
+}
+
+
+/* ============================================================================
+   PAGINACIÓN
+   ============================================================================ */
+.paginacion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+}
+
+.btn-pagina {
+  display: inline-block;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 20px;
+  background: var(--color-fondo-card);
+  color: var(--color-primario);
+  font-size: 0.85rem;
+  font-family: var(--fuente-principal);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.btn-pagina:hover {
+  background: var(--color-primario);
+  color: white;
+  border-color: var(--color-primario);
+  text-decoration: none;
+}
+
+.btn-pagina.btn-pagina-disabled {
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
+}
+
+.info-pagina {
+  flex: 1;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-texto-suave);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* ============================================================================
+   FORMULARIO RÁPIDO — filas reorganizadas
+   ============================================================================ */
+.form-fila {
+  display: flex;
+  gap: 0.8rem;
+  margin-bottom: 0.65rem;
+  align-items: flex-end;
+}
+
+.form-fila .campo-rapido {
+  flex: 1;
+  min-width: 0;
+}
+
+
+/* ============================================================================
+   RESPONSIVE MOBILE (< 768px)
+   ============================================================================ */
+@media (max-width: 767px) {
+
+  /* --- Tabla de movimientos → cards apiladas --- */
+  .tabla-gastos thead {
+    display: none;
+  }
+
+  .tabla-gastos,
+  .tabla-gastos tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .tabla-gastos tr {
+    display: block;
+    background: var(--color-fondo-card);
+    border-radius: var(--radio-borde);
+    margin-bottom: 0.8rem;
+    padding: 0.6rem 0.9rem;
+    box-shadow: var(--sombra-card);
+    border: 1px solid var(--color-borde);
+  }
+
+  .tabla-gastos td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.28rem 0;
+    border: none;
+    font-size: 0.88rem;
+    min-height: 1.6rem;
+  }
+
+  /* Label de cada campo (via data-label) */
+  .tabla-gastos td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.73rem;
+    color: var(--color-texto-suave);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    min-width: 85px;
+    flex-shrink: 0;
+  }
+
+  /* Descripción: texto completo, sin cortar */
+  .tabla-gastos .col-descripcion {
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  /* Monto: alineado a la derecha */
+  .tabla-gastos .col-monto {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  /* Acciones: al final, sin label, alineadas a la derecha */
+  .tabla-gastos td.col-acciones {
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    margin-top: 0.15rem;
+    border-top: 1px solid var(--color-borde);
+  }
+
+  .tabla-gastos td.col-acciones::before {
+    display: none;
+  }
+
+  /* Fila en edición inline: modo tabla normal para que sea usable */
+  .tabla-gastos tr.fila-editando {
+    display: block;
+  }
+
+  .tabla-gastos tr.fila-editando td {
+    display: block;
+    width: 100%;
+  }
+
+  .tabla-gastos tr.fila-editando td::before {
+    display: block;
+    margin-bottom: 0.2rem;
+  }
+
+  /* --- Paginación compacta en mobile --- */
+  .paginacion {
+    gap: 0.25rem;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .btn-pagina {
+    padding: 0.3rem 0.55rem;
+    font-size: 0.78rem;
+  }
+
+  .info-pagina {
+    font-size: 0.73rem;
+  }
+
+  /* --- Filtros: grupos en wrap --- */
+  .filtros-tabla {
+    gap: 0.5rem;
+  }
+
+  .filtros-grupo {
+    flex-wrap: wrap;
+  }
+
+  /* --- Formulario rápido: campos en columna en mobile muy chico --- */
+  .form-fila {
+    flex-wrap: wrap;
+  }
+
+  /* --- Tabla de saldos: scroll horizontal si se sale del ancho --- */
+  .tarjeta-saldos {
+    overflow-x: auto;
+  }
+
+  .tarjeta-saldos .tabla-saldos {
+    min-width: 0;
+  }
+
+  /* --- Extras (envío + cuotas): apilar verticalmente en mobile --- */
+  .form-rapido-extras {
+    flex-wrap: wrap;
+  }
+
+  .extra-cuotas-grupo {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--color-borde);
+    padding-top: 0.5rem;
+    width: 100%;
+  }
+}
+
+
+/* ============================================================================
+   TABLA DE SALDOS (index.html — reemplaza grid-saldos)
+   ============================================================================ */
+.tabla-saldos {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  overflow: hidden;
+  box-shadow: var(--sombra-card);
+}
+
+.tabla-saldos thead th {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: center;
+  background: var(--color-primario);
+  color: white;
+}
+
+.tabla-saldos thead th.col-saldo-elias { color: var(--color-persona-elias); }
+.tabla-saldos thead th.col-saldo-mari  { color: var(--color-persona-mari); }
+.tabla-saldos thead th.col-saldo-total { color: var(--color-exito-suave); }
+
+.tabla-saldos tbody th.saldo-moneda-label {
+  padding: 0.9rem 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: left;
+  background: var(--color-fondo-card);
+  color: var(--color-texto);
+  border-right: 2px solid var(--color-borde);
+  width: 3.5rem;
+}
+
+.tabla-saldos tbody td.saldo-monto {
+  padding: 0.6rem 0.8rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  text-align: center;
+  border-left: 1px solid var(--color-borde);
+}
+
+.tabla-saldos tbody tr + tr th,
+.tabla-saldos tbody tr + tr td {
+  border-top: 1px solid var(--color-borde);
+}
+
+.tabla-saldos tbody td:last-child {
+  border-right: none;
+  background: rgba(0,0,0,0.03);
+}
+
+@media (max-width: 500px) {
+  .tabla-saldos tbody td.saldo-monto {
+    font-size: 1.1rem;
+    padding: 0.6rem 0.5rem;
+  }
+}
+
+
+/* ============================================================================
+   NAVEGADOR DE MES (index.html)
+   ============================================================================ */
+.navegador-mes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.mes-titulo {
+  font-size: 1.3rem;
+  font-weight: 700;
+  min-width: 220px;
+  text-align: center;
+  color: var(--color-texto);
+  letter-spacing: 0.5px;
+}
+
+.btn-mes-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  background: var(--color-primario);
+  color: white;
+  text-decoration: none;
+  font-size: 1.2rem;
+  font-weight: bold;
+  transition: background 0.15s;
+}
+
+.btn-mes-nav:hover {
+  background: var(--color-primario-hover);
+  text-decoration: none;
+}
+
+.pagina-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.mes-total {
+  font-size: 0.9rem;
+  color: var(--color-texto-suave);
+}
+
+
+/* ============================================================================
+   CHECKLIST DE GASTOS FIJOS (index.html)
+   ============================================================================ */
+.seccion-gastos-fijos {
+  margin: 1rem 0 1.5rem;
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  overflow: hidden;
+}
+
+.gastos-fijos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1rem;
+  background: var(--color-primario);
+  color: white;
+}
+
+.gastos-fijos-titulo {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.gastos-fijos-editar-link {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.85);
+  text-decoration: none;
+  border: 1px solid rgba(255,255,255,0.5);
+  padding: 0.2rem 0.6rem;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.gastos-fijos-editar-link:hover {
+  background: rgba(255,255,255,0.15);
+  color: white;
+  text-decoration: none;
+}
+
+.checklist-gastos-fijos {
+  list-style: none;
+  padding: 0.4rem 0;
+  margin: 0;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.8rem;
+  border-left: 4px solid transparent;
+  transition: background 0.1s;
+}
+
+.checklist-item:hover {
+  background: rgba(0,0,0,0.03);
+}
+
+/* ISA 101: pagado → aspecto "disabled" (grisado, opaco) */
+.item-ok {
+  border-left-color: var(--color-borde);
+  opacity: 0.45;
+  filter: grayscale(40%);
+}
+
+/* ISA 101: pendiente → gris neutro, sin rojo */
+.item-faltante {
+  border-left-color: var(--color-texto-muted);
+}
+
+.checklist-icono {
+  font-weight: bold;
+  width: 1.2em;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.item-ok       .checklist-icono { color: var(--color-texto-muted); }
+.item-faltante .checklist-icono { color: var(--color-texto-muted); }  /* gris oscuro, legible sin alarmar */
+
+.checklist-desc {
+  flex: 1;
+  font-size: 0.93rem;
+}
+
+.checklist-meta {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.checklist-monto {
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.gastos-fijos-vacio {
+  text-align: center;
+  padding: 0.6rem;
+  font-size: 0.88rem;
+  color: var(--color-texto-suave);
+  margin-bottom: 1rem;
+}
+
+.gastos-fijos-vacio a {
+  color: var(--color-primario);
+}
+
+
+/* ============================================================================
+   PANTALLA DE GESTIÓN DE GASTOS FIJOS (gastos_fijos.html)
+   ============================================================================ */
+.gastos-fijos-ayuda {
+  color: var(--color-texto-suave);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+.gasto-fijo-campos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.gasto-fijo-campos .settings-campo {
+  flex: 1;
+  min-width: 140px;
+}
+
+.gasto-fijo-campos .campo-activo {
+  min-width: 80px;
+  flex: 0;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 0.3rem;
+}
+
+.lista-gastos-fijos {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.gasto-fijo-item {
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  padding: 0.9rem 1rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.gasto-fijo-inactivo {
+  opacity: 0.55;
+}
+
+.gasto-fijo-acciones {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.form-gasto-fijo-editar {
+  flex: 1;
+}
+
+.btn-sm {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.82rem;
+}
+
+.sin-datos-inline {
+  color: var(--color-texto-suave);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+
+/* ============================================================================
+   GIT BACKUP EN SETTINGS
+   ============================================================================ */
+
+.git-resultado {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radio-borde);
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.git-resultado-ok {
+  background: var(--color-exito-suave);
+  border: 1px solid var(--color-exito);
+  color: var(--color-exito);
+}
+
+.git-resultado-error {
+  background: var(--color-peligro-suave);
+  border: 1px solid var(--color-peligro);
+  color: var(--color-peligro);
+}
+
+/* ============================================================================
+   GASTOS FIJOS EN SETTINGS
+   ============================================================================ */
+.form-fijo-nuevo {
+  margin-bottom: 1rem;
+}
+
+.fijo-nuevo-campos {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.fijo-input-desc {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.92rem;
+  background: var(--color-fondo);
+  color: var(--color-texto);
+}
+
+.lista-fijos-settings {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fijo-settings-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+}
+
+.fijo-inactivo {
+  opacity: 0.5;
+}
+
+.form-fijo-editar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.fijo-activo-label {
+  font-size: 0.82rem;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-texto-suave);
+}
+
+.form-fijo-eliminar {
+  flex-shrink: 0;
+}
+
+
+/* ============================================================================
+   LAYOUT DESKTOP — dos columnas en pantallas >= 900px
+   ============================================================================ */
+
+.layout-desktop {
+  display: block; /* mobile: columna única */
+}
+
+.col-izquierda,
+.col-derecha {
+  min-width: 0;
+}
+
+.col-izquierda {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 0.6rem;
+}
+
+/* Dentro del layout de dos columnas, el margen inferior del form ya lo maneja el gap */
+.col-izquierda .carga-rapida {
+  margin-bottom: 0;
+}
+
+@media (min-width: 900px) {
+  .layout-desktop {
+    display: grid;
+    grid-template-columns: 580px 1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+  .col-izquierda {
+    margin-bottom: 0;
+  }
+}
+
+
+/* ============================================================================
+   TARJETA SALDOS — mismo estilo que .carga-rapida
+   ============================================================================ */
+
+.tarjeta-saldos {
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  padding: 0.5rem 0.8rem 0.3rem;
+  box-shadow: var(--sombra-card);
+  border-left: 4px solid var(--color-primario);
+}
+
+.tarjeta-saldos .carga-rapida-titulo {
+  margin: 0 0 0.4rem;
+}
+
+/* En la tarjeta saldos, la tabla ocupa el ancho completo sin sombra extra */
+.tarjeta-saldos .tabla-saldos {
+  margin-bottom: 0;
+  box-shadow: none;
+  width: 100%;
+  /* sin table-layout:fixed → columnas se ajustan al contenido */
+}
+
+.tarjeta-saldos .tabla-saldos thead th {
+  padding: 0.3rem 0.35rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.tarjeta-saldos .saldo-monto {
+  font-size: 0.72rem;  /* pequeño pero siempre visible completo */
+  padding: 0.3rem 0.35rem;
+  white-space: nowrap; /* no rompe el número, pero nunca trunca */
+}
+
+.tarjeta-saldos .saldo-moneda-label {
+  padding: 0.3rem 0.4rem;
+  font-size: 0.75rem;
+  width: 2rem;         /* columna moneda bien estrecha */
+}
+
+
+/* ============================================================================
+   MOVIMIENTOS CARD — recuadro derecho con header unificado
+   ============================================================================ */
+
+.movimientos-card {
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  overflow: hidden;
+}
+
+.movimientos-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.6rem 1rem;
+  background: var(--color-primario);
+  color: white;
+}
+
+.movimientos-card-titulo {
+  font-size: 1rem;
+  font-weight: 700;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.mes-nav-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  justify-content: center;
+}
+
+.mes-nav-inline .btn-mes-nav {
+  width: 1.8rem;
+  height: 1.8rem;
+  font-size: 0.9rem;
+  background: rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+
+.mes-nav-inline .btn-mes-nav:hover {
+  background: rgba(255,255,255,0.35);
+}
+
+.mes-nav-inline .mes-titulo {
+  font-size: 1rem;
+  font-weight: 600;
+  min-width: 140px;
+  color: white;
+  letter-spacing: 0.3px;
+}
+
+.movimientos-card-contador {
+  font-size: 0.8rem;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+/* Gastos fijos y filtros dentro del card sin sombra/margen adicional */
+.movimientos-card .seccion-gastos-fijos {
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.movimientos-card .filtros-tabla {
+  margin-bottom: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.movimientos-card .tabla-scroll-wrapper {
+  /* scroll horizontal si la tabla es muy ancha */
+  overflow-x: auto;
+}
+
+.movimientos-card .tabla-gastos {
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 0.83rem;
+}
+
+/* Celdas más compactas dentro del card de movimientos */
+.movimientos-card .tabla-gastos th,
+.movimientos-card .tabla-gastos td {
+  padding: 0.35rem 0.5rem;
+}
+
+/* Columna fusionada: Persona + Moneda + Tipo */
+.col-info {
+  white-space: nowrap;
+}
+
+.col-info .badge-persona,
+.col-info .badge-moneda,
+.col-info .badge-tipo {
+  margin-right: 0.15rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+
+/* ============================================================================
+   SELECT FILTRO — dropdown estilo pill para "Ver:"
+   ============================================================================ */
+
+.select-filtro {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--color-texto-suave);
+  font-size: 0.82rem;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  appearance: auto;
+}
+
+.select-filtro:focus {
+  outline: none;
+  border-color: var(--color-primario);
+  color: var(--color-texto);
+}
+
+
+/* ============================================================================
+   GAUGES CIRCULARES DE SALDOS
+   ============================================================================ */
+
+.gauges-saldos {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+  gap: 0.3rem;
+  padding: 0.4rem 0.3rem 0.2rem;
+}
+
+.gauge-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.gauge-svg {
+  width: 100%;
+  max-width: 75px;   /* reducido de 110px */
+  height: auto;
+  display: block;
+}
+
+/* Pista de fondo (gris muy suave) */
+.gauge-track {
+  fill: none;
+  stroke: var(--color-borde);
+  stroke-width: 3.8;
+}
+
+/* Arcos: propiedades comunes */
+.gauge-arc {
+  fill: none;
+  stroke-width: 3.8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s ease;
+}
+
+/* Colores de Elías y Mari (igual que sus badges) */
+.gauge-arc-elias { stroke: var(--color-persona-elias); }
+.gauge-arc-mari  { stroke: var(--color-persona-mari); }
+
+/* Colores del gauge Total: ARS vs USD */
+.gauge-arc-ars   { stroke: var(--color-moneda-ars); }
+.gauge-arc-usd   { stroke: var(--color-moneda-usd); }
+
+/* Texto dentro del SVG */
+.gauge-text-title {
+  font-family: var(--fuente-principal);
+  font-size: 5.5px;
+  font-weight: 700;
+  fill: var(--color-texto);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.gauge-text-sub {
+  font-family: 'Courier New', monospace;
+  font-size: 3.8px;
+  fill: var(--color-texto-muted);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* Leyenda debajo del gauge */
+.gauge-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  font-size: 0.62rem;
+  color: var(--color-texto-suave);
+  text-align: left;
+  line-height: 1.3;
+}
+
+.gauge-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 2px;
+  vertical-align: middle;
+}
+
+.gauge-dot-elias { background: var(--color-persona-elias); }
+.gauge-dot-mari  { background: var(--color-persona-mari); }
+.gauge-dot-ars   { background: var(--color-moneda-ars); }
+.gauge-dot-usd   { background: var(--color-moneda-usd); }
+
+/* Nota de tipo de cambio */
+.gauge-tasa {
+  font-size: 0.62rem;
+  color: var(--color-texto-muted);
+  margin-top: 0.1rem;
+  text-align: center;
+}
+
+
+
+/* ============================================================================
+   PALETA DE COLORES — Sección en Settings
+   Grilla visual que muestra todos los colores de la app con su propósito.
+   ============================================================================ */
+
+.paleta-grupo-titulo {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-texto-muted);
+  margin: 1.5rem 0 0.6rem;
+}
+
+.paleta-grupo-titulo:first-of-type {
+  margin-top: 0.5rem;
+}
+
+.paleta-grilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 0.6rem;
+}
+
+.paleta-chip {
+  border-radius: var(--radio-borde);
+  border: 1px solid var(--color-borde);
+  overflow: hidden;
+}
+
+.paleta-chip-muestra {
+  height: 52px;
+}
+
+.paleta-chip-info {
+  padding: 0.5rem 0.65rem;
+  background: var(--color-superficie);
+}
+
+.paleta-chip-nombre {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-texto);
+  margin-bottom: 1px;
+}
+
+.paleta-chip-var {
+  font-size: 0.68rem;
+  font-family: monospace;
+  color: var(--color-acento);
+}
+
+.paleta-chip-hex {
+  font-size: 0.68rem;
+  font-family: monospace;
+  color: var(--color-texto-muted);
+}
+
+.paleta-chip-uso {
+  font-size: 0.67rem;
+  color: var(--color-texto-muted);
+  margin-top: 3px;
+  line-height: 1.35;
+}

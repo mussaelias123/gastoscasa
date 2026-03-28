@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block titulo %}Acción no permitida{% endblock %}
+{% block contenido %}
+<div class="tarjeta" style="text-align:center; padding: 3rem;">
+  <h2>405 — Acción no permitida</h2>
+  <p style="margin: 1rem 0;">No podés acceder a esa acción directamente desde el navegador.</p>
+  <a href="{{ url_for('index') }}" class="btn-agregar">← Volver al inicio</a>
+</div>
+{% endblock %}
