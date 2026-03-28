@@ -526,13 +526,19 @@ def git_commit():
     repo_dir = os.path.dirname(os.path.abspath(__file__))
 
     try:
-        add = subprocess.run(['git', 'add', '.'], cwd=repo_dir,
+        git_opts = [
+            '-c', f'safe.directory={repo_dir}',
+            '-c', 'user.email=app@gastoscasa.local',
+            '-c', 'user.name=Gastos Casa',
+        ]
+
+        add = subprocess.run(['git'] + git_opts + ['add', '.'], cwd=repo_dir,
                              capture_output=True, text=True, encoding='utf-8', errors='replace')
         if add.returncode != 0:
             return jsonify({'ok': False, 'mensaje': f'git add falló: {(add.stderr or add.stdout).strip()}'})
 
         resultado = subprocess.run(
-            ['git', 'commit', '-m', mensaje],
+            ['git'] + git_opts + ['commit', '-m', mensaje],
             cwd=repo_dir, capture_output=True, text=True, encoding='utf-8', errors='replace'
         )
 
