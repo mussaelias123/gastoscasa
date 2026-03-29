@@ -32,7 +32,10 @@ sys.stdout.reconfigure(encoding='utf-8')
 import os
 import argparse
 import subprocess
-from datetime import datetime
+import shutil
+import threading
+import time
+from datetime import datetime, timedelta
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument('--config', default='config.json', help='Ruta al archivo de configuración')
@@ -543,9 +546,11 @@ def git_commit():
         )
 
         if resultado.returncode == 0:
-            return jsonify({'ok': True, 'mensaje': f'Commit creado: "{mensaje}"'})
+            hacer_backup_db('backup manual')
+            return jsonify({'ok': True, 'mensaje': f'Commit creado y base de datos respaldada: "{mensaje}"'})
         elif 'nothing to commit' in resultado.stdout or 'nothing to commit' in resultado.stderr:
-            return jsonify({'ok': False, 'mensaje': 'No hay cambios para guardar desde el último commit.'})
+            hacer_backup_db('backup manual (sin cambios en código)')
+            return jsonify({'ok': True, 'mensaje': 'Base de datos respaldada. No había cambios en el código desde el último backup.'})
         else:
             return jsonify({'ok': False, 'mensaje': (resultado.stderr or resultado.stdout).strip()})
 
@@ -604,6 +609,100 @@ def git_restore():
 
 
 # =============================================================================
+# BACKUP AUTOMÁTICO DE LA BASE DE DATOS
+# =============================================================================
+#
+# - Se ejecuta todos los jueves automáticamente.
+# - Si el servicio estaba apagado el jueves, lo corre al arrancar.
+# - Guarda los últimos 10 backups en la carpeta backups/.
+# - Usa la API nativa de SQLite para copiar en caliente (sin cerrar la DB).
+
+_BASE_DIR_BACKUP = os.path.dirname(os.path.abspath(__file__))
+_DB_PATH         = os.path.join(_BASE_DIR_BACKUP, 'gastos.db')
+_BACKUP_DIR      = os.path.join(_BASE_DIR_BACKUP, 'backups')
+_MAX_BACKUPS     = 10
+
+
+def hacer_backup_db(motivo='programado'):
+    """Copia la base de datos al directorio backups/ usando la API de SQLite."""
+    import sqlite3
+    try:
+        os.makedirs(_BACKUP_DIR, exist_ok=True)
+        ahora     = datetime.now().strftime('%Y-%m-%d_%H-%M')
+        dest      = os.path.join(_BACKUP_DIR, f'gastos_{ahora}.db')
+        origen    = sqlite3.connect(_DB_PATH)
+        respaldo  = sqlite3.connect(dest)
+        origen.backup(respaldo)
+        origen.close()
+        respaldo.close()
+        print(f"OK: Backup de DB ({motivo}): {os.path.basename(dest)}")
+        _limpiar_backups_antiguos()
+    except Exception as e:
+        print(f"ERROR: Backup de DB falló: {e}")
+
+
+def _limpiar_backups_antiguos():
+    """Elimina los backups más viejos si hay más de _MAX_BACKUPS."""
+    try:
+        archivos = sorted(
+            [f for f in os.listdir(_BACKUP_DIR) if f.startswith('gastos_') and f.endswith('.db')],
+        )
+        while len(archivos) > _MAX_BACKUPS:
+            os.remove(os.path.join(_BACKUP_DIR, archivos.pop(0)))
+    except Exception as e:
+        print(f"AVISO: No se pudieron limpiar backups viejos: {e}")
+
+
+def _ultimo_backup_fecha():
+    """Devuelve la fecha del backup más reciente, o None si no hay ninguno."""
+    try:
+        archivos = [f for f in os.listdir(_BACKUP_DIR) if f.startswith('gastos_') and f.endswith('.db')]
+        if not archivos:
+            return None
+        ultimo = sorted(archivos)[-1]
+        # Formato: gastos_YYYY-MM-DD_HH-MM.db
+        fecha_str = ultimo[len('gastos_'):len('gastos_') + 10]  # YYYY-MM-DD
+        return datetime.strptime(fecha_str, '%Y-%m-%d').date()
+    except Exception:
+        return None
+
+
+def _scheduler_backup():
+    """
+    Hilo de fondo: comprueba cada hora si toca hacer backup.
+    Regla: si es jueves y todavía no se hizo backup hoy → hacerlo.
+    """
+    while True:
+        try:
+            ahora = datetime.now()
+            if ahora.weekday() == 3:  # 3 = jueves
+                ultimo = _ultimo_backup_fecha()
+                if ultimo is None or ultimo < ahora.date():
+                    hacer_backup_db('jueves programado')
+        except Exception as e:
+            print(f"AVISO: Error en scheduler de backup: {e}")
+        time.sleep(3600)  # revisar cada hora
+
+
+def iniciar_scheduler_backup():
+    """
+    Arranca el scheduler y, si corresponde, hace un backup inmediato al inicio.
+    Lógica de recuperación: si el último backup tiene más de 7 días, corre uno ahora.
+    """
+    ultimo = _ultimo_backup_fecha()
+    hoy    = datetime.now().date()
+    dias_sin_backup = (hoy - ultimo).days if ultimo else 999
+
+    if dias_sin_backup >= 7:
+        motivo = 'primer backup' if ultimo is None else f'recuperación ({dias_sin_backup} días sin backup)'
+        threading.Thread(target=hacer_backup_db, args=(motivo,), daemon=True).start()
+
+    hilo = threading.Thread(target=_scheduler_backup, daemon=True, name='backup-scheduler')
+    hilo.start()
+    print("OK: Scheduler de backup de DB iniciado (todos los jueves).")
+
+
+# =============================================================================
 # INICIO DE LA APLICACIÓN
 # =============================================================================
 
@@ -647,6 +746,7 @@ def run_flask():
     """
     database.inicializar_db()
     print("OK: Base de datos inicializada (archivo: gastos.db)")
+    iniciar_scheduler_backup()
     print("-" * 50)
 
     cfg = config.cargar_config(CONFIG_FILE)

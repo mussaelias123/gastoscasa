@@ -8,6 +8,9 @@ config.dev.json
 # Base de datos local
 gastos.db
 
+# Backups automáticos de la DB (no van en Git, son datos)
+backups/
+
 # Python
 __pycache__/
 *.pyc
