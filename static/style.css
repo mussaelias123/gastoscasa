@@ -2276,8 +2276,69 @@ a.btn-filtro {
 
 
 /* ============================================================================
-   GIT BACKUP EN SETTINGS
+   GIT BACKUP Y RESTORE EN SETTINGS
    ============================================================================ */
+
+.git-bloque {
+  padding: 0.25rem 0;
+}
+
+.git-subtitulo {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+}
+
+.git-separador {
+  border-top: 1px solid var(--color-borde);
+  margin: 1.5rem 0;
+}
+
+.git-select-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.git-select {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.git-select:focus {
+  outline: 2px solid var(--color-acento);
+  outline-offset: 1px;
+}
+
+.btn-peligro {
+  background: var(--color-peligro);
+  color: #fff;
+  border: none;
+  padding: 0.55rem 1.2rem;
+  border-radius: var(--radio-borde);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-peligro:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-peligro:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .git-resultado {
   margin-top: 0.75rem;

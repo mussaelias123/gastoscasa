@@ -555,6 +555,54 @@ def git_commit():
         return jsonify({'ok': False, 'mensaje': str(e)})
 
 
+@app.route('/git/log')
+def git_log():
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    git_opts = ['-c', f'safe.directory={repo_dir}']
+    try:
+        resultado = subprocess.run(
+            ['git'] + git_opts + ['log', '--pretty=format:%H|%s|%ar', '-20'],
+            cwd=repo_dir, capture_output=True, text=True, encoding='utf-8', errors='replace'
+        )
+        if resultado.returncode != 0:
+            return jsonify({'ok': False, 'commits': [], 'mensaje': resultado.stderr.strip()})
+        commits = []
+        for linea in resultado.stdout.strip().splitlines():
+            if '|' in linea:
+                partes = linea.split('|', 2)
+                commits.append({'hash': partes[0], 'mensaje': partes[1], 'cuando': partes[2]})
+        return jsonify({'ok': True, 'commits': commits})
+    except Exception as e:
+        return jsonify({'ok': False, 'commits': [], 'mensaje': str(e)})
+
+
+@app.route('/git/restore', methods=['POST'])
+def git_restore():
+    commit_hash = request.form.get('hash', '').strip()
+    if not commit_hash or len(commit_hash) < 7:
+        return jsonify({'ok': False, 'mensaje': 'Hash de commit inválido.'})
+
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    git_opts = [
+        '-c', f'safe.directory={repo_dir}',
+        '-c', 'user.email=app@gastoscasa.local',
+        '-c', 'user.name=Gastos Casa',
+    ]
+    try:
+        resultado = subprocess.run(
+            ['git'] + git_opts + ['checkout', commit_hash, '--', '.'],
+            cwd=repo_dir, capture_output=True, text=True, encoding='utf-8', errors='replace'
+        )
+        if resultado.returncode == 0:
+            return jsonify({'ok': True, 'mensaje': f'Proyecto restaurado al commit {commit_hash[:7]}. Recargá la página para ver los cambios.'})
+        else:
+            return jsonify({'ok': False, 'mensaje': (resultado.stderr or resultado.stdout).strip()})
+    except FileNotFoundError:
+        return jsonify({'ok': False, 'mensaje': 'Git no está instalado o no se encuentra en el PATH.'})
+    except Exception as e:
+        return jsonify({'ok': False, 'mensaje': str(e)})
+
+
 # =============================================================================
 # INICIO DE LA APLICACIÓN
 # =============================================================================

@@ -183,27 +183,53 @@
   {% endif %}
 </div>
 
-{# ── SECCIÓN: GIT / BACKUP ───────────────────────────────────────────────── #}
+{# ── SECCIÓN: GIT / BACKUP Y RESTORE ─────────────────────────────────────── #}
 <div class="tarjeta settings-seccion" id="git-backup">
-  <h3 class="settings-titulo-seccion">💾 Backup del código</h3>
+  <h3 class="settings-titulo-seccion">💾 Backup y Restore</h3>
+
+  {# ── Backup ── #}
   <p class="settings-info">
-    Guardá el estado actual de la aplicación con un commit de Git.
-    Si en el futuro algo se rompe, podés volver a este punto exacto.
+    Guardá el estado actual de la aplicación. Si algo se rompe, podés volver a cualquier punto exacto.
   </p>
 
-  <div class="settings-campo">
-    <label for="git-descripcion">Descripción <span class="settings-opcional">(opcional)</span></label>
-    <input type="text" id="git-descripcion" placeholder="Ej: agrego filtro por categoría" maxlength="200">
-    <span class="settings-ayuda">Se suma al backup junto con la fecha y hora automáticamente.</span>
+  <div class="git-bloque">
+    <h4 class="git-subtitulo">Crear backup</h4>
+    <div class="settings-campo">
+      <label for="git-descripcion">Descripción <span class="settings-opcional">(opcional)</span></label>
+      <input type="text" id="git-descripcion" placeholder="Ej: agrego filtro por categoría" maxlength="200">
+      <span class="settings-ayuda">Se suma al backup junto con la fecha y hora automáticamente.</span>
+    </div>
+    <div class="settings-campo">
+      <button type="button" class="btn btn-primario" id="btn-git-commit" onclick="hacerCommit()">
+        Guardar backup
+      </button>
+    </div>
+    <div id="git-resultado" class="git-resultado" style="display:none;"></div>
   </div>
 
-  <div class="settings-campo">
-    <button type="button" class="btn btn-primario" id="btn-git-commit" onclick="hacerCommit()">
-      Hacer commit
-    </button>
+  <div class="git-separador"></div>
+
+  {# ── Restore ── #}
+  <div class="git-bloque">
+    <h4 class="git-subtitulo">Restaurar backup</h4>
+    <div class="settings-campo">
+      <label for="git-select">Seleccioná un punto de restauración</label>
+      <div class="git-select-row">
+        <select id="git-select" class="git-select">
+          <option value="">Cargando backups...</option>
+        </select>
+        <button type="button" class="btn btn-secundario" onclick="cargarCommits()" title="Actualizar lista">↺</button>
+      </div>
+      <span class="settings-ayuda">Se muestran los últimos 20 backups.</span>
+    </div>
+    <div class="settings-campo">
+      <button type="button" class="btn btn-peligro" id="btn-git-restore" onclick="confirmarRestore()" disabled>
+        Restaurar a este punto
+      </button>
+    </div>
+    <div id="git-restore-resultado" class="git-resultado" style="display:none;"></div>
   </div>
 
-  <div id="git-resultado" class="git-resultado" style="display:none;"></div>
 </div>
 
 {# ── SECCIÓN: MONITOR DE RECURSOS ───────────────────────────────────────── #}
@@ -556,9 +582,86 @@ async function hacerCommit() {
     resultado.textContent    = '✗ Error inesperado. Revisá la consola.';
   } finally {
     btn.disabled    = false;
-    btn.textContent = 'Hacer commit';
+    btn.textContent = 'Guardar backup';
+    cargarCommits();
   }
 }
+
+// ── Git restore ──────────────────────────────────────────────────────────────
+
+async function cargarCommits() {
+  const select = document.getElementById('git-select');
+  const btnRestore = document.getElementById('btn-git-restore');
+  select.innerHTML = '<option value="">Cargando...</option>';
+  btnRestore.disabled = true;
+
+  try {
+    const resp = await fetch('/git/log');
+    const data = await resp.json();
+
+    if (!data.ok || data.commits.length === 0) {
+      select.innerHTML = '<option value="">No hay backups disponibles</option>';
+      return;
+    }
+
+    select.innerHTML = data.commits.map(c =>
+      `<option value="${c.hash}">${c.mensaje} — ${c.cuando}</option>`
+    ).join('');
+
+    btnRestore.disabled = false;
+  } catch (e) {
+    select.innerHTML = '<option value="">Error al cargar backups</option>';
+  }
+}
+
+function confirmarRestore() {
+  const select = document.getElementById('git-select');
+  const hash   = select.value;
+  const texto  = select.options[select.selectedIndex]?.text || '';
+
+  if (!hash) return;
+
+  const confirmado = confirm(
+    `¿Restaurar el proyecto a este punto?\n\n"${texto}"\n\nTodos los archivos volverán a ese estado. Esta acción se puede deshacer haciendo otro restore.`
+  );
+  if (confirmado) hacerRestore(hash);
+}
+
+async function hacerRestore(hash) {
+  const btn       = document.getElementById('btn-git-restore');
+  const resultado = document.getElementById('git-restore-resultado');
+
+  btn.disabled    = true;
+  btn.textContent = 'Restaurando...';
+  resultado.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('hash', hash);
+
+  try {
+    const resp = await fetch('/git/restore', { method: 'POST', body: formData });
+    const data = await resp.json();
+
+    resultado.style.display = 'block';
+    if (data.ok) {
+      resultado.className = 'git-resultado git-resultado-ok';
+      resultado.textContent = '✓ ' + data.mensaje;
+    } else {
+      resultado.className = 'git-resultado git-resultado-error';
+      resultado.textContent = '✗ ' + data.mensaje;
+    }
+  } catch (e) {
+    resultado.style.display = 'block';
+    resultado.className     = 'git-resultado git-resultado-error';
+    resultado.textContent   = '✗ Error inesperado.';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Restaurar a este punto';
+  }
+}
+
+// Cargar commits al abrir la página
+cargarCommits();
 
 function togglePass(inputId, btn) {
   const input = document.getElementById(inputId);
