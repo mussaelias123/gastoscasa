@@ -96,6 +96,81 @@
     </div>
   </div>
 
+  {# ── SECCIÓN: AUTENTICACIÓN GOOGLE ──────────────────────────────────────── #}
+  <div class="tarjeta settings-seccion">
+    <h3 class="settings-titulo-seccion">Autenticación Google OAuth</h3>
+
+    <p class="settings-info">
+      Protege la app con login de Google. Solo los emails autorizados pueden acceder.
+      Necesitás crear credenciales en
+      <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">
+        Google Cloud Console</a>.
+    </p>
+
+    <div class="settings-campo">
+      <label for="google_client_id">Client ID</label>
+      <div class="input-con-boton">
+        <input type="password" id="google_client_id" name="google_client_id"
+               value="{{ cfg.google_client_id }}" placeholder="xxxxxxx.apps.googleusercontent.com"
+               autocomplete="off">
+        <button type="button" class="btn-secundario btn-toggle-pass"
+                onclick="togglePass('google_client_id', this)">Mostrar</button>
+      </div>
+      <span class="settings-ayuda">Lo encontrás en Google Cloud Console → APIs & Services → Credentials.</span>
+    </div>
+
+    <div class="settings-campo">
+      <label for="google_client_secret">Client Secret</label>
+      <div class="input-con-boton">
+        <input type="password" id="google_client_secret" name="google_client_secret"
+               value="{{ cfg.google_client_secret }}" placeholder="GOCSPX-..."
+               autocomplete="off">
+        <button type="button" class="btn-secundario btn-toggle-pass"
+                onclick="togglePass('google_client_secret', this)">Mostrar</button>
+      </div>
+      <span class="settings-ayuda">El secreto de la credencial OAuth 2.0.</span>
+    </div>
+
+    <div class="settings-campo">
+      <label>URI de redirección (para Google Console)</label>
+      <div class="settings-estado">
+        <code id="oauth-redirect-uri" style="font-size: 0.85rem; word-break: break-all;">
+          {{ request.url_root }}auth/callback
+        </code>
+      </div>
+      <span class="settings-ayuda">
+        Copiá esta URL y agregala como "Authorized redirect URI" en Google Cloud Console.
+        Si usás ngrok, también agregá la versión con la URL de ngrok.
+      </span>
+    </div>
+
+    <div class="settings-campo">
+      <label>Emails autorizados</label>
+      <div class="settings-estado">
+        <span class="badge-estado badge-estado-ok">mussaelias123@gmail.com</span>
+        <span class="badge-estado badge-estado-ok" style="margin-left: 0.5rem;">mossinomariana@gmail.com</span>
+      </div>
+      <span class="settings-ayuda">
+        Solo estos emails pueden iniciar sesión. Para cambiarlos, editá la lista
+        <code>EMAILS_PERMITIDOS</code> en <code>auth.py</code>.
+      </span>
+    </div>
+
+    {% if cfg.google_client_id and cfg.google_client_secret %}
+    <div class="settings-campo">
+      <div class="settings-estado">
+        <span class="badge-estado badge-estado-ok">✓ OAuth configurado</span>
+      </div>
+    </div>
+    {% else %}
+    <div class="settings-campo">
+      <div class="settings-estado">
+        <span class="badge-estado badge-estado-pendiente">⚠ OAuth NO configurado — la app está sin protección</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
   {# ── SECCIÓN: ESTADO DEL ENTORNO ───────────────────────────────────────── #}
   <div class="tarjeta settings-seccion">
     <h3 class="settings-titulo-seccion">Estado del entorno</h3>

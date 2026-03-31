@@ -29,6 +29,15 @@ Cada página hija define su propio {% block contenido %}.
       <h1>💰 Fondo</h1>
       <p class="subtitulo">El fondo familiar más lindo</p>
     </div>
+    {% if user_email %}
+    <div class="header-user">
+      {% if user_photo %}
+      <img src="{{ user_photo }}" alt="" class="header-user-photo" referrerpolicy="no-referrer">
+      {% endif %}
+      <span class="header-user-name">{{ user_name or user_email }}</span>
+      <a href="{{ url_for('auth.logout') }}" class="header-logout-btn" title="Cerrar sesión">Salir</a>
+    </div>
+    {% endif %}
   </header>
 
   <!-- NAVEGACIÓN -->

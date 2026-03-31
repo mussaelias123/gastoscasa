@@ -22,6 +22,9 @@ DEFAULTS = {
     "app_name": "Gastos Casa",
     "factor_sueldo": 0.7,
     "usd_a_ars": 1500,
+    "google_client_id": "",
+    "google_client_secret": "",
+    "secret_key": "",
 }
 
 

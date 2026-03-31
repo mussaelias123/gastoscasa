@@ -215,6 +215,7 @@ body {
   color: white;
   padding: 0.5rem 2rem;
   text-align: center;
+  position: relative;
 }
 
 .site-header h1 {
@@ -227,6 +228,54 @@ body {
   margin: 0.1rem 0 0;
   opacity: 0.85;
   font-size: 0.8rem;
+}
+
+/* ── Usuario logueado (header) ─────────────────────────────────────────── */
+.header-user {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.header-user-photo {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+.header-user-name {
+  opacity: 0.9;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-logout-btn {
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.header-logout-btn:hover {
+  color: white;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 600px) {
+  .header-user-name { display: none; }
+  .header-user { gap: 0.35rem; }
 }
 
 

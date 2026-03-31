@@ -42,3 +42,5 @@ pyngrok
 python-dotenv
 pywin32
 psutil
+authlib
+requests

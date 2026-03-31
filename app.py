@@ -60,8 +60,13 @@ import psutil
 app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
             static_folder=os.path.join(BASE_DIR, 'static'))
-app.secret_key = os.urandom(24)
 app.config['TEMPLATES_AUTO_RELOAD'] = True  # Recargar templates sin reiniciar
+
+# ── Autenticación con Google OAuth ───────────────────────────────────────────
+# init_auth() configura: secret_key persistente, OAuth con Google,
+# middleware before_request que protege TODAS las rutas.
+from auth import init_auth
+init_auth(app, CONFIG_FILE)
 
 
 # =============================================================================
@@ -77,7 +82,13 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True  # Recargar templates sin reiniciar
 
 @app.context_processor
 def inject_config():
-    return {'cfg': config.cargar_config(CONFIG_FILE)}
+    from flask import session as flask_session
+    return {
+        'cfg': config.cargar_config(CONFIG_FILE),
+        'user_email': flask_session.get('user_email', ''),
+        'user_name': flask_session.get('user_name', ''),
+        'user_photo': flask_session.get('user_photo', ''),
+    }
 
 
 @app.template_filter('fmt_ars')
@@ -496,6 +507,8 @@ def settings():
             'ngrok_domain':   request.form.get('ngrok_domain', '').strip(),
             'factor_sueldo':  float(request.form.get('factor_sueldo', 0.7)),
             'usd_a_ars':      float(request.form.get('usd_a_ars', 1500)),
+            'google_client_id':     request.form.get('google_client_id', '').strip(),
+            'google_client_secret': request.form.get('google_client_secret', '').strip(),
         }
         config.guardar_config(nuevos, CONFIG_FILE)
         flash('Configuración guardada. Reiniciá la app para aplicar los cambios.')

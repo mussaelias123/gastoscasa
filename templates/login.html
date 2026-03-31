@@ -1,0 +1,216 @@
+{#
+================================================================================
+ARCHIVO: templates/login.html
+================================================================================
+Página de login. NO hereda de base.html porque es una pantalla independiente
+que se muestra cuando el usuario no está autenticado.
+
+COMPORTAMIENTO:
+  - Muestra un botón para iniciar sesión con Google.
+  - Tiene checkbox "Mantener sesión iniciada" (checked por defecto).
+  - Si el email no está permitido, muestra un mensaje de error.
+  - Si hay error de Google, muestra un mensaje de error.
+================================================================================#}
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fondo - Iniciar sesión</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+  <style>
+    /* ── Reset y base ──────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f9fafb;
+      color: #111827;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    /* ── Tarjeta de login ──────────────────────────────────────────────────── */
+    .login-card {
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      padding: 2.5rem 2rem;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .login-icon {
+      font-size: 3rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .login-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 0.25rem;
+    }
+
+    .login-subtitle {
+      font-size: 0.9rem;
+      color: #6b7280;
+      margin-bottom: 2rem;
+    }
+
+    /* ── Botón de Google ───────────────────────────────────────────────────── */
+    .google-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      background: #ffffff;
+      color: #374151;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      width: 100%;
+    }
+
+    .google-btn:hover {
+      border-color: #4285f4;
+      background: #f8faff;
+      box-shadow: 0 2px 8px rgba(66, 133, 244, 0.15);
+    }
+
+    .google-btn:active {
+      transform: scale(0.98);
+    }
+
+    .google-btn svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    /* ── Checkbox "recordarme" ──────────────────────────────────────────────── */
+    .remember-row {
+      margin-top: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+
+    .remember-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #4f46e5;
+      cursor: pointer;
+    }
+
+    .remember-row label {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* ── Mensajes de error ─────────────────────────────────────────────────── */
+    .login-error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
+    .login-error strong {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    /* ── Footer ────────────────────────────────────────────────────────────── */
+    .login-footer {
+      margin-top: 2rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #f3f4f6;
+      font-size: 0.75rem;
+      color: #9ca3af;
+    }
+
+    .login-footer .lock-icon {
+      display: inline-block;
+      margin-bottom: 0.25rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="login-card">
+
+    <div class="login-icon">💰</div>
+    <h1 class="login-title">Fondo</h1>
+    <p class="login-subtitle">El fondo familiar más lindo</p>
+
+    {% if error == 'no_permitido' %}
+    <div class="login-error">
+      <strong>Acceso denegado</strong>
+      Esta cuenta de Google no tiene permiso para acceder.
+      Solo pueden ingresar las cuentas autorizadas.
+    </div>
+    {% elif error == 'google_error' %}
+    <div class="login-error">
+      <strong>Error de autenticación</strong>
+      Hubo un problema al comunicarse con Google. Intentá de nuevo.
+    </div>
+    {% elif error == 'no_configurado' %}
+    <div class="login-error">
+      <strong>OAuth no configurado</strong>
+      Falta configurar las credenciales de Google OAuth en Settings.
+    </div>
+    {% endif %}
+
+    <a href="#" class="google-btn" id="google-login-btn" onclick="loginWithGoogle(event)">
+      <!-- Google "G" logo SVG -->
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+      </svg>
+      Iniciar sesión con Google
+    </a>
+
+    <div class="remember-row">
+      <input type="checkbox" id="remember-me" checked>
+      <label for="remember-me">Mantener sesión iniciada</label>
+    </div>
+
+    <div class="login-footer">
+      <span class="lock-icon">🔒</span>
+      <br>
+      Acceso restringido a cuentas autorizadas
+    </div>
+
+  </div>
+
+  <script>
+    function loginWithGoogle(e) {
+      e.preventDefault();
+      var remember = document.getElementById('remember-me').checked ? '1' : '0';
+      window.location.href = '/auth/google?remember=' + remember;
+    }
+  </script>
+
+</body>
+</html>
