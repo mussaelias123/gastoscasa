@@ -360,37 +360,29 @@ function fmtFecha(iso) {
 }
 
 function inicializarFechaHoy() {
-    /*
-      querySelector(): busca en el DOM el primer elemento que coincida
-      con el selector CSS dado. Es como el equivalente de
-      "encontrar el elemento con este id/clase".
-      '#fecha' → busca el elemento con id="fecha"
-    */
     var campoFecha = document.querySelector('#fecha');
-
-    /*
-      Si no encontramos el campo (estamos en una página sin formulario),
-      salimos. El operador && hace "cortocircuito": si campoFecha es null
-      (no existe), no evalúa la segunda parte (evita errores).
-    */
     if (!campoFecha) return;
 
-    /*
-      Solo pre-rellenamos si el campo está VACÍO.
-      Si tiene valor (ej: estamos editando un gasto existente), lo dejamos.
-    */
-    if (campoFecha.value === '') {
-        /*
-          new Date() → fecha y hora actual (del navegador/usuario)
-          .toISOString() → convierte a formato ISO: "2024-01-15T14:30:00.000Z"
-          .split('T')[0] → toma solo la parte de la fecha: "2024-01-15"
-          Ese formato YYYY-MM-DD es el que espera el input type="date"
-        */
-        var hoy = new Date().toISOString().split('T')[0];
-        campoFecha.value = hoy;
+    // Fecha por defecto: hoy (hora local)
+    var today = new Date();
+    var hoy = today.getFullYear() + '-' +
+              String(today.getMonth() + 1).padStart(2, '0') + '-' +
+              String(today.getDate()).padStart(2, '0');
 
-        console.log('Fecha de hoy pre-cargada:', hoy);
-    }
+    // Si el campo está vacío (formulario nuevo), usar hoy
+    var fechaInicial = campoFecha.value || hoy;
+
+    // Inicializar flatpickr con locale español y formato DD/MM/AAAA
+    flatpickr(campoFecha, {
+        locale: 'es',
+        dateFormat: 'Y-m-d',      // valor interno (lo que se envía al servidor)
+        altInput: true,
+        altFormat: 'd/m/Y',       // formato visible: DD/MM/AAAA
+        defaultDate: fechaInicial,
+        allowInput: true
+    });
+
+    console.log('Fecha inicializada con flatpickr:', fechaInicial);
 }
 
 

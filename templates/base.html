@@ -7,7 +7,7 @@ Cada página hija define su propio {% block contenido %}.
 ================================================================================#}
 
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es-AR">
 
 <head>
   <meta charset="UTF-8">
@@ -15,6 +15,7 @@ Cada página hija define su propio {% block contenido %}.
   <title>Fondo - {% block titulo %}Saldos{% endblock %}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
 
 <body{% if cfg and cfg.app_name and 'DEV' in cfg.app_name %} class="has-dev-banner"{% endif %}>
@@ -75,6 +76,8 @@ Cada página hija define su propio {% block contenido %}.
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   {% block scripts %}{% endblock %}
 
