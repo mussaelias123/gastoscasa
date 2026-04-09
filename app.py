@@ -409,7 +409,9 @@ def editar(id):
 def resumen():
     _cfg                = config.cargar_config(CONFIG_FILE)
     saldos              = database.calcular_saldos()
+    usd_a_ars           = float(_cfg.get('usd_a_ars', 1500))
     movimientos, _total = database.obtener_movimientos()
+    gastos_fijos        = database.obtener_gastos_fijos()
     movimientos_json    = [
         {
             'id':          int(m['id']),
@@ -424,7 +426,21 @@ def resumen():
         }
         for m in movimientos
     ]
-    return render_template('resumen.html', saldos=saldos, movimientos_json=movimientos_json)
+    gastos_fijos_json = [
+        {
+            'id':           int(gf['id']),
+            'descripcion':  str(gf['descripcion']),
+            'activo':       bool(gf['activo']),
+            'es_cuota':     bool(gf['es_cuota']),
+            'total_cuotas': int(gf['total_cuotas']) if gf['total_cuotas'] else None,
+            'cuota_actual': int(gf['cuota_actual']) if gf['cuota_actual'] else None,
+        }
+        for gf in gastos_fijos
+    ]
+    return render_template('resumen.html', saldos=saldos,
+                           movimientos_json=movimientos_json,
+                           gastos_fijos_json=gastos_fijos_json,
+                           usd_a_ars=usd_a_ars)
 
 
 # =============================================================================

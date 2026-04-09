@@ -1237,6 +1237,292 @@ a.btn-filtro {
   color: var(--color-texto-suave);
 }
 
+/* ── KPI Cards Row ────────────────────────────────────────────────────── */
+.dash-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.8rem;
+  margin-bottom: 1.2rem;
+}
+
+@media (max-width: 900px) {
+  .dash-kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .dash-kpi-row { grid-template-columns: 1fr; }
+}
+
+.dash-kpi-card {
+  background: var(--color-fondo-card);
+  border-radius: var(--radio-borde);
+  padding: 1.1rem 1.2rem;
+  box-shadow: var(--sombra-card);
+  border-left: 4px solid var(--color-acento);
+}
+
+.dash-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-texto-suave);
+  margin-bottom: 0.35rem;
+}
+
+.dash-kpi-valor {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: var(--color-texto);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-kpi-sub {
+  font-size: 0.7rem;
+  color: var(--color-texto-suave);
+  margin-top: 0.3rem;
+}
+
+.dash-kpi-sub-ok {
+  color: var(--color-exito);
+  font-weight: 600;
+}
+
+.dash-kpi-sub-warn {
+  color: var(--color-peligro);
+  font-weight: 600;
+}
+
+/* ── Saldos por persona ──────────────────────────────────────────────── */
+.dash-saldos-personas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 480px) {
+  .dash-saldos-personas { grid-template-columns: 1fr; }
+}
+
+.dash-persona-card {
+  border-radius: var(--radio-borde);
+  padding: 1rem 1.2rem;
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+}
+
+.dash-persona-elias {
+  border-left: 4px solid var(--color-persona-elias);
+}
+
+.dash-persona-mari {
+  border-left: 4px solid var(--color-persona-mari);
+}
+
+.dash-persona-nombre {
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 0.6rem;
+  color: var(--color-texto);
+}
+
+.dash-persona-saldo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.dash-persona-moneda {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-texto-suave);
+  min-width: 30px;
+}
+
+.dash-persona-monto {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-texto);
+}
+
+.dash-persona-monto.saldo-negativo {
+  color: var(--color-peligro);
+}
+
+/* ── Ranking de categorías ───────────────────────────────────────────── */
+.dash-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.dash-ranking-vacio {
+  text-align: center;
+  color: var(--color-texto-suave);
+  padding: 2rem;
+  font-size: 0.9rem;
+}
+
+.dash-ranking-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.dash-ranking-pos {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-acento);
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.dash-ranking-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-ranking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+
+.dash-ranking-cat {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-texto);
+}
+
+.dash-ranking-monto {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-texto);
+  white-space: nowrap;
+}
+
+.dash-ranking-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: var(--color-borde);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dash-ranking-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.dash-ranking-pct {
+  font-size: 0.68rem;
+  color: var(--color-texto-suave);
+  margin-top: 0.15rem;
+}
+
+/* ── Secciones del dashboard ────────────────────────────────────────────── */
+.dash-section-wrapper {
+  margin-bottom: 2.5rem;
+  padding-bottom: 2rem;
+  border-bottom: 2px solid var(--color-borde);
+}
+
+.dash-section-wrapper:last-of-type {
+  border-bottom: none;
+  margin-bottom: 1rem;
+}
+
+.dash-section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-acento-oscuro);
+  margin: 0 0 1.2rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--color-acento);
+  display: inline-block;
+}
+
+/* ── Chart cards ──────────────────────────────────────────────────────── */
+.dash-chart-card {
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde);
+  padding: 1.2rem;
+  box-shadow: var(--sombra-card);
+  margin-bottom: 1.2rem;
+}
+
+.dash-chart-wide {
+  height: 280px;
+}
+
+/* ── Toggle bar (botones seleccionables para categorías / fijos) ─────── */
+.dash-toggle-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.8rem;
+}
+
+.dash-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--fuente-principal);
+  border: 2px solid var(--color-borde);
+  border-radius: 999px;
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.dash-toggle-btn:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.dash-toggle-btn.activo {
+  color: #ffffff;
+  border-color: transparent;
+}
+
+/* ── KPI card border-color variants ──────────────────────────────────── */
+.kpi-ingreso { border-left-color: var(--color-exito); }
+.kpi-gasto   { border-left-color: var(--color-peligro); }
+.kpi-neto    { border-left-color: var(--color-acento); }
+.kpi-ahorro  { border-left-color: var(--color-acento-oscuro); }
+.kpi-envio   { border-left-color: var(--color-alerta); }
+.kpi-fijo    { border-left-color: var(--color-deco-2); }
+
+/* ── Compact KPI row (2 columns for smaller sections) ─────────────────── */
+.dash-kpi-row-compact {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 480px) {
+  .dash-kpi-row-compact { grid-template-columns: 1fr; }
+}
+
 
 /* ============================================================================
    EDICIÓN INLINE DE MOVIMIENTOS (tabla en index.html)
