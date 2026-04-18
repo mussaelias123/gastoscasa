@@ -249,7 +249,7 @@ var USD_A_ARS     = {{ usd_a_ars | tojson }};
 
     /* Suma USD-equivalente por tipo, sumando ARS y USD juntos */
     function sumaTipo(t) {
-      return mm.filter(function(v){ return v.tipo===t; })
+      return mm.filter(function(v){ return v.tipo===t && v.categoria!=='Cambio'; })
                .reduce(function(a,v){ return a + mUSD(v); }, 0);
     }
 
