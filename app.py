@@ -55,7 +55,29 @@ from math import ceil
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 import database
 import config
+import cotizacion
 import psutil
+
+
+# =============================================================================
+# HELPER: _calcular_monto_usd(monto, moneda, cfg)
+# Propósito: Centraliza la conversión ARS→USD al insertar/editar movimientos.
+# =============================================================================
+#
+# - Si moneda == 'usd' → (monto, None)                       (no hay conversión)
+# - Si moneda == 'ars' → (monto/cotizacion, cotizacion)      (se guarda la tasa)
+#
+# La cotización se toma de config.json ('cotizacion_valor'), que se refresca
+# 1 vez por día desde dolarapi.com vía el módulo cotizacion.py.
+#
+def _calcular_monto_usd(monto, moneda, cfg):
+    """Retorna (monto_usd, cotizacion_usd_aplicada) para un movimiento nuevo/editado."""
+    if moneda == 'usd':
+        return float(monto), None
+    cot = float(cfg.get('cotizacion_valor') or 1.0)
+    if cot <= 0:
+        cot = 1.0  # Guardia defensiva: evita división por cero si algo salió mal.
+    return float(monto) / cot, cot
 
 app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
@@ -134,6 +156,49 @@ def fmt_usd(valor):
     return f"USD {signo}{n}"
 
 
+@app.template_filter('fmt_fecha_hora')
+def fmt_fecha_hora(valor):
+    """
+    Convierte un datetime ISO (YYYY-MM-DDTHH:MM:SS[...]) a formato argentino
+    'DD/MM/AAAA HH:MM'. Si el input es sólo fecha (YYYY-MM-DD), devuelve
+    DD/MM/AAAA. Si no se puede parsear, devuelve el valor original como string.
+    """
+    if not valor:
+        return ''
+    s = str(valor)
+    try:
+        # Soportar tanto 'YYYY-MM-DDTHH:MM:SS' como 'YYYY-MM-DD HH:MM:SS'
+        fecha_part = s.split('T')[0].split(' ')[0]
+        hora_part  = s.split('T')[1] if 'T' in s else (s.split(' ')[1] if ' ' in s else '')
+        partes_f = fecha_part.split('-')
+        fecha_arg = f"{partes_f[2]}/{partes_f[1]}/{partes_f[0]}"
+        if hora_part:
+            # Tomar sólo HH:MM
+            hhmm = hora_part[:5]
+            return f"{fecha_arg} {hhmm}"
+        return fecha_arg
+    except Exception:
+        return s
+
+
+@app.template_global('dias_desde_fecha')
+def dias_desde_fecha(fecha_str):
+    """
+    Retorna la cantidad de días transcurridos desde una fecha dada hasta hoy.
+    Acepta 'YYYY-MM-DD' o ISO datetime. Si no se puede parsear, retorna un
+    número grande (99999) para que la lógica del template trate la situación
+    como "muy viejo / desconocido".
+    """
+    if not fecha_str:
+        return 99999
+    try:
+        s = str(fecha_str).split('T')[0].split(' ')[0]
+        fecha = datetime.strptime(s, '%Y-%m-%d').date()
+        return (datetime.now().date() - fecha).days
+    except Exception:
+        return 99999
+
+
 # =============================================================================
 # RUTA: Página principal — Saldos + formulario + tabla de movimientos
 # URL: http://localhost:5000/
@@ -156,17 +221,22 @@ def index():
             return 0.0, 0.0
         return round(pa / total * 100, 2), round(pb / total * 100, 2)
 
-    usd_a_ars   = float(cfg.get('usd_a_ars', 1500))
+    cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
     g_ars       = _gauge(saldos['elias_ars'], saldos['mari_ars'])
     g_usd       = _gauge(saldos['elias_usd'], saldos['mari_usd'])
-    total_ars_v = saldos['elias_ars'] + saldos['mari_ars']
-    total_usd_v = saldos['elias_usd'] + saldos['mari_usd']
-    g_total     = _gauge(total_ars_v, total_usd_v * usd_a_ars)
+    # El gauge Total (ARS vs USD) representa la *distribución actual* de la
+    # caja, por eso valúa los pesos con la cotización vigente (no con la suma
+    # histórica de monto_usd, que refleja el valor del momento de cada alta).
+    total_ars = float(saldos.get('elias_ars', 0.0)) + float(saldos.get('mari_ars', 0.0))
+    total_usd = float(saldos.get('elias_usd', 0.0)) + float(saldos.get('mari_usd', 0.0))
+    total_ars_en_usd = (total_ars / cotizacion_valor) if cotizacion_valor > 0 else 0.0
+    g_total     = _gauge(total_ars_en_usd, total_usd)
     gauges = {
         'ars':   {'elias': g_ars[0],   'mari':  g_ars[1]},
         'usd':   {'elias': g_usd[0],   'mari':  g_usd[1]},
         'total': {'ars':   g_total[0], 'usd':   g_total[1]},
-        'usd_a_ars': int(usd_a_ars),
+        # Valor informativo que el frontend muestra como "1 USD = AR$ X".
+        'cotizacion': int(cotizacion_valor),
     }
 
     mes_actual = date.today().strftime('%Y-%m')
@@ -242,6 +312,10 @@ def agregar():
         tipo        = request.form['tipo']      # 'ingreso', 'gasto' o 'cambio'
         monto       = float(request.form['monto'])
 
+        # Cotización vigente para calcular monto_usd. Se carga una sola vez por
+        # request, pero cada movimiento usa la suya según su propia moneda.
+        cfg_actual = config.cargar_config(CONFIG_FILE)
+
         # ── Tipo "cambio": genera 2 movimientos (salida + entrada) ──
         if tipo == 'cambio':
             persona_final = request.form['persona_final']
@@ -249,15 +323,21 @@ def agregar():
             monto_final_str = request.form.get('monto_final', '').strip()
             monto_final = float(monto_final_str) if monto_final_str else monto
 
+            # Cada movimiento del cambio se calcula con SU propia moneda.
+            monto_usd_1, cot_1 = _calcular_monto_usd(monto, moneda, cfg_actual)
+            monto_usd_2, cot_2 = _calcular_monto_usd(monto_final, moneda_final, cfg_actual)
+
             # Movimiento 1: salida (gasto del origen)
             id1 = database.agregar_movimiento(
                 fecha, descripcion, persona, moneda, 'gasto', monto,
-                categoria='Cambio')
+                categoria='Cambio',
+                monto_usd=monto_usd_1, cotizacion_usd_aplicada=cot_1)
 
             # Movimiento 2: entrada (ingreso al destino)
             id2 = database.agregar_movimiento(
                 fecha, descripcion, persona_final, moneda_final, 'ingreso', monto_final,
-                categoria='Cambio')
+                categoria='Cambio',
+                monto_usd=monto_usd_2, cotizacion_usd_aplicada=cot_2)
 
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 saldos = database.calcular_saldos()
@@ -320,7 +400,10 @@ def agregar():
                 cuota_total = fijo['total_cuotas']
                 fijo_cuota_id = fijo['id']
 
-        nuevo_id = database.agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total)
+        # Cálculo de equivalente en USD (ARS/USD según la moneda del movimiento).
+        monto_usd, cotizacion_aplicada = _calcular_monto_usd(monto, moneda, cfg_actual)
+
+        nuevo_id = database.agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_aplicada)
 
         # Acciones post-insert de cuotas
         if crear_fijo_cuotas:
@@ -390,7 +473,12 @@ def editar(id):
         categoria   = request.form.get('categoria') or None
         costo_envio_str = request.form.get('costo_envio', '').strip()
         costo_envio = float(costo_envio_str) if costo_envio_str else None
-        database.editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio)
+
+        # Recalculamos monto_usd con la cotización actual cada vez que se edita.
+        cfg_actual = config.cargar_config(CONFIG_FILE)
+        monto_usd, cotizacion_aplicada = _calcular_monto_usd(monto, moneda, cfg_actual)
+
+        database.editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_aplicada)
         mes = request.form.get('mes', '') or request.args.get('mes', '')
         return redirect(url_for('index', mes=mes) if mes else url_for('index'))
     else:
@@ -409,7 +497,7 @@ def editar(id):
 def resumen():
     _cfg                = config.cargar_config(CONFIG_FILE)
     saldos              = database.calcular_saldos()
-    usd_a_ars           = float(_cfg.get('usd_a_ars', 1500))
+    cotizacion_valor    = float(_cfg.get('cotizacion_valor') or 1.0)
     movimientos, _total = database.obtener_movimientos()
     gastos_fijos        = database.obtener_gastos_fijos()
     movimientos_json    = [
@@ -423,6 +511,10 @@ def resumen():
             'monto':       float(m['monto']),
             'categoria':   str(m['categoria']) if m['categoria'] else None,
             'costo_envio': float(m['costo_envio']) if m['costo_envio'] else None,
+            # Equivalente en USD calculado al insertar/editar (cotización histórica).
+            # Puede ser None en movimientos previos al backfill.
+            'monto_usd':                float(m['monto_usd']) if m['monto_usd'] is not None else None,
+            'cotizacion_usd_aplicada':  float(m['cotizacion_usd_aplicada']) if m['cotizacion_usd_aplicada'] is not None else None,
         }
         for m in movimientos
     ]
@@ -440,7 +532,40 @@ def resumen():
     return render_template('resumen.html', saldos=saldos,
                            movimientos_json=movimientos_json,
                            gastos_fijos_json=gastos_fijos_json,
-                           usd_a_ars=usd_a_ars)
+                           cotizacion_valor=cotizacion_valor)
+
+
+# =============================================================================
+# RUTA: Refresco manual de la cotización del dólar
+# URL: POST http://localhost:5000/api/cotizacion/refresh
+# =============================================================================
+#
+# Llama a cotizacion.refrescar_cache(CONFIG_FILE), que consulta dolarapi.com
+# y actualiza config.json con el valor nuevo (o deja el anterior si la API
+# falla, marcando cotizacion_ok=false).
+#
+# Respuesta JSON:
+#   {
+#     "ok":                        bool,    # True si la API respondió
+#     "mensaje":                   str,     # Mensaje legible
+#     "valor":                     float|null,  # Cotización vigente en config
+#     "fecha":                     str|null,    # Fecha del valor (YYYY-MM-DD)
+#     "cotizacion_ok":             bool,    # Mismo valor que "ok"
+#     "cotizacion_ultimo_intento": str,     # Timestamp del último intento
+#   }
+#
+@app.route('/api/cotizacion/refresh', methods=['POST'])
+def api_cotizacion_refresh():
+    ok, mensaje = cotizacion.refrescar_cache(CONFIG_FILE)
+    cfg = config.cargar_config(CONFIG_FILE)
+    return jsonify({
+        'ok':                        ok,
+        'mensaje':                   mensaje,
+        'valor':                     cfg.get('cotizacion_valor'),
+        'fecha':                     cfg.get('cotizacion_fecha'),
+        'cotizacion_ok':             cfg.get('cotizacion_ok', False),
+        'cotizacion_ultimo_intento': cfg.get('cotizacion_ultimo_intento'),
+    })
 
 
 # =============================================================================
@@ -522,7 +647,6 @@ def settings():
             'ngrok_authtoken': request.form.get('ngrok_authtoken', '').strip(),
             'ngrok_domain':   request.form.get('ngrok_domain', '').strip(),
             'factor_sueldo':  float(request.form.get('factor_sueldo', 0.7)),
-            'usd_a_ars':      float(request.form.get('usd_a_ars', 1500)),
             'google_client_id':     request.form.get('google_client_id', '').strip(),
             'google_client_secret': request.form.get('google_client_secret', '').strip(),
         }
@@ -732,6 +856,75 @@ def iniciar_scheduler_backup():
 
 
 # =============================================================================
+# SCHEDULER DE COTIZACIÓN DEL DÓLAR
+# =============================================================================
+#
+# - Refresca la cotización del dólar oficial 1 vez por día.
+# - La lógica es análoga al scheduler de backup: un hilo daemon con sleep 3600s
+#   que comprueba si ya pasó un día desde el último refresh exitoso.
+# - Al arrancar la app, si la última actualización fue ayer o antes, dispara
+#   un refresh inmediato en un hilo separado (no bloqueante).
+# - Si la API falla, el último valor cacheado en config.json se mantiene.
+#
+
+
+def _fecha_ultima_cotizacion():
+    """
+    Retorna la fecha (date) del último refresh EXITOSO de la cotización,
+    o None si nunca hubo uno o no se puede parsear.
+    """
+    cfg = config.cargar_config(CONFIG_FILE)
+    if not cfg.get('cotizacion_ok'):
+        return None
+    intento = cfg.get('cotizacion_ultimo_intento')
+    if not intento:
+        return None
+    try:
+        return datetime.strptime(intento[:10], '%Y-%m-%d').date()
+    except Exception:
+        return None
+
+
+def _scheduler_cotizacion():
+    """
+    Hilo de fondo: comprueba cada hora si hay que refrescar la cotización.
+    Regla: si no hubo refresh exitoso hoy → refrescar.
+    """
+    while True:
+        try:
+            ultima = _fecha_ultima_cotizacion()
+            hoy = datetime.now().date()
+            if ultima is None or ultima < hoy:
+                ok, mensaje = cotizacion.refrescar_cache(CONFIG_FILE)
+                print(f"{'OK' if ok else 'AVISO'}: Scheduler cotización: {mensaje}")
+        except Exception as e:
+            print(f"AVISO: Error en scheduler de cotización: {e}")
+        time.sleep(3600)  # revisar cada hora
+
+
+def iniciar_scheduler_cotizacion():
+    """
+    Arranca el scheduler de cotización y, si corresponde, hace un refresh
+    inmediato al inicio (en hilo separado, no bloqueante).
+    Lógica: si la última actualización exitosa fue ayer o antes, refrescar ahora.
+    """
+    ultima = _fecha_ultima_cotizacion()
+    hoy    = datetime.now().date()
+
+    if ultima is None or ultima < hoy:
+        threading.Thread(
+            target=cotizacion.refrescar_cache,
+            args=(CONFIG_FILE,),
+            daemon=True,
+            name='cotizacion-inicial'
+        ).start()
+
+    hilo = threading.Thread(target=_scheduler_cotizacion, daemon=True, name='cotizacion-scheduler')
+    hilo.start()
+    print("OK: Scheduler de cotización iniciado (refresh diario, dolarapi.com).")
+
+
+# =============================================================================
 # INICIO DE LA APLICACIÓN
 # =============================================================================
 
@@ -776,6 +969,7 @@ def run_flask():
     database.inicializar_db()
     print("OK: Base de datos inicializada (archivo: gastos.db)")
     iniciar_scheduler_backup()
+    iniciar_scheduler_cotizacion()
     print("-" * 50)
 
     cfg = config.cargar_config(CONFIG_FILE)

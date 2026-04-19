@@ -11,15 +11,15 @@
 <script>
 var MOVIMIENTOS   = {{ movimientos_json | tojson }};
 var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
-var USD_A_ARS     = {{ usd_a_ars | tojson }};
 </script>
 
 <div class="pagina-header">
   <h2>Resumen financiero</h2>
   <p class="dash-tc-aviso">
     Todos los montos están expresados en <strong>USD</strong>.
-    Tasa de cambio actual (configurable en Settings):
-    <strong>1 USD = AR$ {{ usd_a_ars | int }}</strong>.
+    Cada movimiento se convierte usando la cotización vigente al día en que fue
+    cargado. Cotización actual:
+    <strong>1 USD = AR$ {{ cotizacion_valor | int }}</strong>.
   </p>
 </div>
 
@@ -209,15 +209,23 @@ var USD_A_ARS     = {{ usd_a_ars | tojson }};
   }
   function fmtPct(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + '%'; }
 
-  /* ── Conversión de moneda → USD ────────────────────────────────────────── */
-  /* Si el movimiento ya está en USD lo devolvemos tal cual; si está en AR$
-     lo dividimos por la tasa actual cargada desde Settings. */
-  function toUSD(monto, moneda) {
-    if (monto == null) return 0;
-    return moneda === 'usd' ? monto : (monto / USD_A_ARS);
+  /* ── Equivalente en USD (pre-calculado en backend) ─────────────────────── */
+  /* Cada movimiento trae su campo `monto_usd` ya calculado al momento de
+     guardarse, usando la cotización histórica del día correspondiente. La
+     analítica consume ese valor directamente, sin conversión on-the-fly. */
+  function mUSD(mv) {
+    return (mv && mv.monto_usd != null) ? mv.monto_usd : 0;
   }
-  function mUSD(mv)      { return toUSD(mv.monto, mv.moneda); }
-  function envUSD(mv)    { return toUSD(mv.costo_envio || 0, mv.moneda); }
+
+  /* Para el costo de envío: se sigue guardando en la moneda del movimiento.
+     En USD queda tal cual; en ARS se prorratea usando la misma cotización que
+     se aplicó al monto principal (derivada de monto_usd / monto). */
+  function envUSD(mv) {
+    if (!mv || !mv.costo_envio) return 0;
+    if (mv.moneda === 'usd') return mv.costo_envio;
+    if (!mv.monto || mv.monto === 0) return 0;
+    return mv.costo_envio * (mv.monto_usd / mv.monto);
+  }
 
   /* ── Mes helpers ────────────────────────────────────────────────────────── */
   var HOY = new Date();

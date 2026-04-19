@@ -48,14 +48,65 @@
       </span>
     </div>
 
-    <div class="settings-campo">
-      <label for="usd_a_ars">Tipo de cambio USD → ARS</label>
-      <input type="number" id="usd_a_ars" name="usd_a_ars"
-             value="{{ cfg.usd_a_ars | default(1500) }}" min="1" step="1" required>
-      <span class="settings-ayuda">
-        Cuántos pesos vale 1 dólar. Se usa en el indicador "Total" de los gauges de saldos
-        para comparar el patrimonio en ARS vs USD en una misma unidad.
-      </span>
+  </div>
+
+  {# ── SECCIÓN: COTIZACIÓN USD → ARS (automática) ──────────────────────── #}
+  <div class="tarjeta settings-seccion settings-cotizacion">
+    <h3 class="settings-titulo-seccion">Tipo de cambio USD → ARS (automático)</h3>
+
+    {# Cálculo de antigüedad para decidir estado del badge.
+       Usamos datetime.now() vs cotizacion_fecha (YYYY-MM-DD) y
+       cotizacion_ultimo_intento (ISO datetime) del config. #}
+    {% set _cot_valor = cfg.cotizacion_valor | default(0) %}
+    {% set _cot_fecha = cfg.cotizacion_fecha %}
+    {% set _cot_ok    = cfg.cotizacion_ok | default(false) %}
+    {% set _cot_ult   = cfg.cotizacion_ultimo_intento %}
+
+    {# Días transcurridos desde cotizacion_fecha (si existe). #}
+    {% set _dias_desde = dias_desde_fecha(_cot_fecha) if _cot_fecha else 99999 %}
+
+    <div class="settings-cotizacion-valor">
+      1 USD = AR$ {{ _cot_valor | int }}
+    </div>
+
+    <div class="settings-cotizacion-meta">
+      Actualizado el
+      <strong>
+        {% if _cot_fecha %}{{ _cot_fecha | fmt_fecha }}{% else %}nunca{% endif %}
+      </strong>
+    </div>
+
+    {# Estado: verde si ok y <48hs; amarillo si falló o >24hs. #}
+    <div class="settings-cotizacion-estado">
+      {% if _cot_ok and _dias_desde is defined and _dias_desde <= 2 %}
+        <span class="badge-estado-cotizacion badge-estado-ok">
+          ✓ Cotización actualizada
+        </span>
+      {% else %}
+        <span class="badge-estado-cotizacion badge-estado-alerta">
+          {% if not _cot_ok %}
+            ⚠ La última actualización falló — se está usando el valor anterior.
+          {% else %}
+            ⚠ La última cotización tiene más de 24hs de antigüedad.
+          {% endif %}
+          {% if _cot_ult %}
+            Último intento: {{ _cot_ult | fmt_fecha_hora }}
+          {% endif %}
+        </span>
+      {% endif %}
+    </div>
+
+    <p class="settings-ayuda settings-cotizacion-info">
+      El valor se actualiza automáticamente una vez por día desde dolarapi.com
+      (dólar oficial venta). Se usa en el indicador "Total" de los gauges de saldos
+      para comparar el patrimonio en ARS vs USD en una misma unidad.
+    </p>
+
+    <div class="settings-cotizacion-acciones">
+      <button type="button" id="btn-refresh-cotizacion" class="btn btn-secundario">
+        Actualizar ahora
+      </button>
+      <span id="cot-refresh-msg" class="settings-cotizacion-msg" role="status"></span>
     </div>
   </div>
 
@@ -813,6 +864,53 @@ async function fetchMetrics() {
 
 fetchMetrics();
 setInterval(fetchMetrics, 3000);
+
+
+// ── Refrescar cotización USD → ARS ──────────────────────────────────────────
+//
+// Se conecta al endpoint POST /api/cotizacion/refresh, que fuerza una
+// actualización contra dolarapi.com. Si sale OK, recarga la página para que se
+// vea el nuevo valor y el badge en verde. Si falla, muestra el mensaje de
+// error sin recargar.
+(function () {
+  var btn = document.getElementById('btn-refresh-cotizacion');
+  var msg = document.getElementById('cot-refresh-msg');
+  if (!btn) return;
+
+  btn.addEventListener('click', async function () {
+    var textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Actualizando...';
+    if (msg) { msg.textContent = ''; msg.className = 'settings-cotizacion-msg'; }
+
+    try {
+      const resp = await fetch('/api/cotizacion/refresh', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      const data = await resp.json().catch(function () { return { ok: false, mensaje: 'Respuesta no válida del servidor.' }; });
+
+      if (data.ok) {
+        // Recargar para que el render de Jinja muestre los valores nuevos.
+        window.location.reload();
+        return;
+      }
+
+      if (msg) {
+        msg.textContent = '⚠ ' + (data.mensaje || 'No se pudo actualizar la cotización.');
+        msg.className = 'settings-cotizacion-msg settings-cotizacion-msg-error';
+      }
+    } catch (e) {
+      if (msg) {
+        msg.textContent = '⚠ Error de red: ' + e.message;
+        msg.className = 'settings-cotizacion-msg settings-cotizacion-msg-error';
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  });
+})();
 
 </script>
 {% endblock %}

@@ -21,7 +21,14 @@ DEFAULTS = {
     "ngrok_domain": "",
     "app_name": "Gastos Casa",
     "factor_sueldo": 0.7,
-    "usd_a_ars": 1500,
+    # ── Cotización USD oficial ──────────────────────────────────────────────
+    # Se obtiene de dolarapi.com (módulo cotizacion.py) y se refresca 1 vez/día.
+    # El 1500.0 es solo un bootstrap inicial; se sobrescribe en la primera
+    # actualización exitosa.
+    "cotizacion_valor":          1500.0,
+    "cotizacion_fecha":          None,
+    "cotizacion_ultimo_intento": None,
+    "cotizacion_ok":             False,
     "google_client_id": "",
     "google_client_secret": "",
     "secret_key": "",

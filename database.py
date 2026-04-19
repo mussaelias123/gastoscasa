@@ -101,9 +101,13 @@ def inicializar_db():
     ''')
 
     # Agregar columnas nuevas si no existen (para bases de datos ya existentes)
+    # monto_usd: equivalente del movimiento en dólares, guardado al insertar/editar.
+    # cotizacion_usd_aplicada: cotización ARS→USD usada al calcular monto_usd.
+    #                          NULL para movimientos en USD (no hay conversión).
     for columna, definicion in [
         ('categoria', 'TEXT'), ('costo_envio', 'REAL'), ('factor_aplicado', 'REAL'),
         ('cuota_numero', 'INTEGER'), ('cuota_total', 'INTEGER'),
+        ('monto_usd', 'REAL'), ('cotizacion_usd_aplicada', 'REAL'),
     ]:
         try:
             cursor.execute(f'ALTER TABLE movimientos ADD COLUMN {columna} {definicion}')
@@ -160,14 +164,24 @@ def inicializar_db():
 # Pero en vez de hacer 8 queries, hacemos una sola con GROUP BY y SUM
 # condicional usando CASE WHEN. Más eficiente.
 #
-# Retorna: diccionario con las 4 claves:
-#   { 'elias_ars': float, 'elias_usd': float, 'mari_ars': float, 'mari_usd': float }
+# Retorna: diccionario con las 4 claves originales + 4 totales en USD:
+#   { 'elias_ars': float, 'elias_usd': float, 'mari_ars': float, 'mari_usd': float,
+#     'elias_total_usd': float, 'mari_total_usd': float,
+#     'ars_total_usd':   float, 'usd_total_usd':  float }
+#
+# Los totales en USD se calculan sumando la columna monto_usd (guardada al
+# insertar/editar cada movimiento), por lo que reflejan la cotización histórica
+# real al momento del movimiento y no dependen de la cotización actual.
+# Se exponen dos agrupamientos:
+#   - por persona: {elias_total_usd, mari_total_usd}
+#   - por moneda origen: {ars_total_usd, usd_total_usd}
+#     (útil para el gauge Total de la página de inicio).
 #
 def calcular_saldos():
     conn = conectar()
     cursor = conn.cursor()
 
-    # Una sola query que agrupa por persona+moneda y separa ingresos de gastos.
+    # Query 1: saldos por persona y moneda en moneda nativa (interfaz original).
     # Para ingresos de categoría "sueldo" se usa el factor_aplicado guardado en la fila.
     # Si factor_aplicado es NULL (movimientos viejos sin factor), se usa el monto completo.
     cursor.execute('''
@@ -185,16 +199,47 @@ def calcular_saldos():
         FROM movimientos
         GROUP BY persona, moneda
     ''')
-
     filas = cursor.fetchall()
+
+    # Query 2: saldos acumulados en USD agrupados por persona Y moneda.
+    # Si monto_usd es NULL (pendiente de backfill), se ignora esa fila en el SUM.
+    # Se replica el mismo criterio de factor_aplicado para sueldos.
+    # El costo_envio se prorratea: costo_envio * (monto_usd / monto).
+    cursor.execute('''
+        SELECT persona,
+               moneda,
+               SUM(CASE
+                       WHEN tipo = 'ingreso' AND LOWER(COALESCE(categoria, '')) = 'sueldo'
+                            AND factor_aplicado IS NOT NULL
+                           THEN COALESCE(monto_usd, 0) * factor_aplicado
+                       WHEN tipo = 'ingreso'
+                           THEN COALESCE(monto_usd, 0)
+                       ELSE 0
+                   END) AS ingresos_usd,
+               SUM(CASE WHEN tipo = 'gasto'
+                           THEN COALESCE(monto_usd, 0)
+                                + (COALESCE(costo_envio, 0) *
+                                   CASE WHEN monto > 0 AND monto_usd IS NOT NULL
+                                        THEN monto_usd / monto ELSE 0 END)
+                       ELSE 0
+                   END) AS gastos_usd
+        FROM movimientos
+        GROUP BY persona, moneda
+    ''')
+    filas_usd = cursor.fetchall()
+
     conn.close()
 
-    # Inicializamos los 4 saldos en 0 (por si no hay movimientos aún)
+    # Inicializamos los saldos en 0 (por si no hay movimientos aún)
     saldos = {
-        'elias_ars': 0.0,
-        'elias_usd': 0.0,
-        'mari_ars':  0.0,
-        'mari_usd':  0.0,
+        'elias_ars':       0.0,
+        'elias_usd':       0.0,
+        'mari_ars':        0.0,
+        'mari_usd':        0.0,
+        'elias_total_usd': 0.0,
+        'mari_total_usd':  0.0,
+        'ars_total_usd':   0.0,  # suma de monto_usd de movimientos en ARS (gauge Total)
+        'usd_total_usd':   0.0,  # suma de monto_usd de movimientos en USD (gauge Total)
     }
 
     for fila in filas:
@@ -202,6 +247,17 @@ def calcular_saldos():
         if clave in saldos:
             # saldo = ingresos acumulados - gastos acumulados
             saldos[clave] = fila['ingresos'] - fila['gastos']
+
+    for fila in filas_usd:
+        saldo_usd = (fila['ingresos_usd'] or 0.0) - (fila['gastos_usd'] or 0.0)
+
+        clave_persona = f"{fila['persona']}_total_usd"
+        if clave_persona in saldos:
+            saldos[clave_persona] += saldo_usd
+
+        clave_moneda = f"{fila['moneda']}_total_usd"
+        if clave_moneda in saldos:
+            saldos[clave_moneda] += saldo_usd
 
     return saldos
 
@@ -242,7 +298,7 @@ def obtener_movimientos(persona=None, moneda=None, pagina=None, por_pagina=20, m
     ).fetchone()[0]
 
     query = f'''
-        SELECT id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total
+        SELECT id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada
         FROM movimientos
         {where}
         ORDER BY fecha DESC, id DESC
@@ -268,14 +324,22 @@ def obtener_movimientos(persona=None, moneda=None, pagina=None, por_pagina=20, m
 #   INSERT INTO movimientos (fecha, descripcion, persona, moneda, tipo, monto)
 #   VALUES ('2024-03-15', 'Sueldo', 'elias', 'ars', 'ingreso', 500000.0)
 #
-def agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categoria=None, costo_envio=None, factor_aplicado=None, cuota_numero=None, cuota_total=None):
+def agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categoria=None, costo_envio=None, factor_aplicado=None, cuota_numero=None, cuota_total=None, monto_usd=None, cotizacion_usd_aplicada=None):
+    """
+    Inserta un nuevo movimiento en la base de datos.
+
+    Los parámetros monto_usd y cotizacion_usd_aplicada se calculan en app.py
+    antes de llamar a esta función (ver lógica en /agregar y /editar).
+      - Si moneda=='usd' → monto_usd=monto, cotizacion_usd_aplicada=None.
+      - Si moneda=='ars' → monto_usd=monto/cotizacion, cotizacion_usd_aplicada=cotizacion.
+    """
     conn = conectar()
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT INTO movimientos (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total))
+        INSERT INTO movimientos (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada))
     # Los ? se reemplazan en orden con los valores de la tupla.
     # Esto evita SQL Injection: nunca armar el string SQL con format() o +
 
@@ -330,15 +394,19 @@ def obtener_movimiento(id):
 #   UPDATE movimientos SET fecha=?, descripcion=?, ... WHERE id=?
 #
 
-def editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria=None, costo_envio=None):
+def editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria=None, costo_envio=None, monto_usd=None, cotizacion_usd_aplicada=None):
+    """
+    Actualiza un movimiento existente. Recalcula siempre monto_usd y
+    cotizacion_usd_aplicada según la moneda/monto nuevos (pasados por app.py).
+    """
     conn = conectar()
     cursor = conn.cursor()
 
     cursor.execute('''
         UPDATE movimientos
-        SET fecha=?, descripcion=?, persona=?, moneda=?, tipo=?, monto=?, categoria=?, costo_envio=?
+        SET fecha=?, descripcion=?, persona=?, moneda=?, tipo=?, monto=?, categoria=?, costo_envio=?, monto_usd=?, cotizacion_usd_aplicada=?
         WHERE id=?
-    ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, id))
+    ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_usd_aplicada, id))
 
     conn.commit()
     conn.close()

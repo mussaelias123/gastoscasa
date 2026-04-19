@@ -196,17 +196,23 @@
 <div class="gauges-saldos">
 
   {# — Gauge ARS: Elías vs Mari — #}
+  {# Los <circle> con valor 0 NO se renderizan: el stroke-linecap: round
+     dejaba un puntito redondo del color en el extremo aunque el dash fuera 0. #}
   {% set ga = gauges.ars %}
   <div class="gauge-wrap">
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
+      {% if ga.elias > 0 %}
       <circle class="gauge-arc gauge-arc-elias" cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ ga.elias }} 100"
         transform="rotate(-90 18 18)"/>
+      {% endif %}
+      {% if ga.mari > 0 %}
       <circle class="gauge-arc gauge-arc-mari" cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ ga.mari }} 100"
         stroke-dashoffset="-{{ ga.elias }}"
         transform="rotate(-90 18 18)"/>
+      {% endif %}
       <text x="18" y="16.5" class="gauge-text-title">AR$</text>
       <text x="18" y="21.5" class="gauge-text-sub">{{ ga.elias|int }}% / {{ ga.mari|int }}%</text>
     </svg>
@@ -221,13 +227,17 @@
   <div class="gauge-wrap">
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
+      {% if gu.elias > 0 %}
       <circle class="gauge-arc gauge-arc-elias" cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ gu.elias }} 100"
         transform="rotate(-90 18 18)"/>
+      {% endif %}
+      {% if gu.mari > 0 %}
       <circle class="gauge-arc gauge-arc-mari" cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ gu.mari }} 100"
         stroke-dashoffset="-{{ gu.elias }}"
         transform="rotate(-90 18 18)"/>
+      {% endif %}
       <text x="18" y="16.5" class="gauge-text-title">USD</text>
       <text x="18" y="21.5" class="gauge-text-sub">{{ gu.elias|int }}% / {{ gu.mari|int }}%</text>
     </svg>
@@ -242,13 +252,17 @@
   <div class="gauge-wrap">
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
+      {% if gt.ars > 0 %}
       <circle class="gauge-arc gauge-arc-ars" cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ gt.ars }} 100"
         transform="rotate(-90 18 18)"/>
+      {% endif %}
+      {% if gt.usd > 0 %}
       <circle class="gauge-arc gauge-arc-usd" cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ gt.usd }} 100"
         stroke-dashoffset="-{{ gt.ars }}"
         transform="rotate(-90 18 18)"/>
+      {% endif %}
       <text x="18" y="16.5" class="gauge-text-title">Total</text>
       <text x="18" y="21.5" class="gauge-text-sub">{{ gt.ars|int }}% / {{ gt.usd|int }}%</text>
     </svg>
@@ -256,7 +270,7 @@
       <span class="gauge-dot gauge-dot-ars"></span>AR$&nbsp;{{ gt.ars }}%
       <span class="gauge-dot gauge-dot-usd"></span>USD&nbsp;{{ gt.usd }}%
     </div>
-    <div class="gauge-tasa">@ ${{ gauges.usd_a_ars }}/USD</div>
+    <div class="gauge-tasa">@ ${{ gauges.cotizacion }}/USD</div>
   </div>
 
 </div>
