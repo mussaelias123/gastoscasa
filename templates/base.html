@@ -14,7 +14,7 @@ Cada página hija define su propio {% block contenido %}.
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fondo - {% block titulo %}Saldos{% endblock %}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ static_version }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
 
@@ -78,7 +78,7 @@ Cada página hija define su propio {% block contenido %}.
 
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ static_version }}"></script>
   {% block scripts %}{% endblock %}
 
 </body>

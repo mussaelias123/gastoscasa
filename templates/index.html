@@ -152,39 +152,49 @@
 {# ── TARJETA DE SALDOS ────────────────────────────────────────────────────── #}
 <div class="tarjeta-saldos">
   <h3 class="carga-rapida-titulo">💰 Saldos actuales</h3>
+  {# Tabla traspuesta: columnas = monedas (AR$, USD); filas = personas (Elías, Mari, Total).
+     <colgroup> define los anchos fijos — indispensable con table-layout:fixed
+     para que la columna de nombres sea angosta y las de valores agarren el resto. #}
+  {% set total_ars = saldos.elias_ars + saldos.mari_ars %}
+  {% set total_usd = saldos.elias_usd + saldos.mari_usd %}
   <table class="tabla-saldos">
+    <colgroup>
+      <col class="col-saldo-label">
+      <col class="col-saldo-valor">
+      <col class="col-saldo-valor">
+    </colgroup>
     <thead>
       <tr>
         <th></th>
-        <th class="col-saldo-elias">Elías</th>
-        <th class="col-saldo-mari">Mari</th>
-        <th class="col-saldo-total">Total</th>
+        <th class="col-saldo-ars">AR$</th>
+        <th class="col-saldo-usd">USD</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <th class="saldo-moneda-label">AR$</th>
+        <th class="saldo-persona-label saldo-label-elias">Elías</th>
         <td id="saldo-elias-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_ars < 0 else 'saldo-positivo' }}">
           {{ saldos.elias_ars | fmt_ars }}
         </td>
-        <td id="saldo-mari-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_ars < 0 else 'saldo-positivo' }}">
-          {{ saldos.mari_ars | fmt_ars }}
-        </td>
-        {% set total_ars = saldos.elias_ars + saldos.mari_ars %}
-        <td id="saldo-total-ars" class="saldo-monto {{ 'saldo-negativo' if total_ars < 0 else 'saldo-positivo' }}">
-          {{ total_ars | fmt_ars }}
+        <td id="saldo-elias-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_usd < 0 else 'saldo-positivo' }}">
+          {{ saldos.elias_usd | fmt_usd }}
         </td>
       </tr>
       <tr>
-        <th class="saldo-moneda-label">USD</th>
-        <td id="saldo-elias-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_usd < 0 else 'saldo-positivo' }}">
-          {{ saldos.elias_usd | fmt_usd }}
+        <th class="saldo-persona-label saldo-label-mari">Mari</th>
+        <td id="saldo-mari-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_ars < 0 else 'saldo-positivo' }}">
+          {{ saldos.mari_ars | fmt_ars }}
         </td>
         <td id="saldo-mari-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_usd < 0 else 'saldo-positivo' }}">
           {{ saldos.mari_usd | fmt_usd }}
         </td>
-        {% set total_usd = saldos.elias_usd + saldos.mari_usd %}
-        <td id="saldo-total-usd" class="saldo-monto {{ 'saldo-negativo' if total_usd < 0 else 'saldo-positivo' }}">
+      </tr>
+      <tr>
+        <th class="saldo-persona-label saldo-label-total">Total</th>
+        <td id="saldo-total-ars" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_ars < 0 else 'saldo-positivo' }}">
+          {{ total_ars | fmt_ars }}
+        </td>
+        <td id="saldo-total-usd" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_usd < 0 else 'saldo-positivo' }}">
           {{ total_usd | fmt_usd }}
         </td>
       </tr>

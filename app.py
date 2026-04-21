@@ -110,7 +110,22 @@ def inject_config():
         'user_email': flask_session.get('user_email', ''),
         'user_name': flask_session.get('user_name', ''),
         'user_photo': flask_session.get('user_photo', ''),
+        # mtime de los estáticos → cache-busting automático: el navegador
+        # recarga style.css/app.js cuando cambian, sin Ctrl+F5.
+        'static_version': _static_version(),
     }
+
+
+def _static_version():
+    """Devuelve el mtime más reciente de los archivos estáticos principales."""
+    try:
+        paths = [
+            os.path.join(app.static_folder, 'style.css'),
+            os.path.join(app.static_folder, 'app.js'),
+        ]
+        return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))
+    except Exception:
+        return '0'
 
 
 @app.template_filter('fmt_ars')

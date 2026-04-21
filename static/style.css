@@ -2280,15 +2280,6 @@ a.btn-filtro {
     flex-wrap: wrap;
   }
 
-  /* --- Tabla de saldos: scroll horizontal si se sale del ancho --- */
-  .tarjeta-saldos {
-    overflow-x: auto;
-  }
-
-  .tarjeta-saldos .tabla-saldos {
-    min-width: 0;
-  }
-
   /* --- Extras (envío + cuotas): apilar verticalmente en mobile --- */
   .form-rapido-extras {
     flex-wrap: wrap;
@@ -2326,11 +2317,10 @@ a.btn-filtro {
   color: white;
 }
 
-.tabla-saldos thead th.col-saldo-elias { color: var(--color-persona-elias); }
-.tabla-saldos thead th.col-saldo-mari  { color: var(--color-persona-mari); }
-.tabla-saldos thead th.col-saldo-total { color: var(--color-exito-suave); }
+.tabla-saldos thead th.col-saldo-ars { color: var(--color-exito-suave); }
+.tabla-saldos thead th.col-saldo-usd { color: var(--color-exito-suave); }
 
-.tabla-saldos tbody th.saldo-moneda-label {
+.tabla-saldos tbody th.saldo-persona-label {
   padding: 0.9rem 1rem;
   font-size: 1rem;
   font-weight: 700;
@@ -2338,8 +2328,12 @@ a.btn-filtro {
   background: var(--color-fondo-card);
   color: var(--color-texto);
   border-right: 2px solid var(--color-borde);
-  width: 3.5rem;
+  white-space: nowrap;
 }
+
+.tabla-saldos tbody th.saldo-label-elias { color: var(--color-persona-elias); }
+.tabla-saldos tbody th.saldo-label-mari  { color: var(--color-persona-mari);  }
+.tabla-saldos tbody th.saldo-label-total { color: var(--color-texto); }
 
 .tabla-saldos tbody td.saldo-monto {
   padding: 0.6rem 0.8rem;
@@ -2357,14 +2351,12 @@ a.btn-filtro {
 
 .tabla-saldos tbody td:last-child {
   border-right: none;
-  background: rgba(0,0,0,0.03);
 }
 
-@media (max-width: 500px) {
-  .tabla-saldos tbody td.saldo-monto {
-    font-size: 1.1rem;
-    padding: 0.6rem 0.5rem;
-  }
+/* Fila Total con fondo suave para destacarla */
+.tabla-saldos tbody tr:last-child td,
+.tabla-saldos tbody tr:last-child th {
+  background: rgba(0,0,0,0.03);
 }
 
 
@@ -2810,47 +2802,58 @@ a.btn-filtro {
   padding: 0.5rem 0.8rem 0.3rem;
   box-shadow: var(--sombra-card);
   border-left: 4px solid var(--color-primario);
-  /* Container query: el tamaño de fuente de la tabla se escala al ancho real
-     de la tarjeta, así nunca se desborda por más grandes que sean los números. */
+  /* Container query: el tamaño de fuente de los saldos se escala al ancho
+     real de la tarjeta, así los números nunca desbordan la celda. */
   container-type: inline-size;
-  overflow: hidden;
 }
 
 .tarjeta-saldos .carga-rapida-titulo {
   margin: 0 0 0.4rem;
 }
 
-/* En la tarjeta saldos, la tabla ocupa el ancho completo sin sombra extra.
-   table-layout:fixed reparte las columnas por igual, evitando que un único
-   valor largo estire la tabla más allá del contenedor. */
+/* Tabla traspuesta: 3 columnas (label + AR$ + USD), 3 filas (Elías/Mari/Total).
+   Anchos fijos vía <colgroup> (table-layout:fixed lee los anchos de <col>,
+   no de las celdas del body). Fuente fluida vía cqi. */
 .tarjeta-saldos .tabla-saldos {
   margin-bottom: 0;
   box-shadow: none;
+  border-radius: 0;          /* el card ya tiene border-radius */
   width: 100%;
   table-layout: fixed;
 }
 
+/* Ancho fijo de la columna de nombres: apenas entra "Elías"/"Total" en bold.
+   Las 2 columnas de valores (width:auto) se reparten el espacio restante. */
+.tarjeta-saldos .tabla-saldos col.col-saldo-label { width: 3.6rem; }
+.tarjeta-saldos .tabla-saldos col.col-saldo-valor { width: auto; }
+
 .tarjeta-saldos .tabla-saldos thead th {
-  padding: 0.3rem 0.2rem;
-  /* Escala fluida: min 0.6rem para legibilidad, max 0.85rem para no agrandar */
-  font-size: clamp(0.6rem, 2.8cqi, 0.85rem);
+  padding: 0.3rem 0.35rem;
+  font-size: clamp(0.7rem, 3cqi, 0.95rem);
   white-space: nowrap;
 }
 
+/* Celda de etiqueta (Elías/Mari/Total) */
+.tarjeta-saldos .saldo-persona-label {
+  padding: 0.4rem 0.4rem;
+  font-size: clamp(0.7rem, 3cqi, 0.95rem);
+  white-space: nowrap;
+}
+
+/* Celdas de valores (AR$ y USD) */
 .tarjeta-saldos .saldo-monto {
-  /* Escala fluida según el ancho real de la tarjeta (cqi = container query inline).
-     Con ~550px de ancho llega al tope (0.9rem); si la tarjeta se achica, la
-     fuente baja gradualmente hasta 0.55rem sin romper el layout. */
-  font-size: clamp(0.55rem, 3.2cqi, 0.9rem);
-  padding: 0.3rem 0.2rem;
+  /* cqi = 1% del ancho real de la tarjeta (container query).
+     A ~550px la fuente llega al tope (1.15rem); si la tarjeta se angosta,
+     baja hasta 0.65rem suavemente — nunca desborda. */
+  font-size: clamp(0.65rem, 3.6cqi, 1.15rem);
+  padding: 0.45rem 0.5rem;
   white-space: nowrap;
+  overflow: hidden;          /* seguridad: si el valor es extremo, no empuja la celda */
+  text-overflow: ellipsis;
 }
 
-.tarjeta-saldos .saldo-moneda-label {
-  padding: 0.3rem 0.3rem;
-  font-size: clamp(0.6rem, 2.8cqi, 0.85rem);
-  width: 2.2rem;       /* columna moneda estrecha pero suficiente */
-}
+/* Fila Total — en negrita */
+.tarjeta-saldos .saldo-monto-total { font-weight: 800; }
 
 
 /* ============================================================================
