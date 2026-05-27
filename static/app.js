@@ -620,6 +620,7 @@ function initFiltros() {
     var filtroPersona = 'todos';
     var filtroMoneda  = 'todos';
     var filtroSinCategoria = false;
+    var filtroBusqueda = '';
 
     function aplicarFiltros() {
         var filas = document.querySelectorAll('#tabla-movimientos tbody tr');
@@ -629,12 +630,14 @@ function initFiltros() {
             var persona = fila.dataset.persona;
             var moneda  = fila.dataset.moneda;
             var categoria = fila.dataset.categoria;
+            var descripcion = (fila.dataset.descripcion || '').toLowerCase();
 
             var okPersona   = (filtroPersona === 'todos' || persona === filtroPersona);
             var okMoneda    = (filtroMoneda  === 'todos' || moneda  === filtroMoneda);
             var okCategoria = (!filtroSinCategoria || categoria === 'No Definido');
+            var okBusqueda  = (filtroBusqueda === '' || descripcion.indexOf(filtroBusqueda) !== -1);
 
-            if (okPersona && okMoneda && okCategoria) {
+            if (okPersona && okMoneda && okCategoria && okBusqueda) {
                 fila.style.display = '';
                 visibles++;
             } else {
@@ -668,6 +671,14 @@ function initFiltros() {
         btnSinCategoria.addEventListener('click', function() {
             filtroSinCategoria = !filtroSinCategoria;
             btnSinCategoria.classList.toggle('filtro-activo', filtroSinCategoria);
+            aplicarFiltros();
+        });
+    }
+
+    var inputBuscar = document.getElementById('input-buscar');
+    if (inputBuscar) {
+        inputBuscar.addEventListener('input', function() {
+            filtroBusqueda = inputBuscar.value.trim().toLowerCase();
             aplicarFiltros();
         });
     }
