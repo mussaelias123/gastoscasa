@@ -874,69 +874,74 @@ def iniciar_scheduler_backup():
 # SCHEDULER DE COTIZACIÓN DEL DÓLAR
 # =============================================================================
 #
-# - Refresca la cotización del dólar oficial 1 vez por día.
-# - La lógica es análoga al scheduler de backup: un hilo daemon con sleep 3600s
-#   que comprueba si ya pasó un día desde el último refresh exitoso.
-# - Al arrancar la app, si la última actualización fue ayer o antes, dispara
-#   un refresh inmediato en un hilo separado (no bloqueante).
+# - Al arrancar el servicio: SIEMPRE refresca la cotización (en hilo separado).
+# - Durante la ejecución: refresca automáticamente todos los días a las
+#   horas indicadas en HORAS_REFRESH_COTIZACION (08:00 y 17:00).
 # - Si la API falla, el último valor cacheado en config.json se mantiene.
+# - Se reintenta cada 15 min después de un fallo en una hora programada,
+#   para cubrir el caso de que dolarapi.com esté caído justo a esa hora.
 #
 
+HORAS_REFRESH_COTIZACION = [8, 17]   # horas (0-23) en las que refrescar diariamente
+REINTENTO_FALLO_SEGUNDOS = 15 * 60   # si falla en hora programada, reintentar a los 15 min
 
-def _fecha_ultima_cotizacion():
+
+def _proximo_horario_refresh(ahora):
     """
-    Retorna la fecha (date) del último refresh EXITOSO de la cotización,
-    o None si nunca hubo uno o no se puede parsear.
+    Dado un datetime 'ahora', devuelve el próximo datetime en el que toca
+    refrescar (la próxima hora de HORAS_REFRESH_COTIZACION, hoy o mañana).
     """
-    cfg = config.cargar_config(CONFIG_FILE)
-    if not cfg.get('cotizacion_ok'):
-        return None
-    intento = cfg.get('cotizacion_ultimo_intento')
-    if not intento:
-        return None
-    try:
-        return datetime.strptime(intento[:10], '%Y-%m-%d').date()
-    except Exception:
-        return None
+    candidatos = []
+    for h in HORAS_REFRESH_COTIZACION:
+        candidato_hoy = ahora.replace(hour=h, minute=0, second=0, microsecond=0)
+        if candidato_hoy > ahora:
+            candidatos.append(candidato_hoy)
+        else:
+            candidatos.append(candidato_hoy + timedelta(days=1))
+    return min(candidatos)
 
 
 def _scheduler_cotizacion():
     """
-    Hilo de fondo: comprueba cada hora si hay que refrescar la cotización.
-    Regla: si no hubo refresh exitoso hoy → refrescar.
+    Hilo de fondo: duerme hasta el próximo horario programado y refresca.
+    Si falla, reintenta en REINTENTO_FALLO_SEGUNDOS.
     """
     while True:
         try:
-            ultima = _fecha_ultima_cotizacion()
-            hoy = datetime.now().date()
-            if ultima is None or ultima < hoy:
-                ok, mensaje = cotizacion.refrescar_cache(CONFIG_FILE)
-                print(f"{'OK' if ok else 'AVISO'}: Scheduler cotización: {mensaje}")
+            ahora    = datetime.now()
+            proximo  = _proximo_horario_refresh(ahora)
+            segundos = max(1, int((proximo - ahora).total_seconds()))
+            time.sleep(segundos)
+
+            ok, mensaje = cotizacion.refrescar_cache(CONFIG_FILE)
+            print(f"{'OK' if ok else 'AVISO'}: Scheduler cotización: {mensaje}")
+
+            if not ok:
+                time.sleep(REINTENTO_FALLO_SEGUNDOS)
+                ok2, mensaje2 = cotizacion.refrescar_cache(CONFIG_FILE)
+                print(f"{'OK' if ok2 else 'AVISO'}: Reintento cotización: {mensaje2}")
         except Exception as e:
             print(f"AVISO: Error en scheduler de cotización: {e}")
-        time.sleep(3600)  # revisar cada hora
+            time.sleep(REINTENTO_FALLO_SEGUNDOS)
 
 
 def iniciar_scheduler_cotizacion():
     """
-    Arranca el scheduler de cotización y, si corresponde, hace un refresh
-    inmediato al inicio (en hilo separado, no bloqueante).
-    Lógica: si la última actualización exitosa fue ayer o antes, refrescar ahora.
+    Arranca el scheduler de cotización. SIEMPRE dispara un refresh inmediato
+    al iniciar el servicio (en hilo separado, no bloqueante), y luego refresca
+    diariamente a las horas de HORAS_REFRESH_COTIZACION.
     """
-    ultima = _fecha_ultima_cotizacion()
-    hoy    = datetime.now().date()
-
-    if ultima is None or ultima < hoy:
-        threading.Thread(
-            target=cotizacion.refrescar_cache,
-            args=(CONFIG_FILE,),
-            daemon=True,
-            name='cotizacion-inicial'
-        ).start()
+    threading.Thread(
+        target=cotizacion.refrescar_cache,
+        args=(CONFIG_FILE,),
+        daemon=True,
+        name='cotizacion-inicial'
+    ).start()
 
     hilo = threading.Thread(target=_scheduler_cotizacion, daemon=True, name='cotizacion-scheduler')
     hilo.start()
-    print("OK: Scheduler de cotización iniciado (refresh diario, dolarapi.com).")
+    horas_str = ', '.join(f"{h:02d}:00" for h in HORAS_REFRESH_COTIZACION)
+    print(f"OK: Scheduler de cotización iniciado (al inicio + diario a {horas_str}).")
 
 
 # =============================================================================
