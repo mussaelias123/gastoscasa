@@ -26,6 +26,8 @@
 | `google_client_id`           | `""`         | OAuth                                        |
 | `google_client_secret`       | `""`         | OAuth                                        |
 | `secret_key`                 | `""`         | Flask session signing                        |
+| `paleta_light`               | dict 21 vars | Colores base en modo claro (editables)       |
+| `paleta_dark`                | dict 21 vars | Colores base en modo oscuro (editables)      |
 
 ## API
 - `cargar_config(ruta=None)` → dict con DEFAULTS + overrides del archivo.

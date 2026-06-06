@@ -14,6 +14,29 @@ Cada página hija define su propio {% block contenido %}.
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fondo - {% block titulo %}Saldos{% endblock %}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+
+  {# Anti-flicker: aplica data-theme antes del primer paint, sin esperar JS externo #}
+  <script>
+    (function () {
+      var t = localStorage.getItem('tema') || 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+
+  {# Paleta dinámica desde config — sobreescribe los fallbacks de style.css #}
+  <style>
+    :root {
+      {% for var, val in cfg.paleta_light.items() %}
+      --color-{{ var }}: {{ val }};
+      {% endfor %}
+    }
+    html[data-theme="dark"] {
+      {% for var, val in cfg.paleta_dark.items() %}
+      --color-{{ var }}: {{ val }};
+      {% endfor %}
+    }
+  </style>
+
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ static_version }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>

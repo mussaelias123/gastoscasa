@@ -3094,67 +3094,119 @@ a.btn-filtro {
 
 /* ============================================================================
    PALETA DE COLORES — Sección en Settings
-   Grilla visual que muestra todos los colores de la app con su propósito.
+   Dos tablas (Light Mode / Dark Mode) con color picker editable por fila.
    ============================================================================ */
 
-.paleta-grupo-titulo {
-  font-size: 0.72rem;
+.paleta-tabla-titulo {
+  font-size: 0.95rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-texto-muted);
-  margin: 1.5rem 0 0.6rem;
+  color: var(--color-texto);
+  margin: 1.25rem 0 0.5rem;
 }
 
-.paleta-grupo-titulo:first-of-type {
+.paleta-tabla-titulo:first-of-type {
   margin-top: 0.5rem;
 }
 
-.paleta-grilla {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
-  gap: 0.6rem;
-}
-
-.paleta-chip {
-  border-radius: var(--radio-borde);
+.paleta-tabla-wrap {
+  overflow-x: auto;
   border: 1px solid var(--color-borde);
-  overflow: hidden;
-}
-
-.paleta-chip-muestra {
-  height: 52px;
-}
-
-.paleta-chip-info {
-  padding: 0.5rem 0.65rem;
+  border-radius: var(--radio-borde);
   background: var(--color-superficie);
+  margin-bottom: 0.5rem;
 }
 
-.paleta-chip-nombre {
-  font-size: 0.78rem;
-  font-weight: 600;
+.paleta-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
   color: var(--color-texto);
-  margin-bottom: 1px;
 }
 
-.paleta-chip-var {
-  font-size: 0.68rem;
+.paleta-tabla thead th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-texto-muted);
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--color-borde);
+  background: var(--color-fondo);
+}
+
+.paleta-tabla tbody td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-borde);
+  vertical-align: middle;
+}
+
+.paleta-tabla tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.paleta-tabla .col-muestra {
+  width: 44px;
+}
+
+.paleta-tabla .col-input {
+  width: 70px;
+  text-align: center;
+}
+
+.paleta-muestra {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--color-borde);
+}
+
+.paleta-nombre {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.paleta-var {
   font-family: monospace;
+  font-size: 0.78rem;
   color: var(--color-acento);
+  background: transparent;
+  white-space: nowrap;
 }
 
-.paleta-chip-hex {
-  font-size: 0.68rem;
-  font-family: monospace;
+.paleta-uso {
   color: var(--color-texto-muted);
+  font-size: 0.8rem;
 }
 
-.paleta-chip-uso {
-  font-size: 0.67rem;
-  color: var(--color-texto-muted);
-  margin-top: 3px;
-  line-height: 1.35;
+.paleta-input {
+  width: 44px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--color-borde);
+  border-radius: 6px;
+  background: var(--color-superficie);
+  cursor: pointer;
+}
+
+.paleta-input::-webkit-color-swatch-wrapper { padding: 2px; }
+.paleta-input::-webkit-color-swatch { border: none; border-radius: 4px; }
+.paleta-input::-moz-color-swatch { border: none; border-radius: 4px; }
+
+.paleta-acciones {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .paleta-tabla { font-size: 0.78rem; }
+  .paleta-tabla thead th,
+  .paleta-tabla tbody td { padding: 0.4rem 0.5rem; }
+  .paleta-uso { font-size: 0.72rem; }
 }
 
 

@@ -18,9 +18,20 @@
 
 ## Paleta de colores (regla NO negociable)
 
-Definida en `static/style.css → :root` (~líneas 83–145). **NUNCA usar colores literales en CSS, JS ni HTML**. Siempre `var(--color-...)`.
+**Config-driven desde Fase 1 de dark mode.** Los 21 colores base se guardan en `config.json` como `paleta_light` y `paleta_dark`. `base.html` los inyecta en un `<style>` en el `<head>` antes del stylesheet, así:
 
-Variables actuales (al modificar, actualizar también la página Settings → Paleta):
+```css
+:root { --color-acento: #4f46e5; ... }          /* desde cfg.paleta_light */
+html[data-theme="dark"] { --color-acento: #6366f1; ... }  /* desde cfg.paleta_dark */
+```
+
+`static/style.css → :root` sigue definiendo los mismos colores como **fallback** (por si config.py no carga). Regla intacta: **NUNCA usar colores literales**. Siempre `var(--color-...)`.
+
+**Dark mode:** `document.documentElement.dataset.theme = 'dark'` activa la paleta oscura. Un script inline en `base.html` (antes del stylesheet) lee `localStorage.getItem('tema')` y setea `data-theme` antes del primer paint, evitando parpadeo. Default: `'light'`.
+
+**UI de edición:** en `settings.html → sección "Paleta de colores"` hay dos `<table>` (Light Mode y Dark Mode) generadas por Jinja iterando `cfg.paleta_light` / `cfg.paleta_dark` con `paleta_meta` (lista pasada desde `app.py`). Cada fila: muestra | nombre | `--variable` | uso | `<input type="color">`. Botón "Guardar paleta" → `POST /api/paleta` (JSON con ambas paletas, valida hex, escribe `config.json`). Al recargar, `base.html` re-inyecta los valores. Cero hex hardcodeado en el HTML.
+
+Variables actuales (al modificar, actualizar también `config.py DEFAULTS`, `app.py PALETA_META` y la página Settings → Paleta):
 
 | Variable                  | Uso semántico                                  |
 |---------------------------|------------------------------------------------|

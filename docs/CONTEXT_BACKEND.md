@@ -24,6 +24,7 @@
 | POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD.               |
 | GET    | `/api/metrics`            | `metrics`             | JSON con métricas (CPU, RAM, etc.).              |
 | GET/POST | `/settings`             | `settings`            | Página de configuración (cfg.json + paleta).     |
+| POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
 | GET    | `/git/ping`               | `git_ping`            | Verifica que git esté disponible.                |
 | POST   | `/git/commit`             | `git_commit`          | Commit + push automático.                        |
 | GET    | `/git/log`                | `git_log`             | Últimos commits.                                 |
@@ -34,6 +35,8 @@
 - `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
+- `PALETA_META`: lista `(key, nombre, uso)` con las 21 variables de paleta. Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
+- `_HEX_RE`: regex `^#[0-9a-fA-F]{6}$` para validar hex de la paleta.
 
 ## Schedulers en hilo
 - `iniciar_scheduler_backup()`: backup `gastos.db` cada hora a `backups/`.

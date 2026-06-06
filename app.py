@@ -52,11 +52,44 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 from math import ceil
+import re as _re
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 import database
 import config
 import cotizacion
 import psutil
+
+
+# =============================================================================
+# METADATA DE LA PALETA — usada por la página Settings para renderizar las tablas
+# =============================================================================
+# Orden y textos siguen la tabla de docs/CONTEXT_FRONTEND.md.
+# Las claves coinciden con las de cfg.paleta_light / cfg.paleta_dark.
+PALETA_META = [
+    ("acento",         "Acento",            "Botones primarios, links, focus ring"),
+    ("acento-oscuro",  "Acento oscuro",     "Hover de botones, fondo nav"),
+    ("fondo",          "Fondo",             "Fondo general"),
+    ("superficie",     "Superficie",        "Tarjetas, inputs, modales"),
+    ("texto",          "Texto",             "Texto principal"),
+    ("texto-muted",    "Texto muted",       "Texto secundario"),
+    ("borde",          "Borde",             "Bordes, separadores"),
+    ("exito",          "Éxito",             "Ingresos, OK, semáforo verde"),
+    ("alerta",         "Alerta",            "Pendiente, advertencia"),
+    ("peligro",        "Peligro",           "Eliminar, error, saldo negativo"),
+    ("exito-suave",    "Éxito suave",       "Fondo badge OK"),
+    ("alerta-suave",   "Alerta suave",      "Fondo badge alerta"),
+    ("peligro-suave",  "Peligro suave",     "Fondo badge error"),
+    ("persona-elias",  "Persona — Elías",   "Identificador visual Elías"),
+    ("persona-mari",   "Persona — Mari",    "Identificador visual Mari"),
+    ("moneda-ars",     "Moneda — AR$",      "Badge AR$, gauge total ARS"),
+    ("moneda-usd",     "Moneda — USD",      "Badge USD, gauge total USD"),
+    ("deco-1",         "Deco 1",            "Barra de título (header)"),
+    ("deco-2",         "Deco 2",            "Barra de navegación"),
+    ("deco-3",         "Deco 3",            "Separadores, iconos secundarios"),
+    ("deco-4",         "Deco 4",            "Hover backgrounds, divisores ligeros"),
+]
+
+_HEX_RE = _re.compile(r'^#[0-9a-fA-F]{6}$')
 
 
 # =============================================================================
@@ -671,7 +704,58 @@ def settings():
 
     cfg = config.cargar_config(CONFIG_FILE)
     fijos = database.obtener_gastos_fijos(solo_activos=False)
-    return render_template('settings.html', cfg=cfg, fijos=fijos)
+    return render_template('settings.html', cfg=cfg, fijos=fijos, paleta_meta=PALETA_META)
+
+
+# =============================================================================
+# RUTA: Guardar paleta de colores desde Settings
+# URL: POST http://localhost:5000/api/paleta
+# =============================================================================
+#
+# Recibe JSON:
+#   {"paleta_light": {"acento": "#...", ...}, "paleta_dark": {"acento": "#...", ...}}
+#
+# Valida que todos los valores sean hex de 6 dígitos (#rrggbb) y que las claves
+# coincidan con las definidas en PALETA_META. Guarda en config.json.
+# El render de Jinja en base.html aplica los valores al recargar.
+#
+@app.route('/api/paleta', methods=['POST'])
+def api_paleta():
+    try:
+        data = request.get_json(silent=True) or {}
+        light = data.get('paleta_light') or {}
+        dark  = data.get('paleta_dark')  or {}
+
+        claves = {k for k, _, _ in PALETA_META}
+
+        def _validar(d, nombre):
+            if not isinstance(d, dict):
+                raise ValueError(f"{nombre} no es un objeto válido")
+            for k, v in d.items():
+                if k not in claves:
+                    raise ValueError(f"Clave desconocida en {nombre}: {k}")
+                if not isinstance(v, str) or not _HEX_RE.match(v):
+                    raise ValueError(f"Color inválido en {nombre}.{k}: {v}")
+
+        _validar(light, 'paleta_light')
+        _validar(dark,  'paleta_dark')
+
+        cfg_actual = config.cargar_config(CONFIG_FILE)
+        paleta_light_nueva = dict(cfg_actual.get('paleta_light', {}))
+        paleta_dark_nueva  = dict(cfg_actual.get('paleta_dark', {}))
+        paleta_light_nueva.update(light)
+        paleta_dark_nueva.update(dark)
+
+        config.guardar_config({
+            'paleta_light': paleta_light_nueva,
+            'paleta_dark':  paleta_dark_nueva,
+        }, CONFIG_FILE)
+
+        return jsonify({'ok': True, 'mensaje': 'Paleta guardada.'})
+    except ValueError as e:
+        return jsonify({'ok': False, 'mensaje': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'mensaje': str(e)}), 500
 
 
 # =============================================================================

@@ -428,246 +428,56 @@
 <div class="tarjeta settings-seccion" id="paleta-colores">
   <h3 class="settings-titulo-seccion">Paleta de colores</h3>
   <p class="settings-info">
-    Los 15 colores de la app. Cada uno está definido como variable CSS en
-    <code>:root</code> dentro de <code>static/style.css</code> — modificar
-    un valor ahí afecta toda la interfaz.
+    Los 21 colores base de la app, editables por tema. Se guardan en
+    <code>config.json</code> y se aplican al recargar.
   </p>
 
-  <p class="paleta-grupo-titulo">Acento e interfaz</p>
-  <div class="paleta-grilla">
+  {% for tema, titulo, paleta in [('light', 'Light Mode', cfg.paleta_light),
+                                  ('dark',  'Dark Mode',  cfg.paleta_dark)] %}
+  <h4 class="paleta-tabla-titulo">{{ titulo }}</h4>
+  <div class="paleta-tabla-wrap">
+    <table class="paleta-tabla" data-tema="{{ tema }}">
+      <thead>
+        <tr>
+          <th class="col-muestra"></th>
+          <th>Nombre</th>
+          <th>Variable</th>
+          <th>Uso</th>
+          <th class="col-input">Color</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for key, nombre, uso in paleta_meta %}
+        <tr>
+          <td class="col-muestra">
+            <span class="paleta-muestra" style="background: {{ paleta[key] }};"></span>
+          </td>
+          <td class="paleta-nombre">{{ nombre }}</td>
+          <td><code class="paleta-var">--color-{{ key }}</code></td>
+          <td class="paleta-uso">{{ uso }}</td>
+          <td class="col-input">
+            <input type="color"
+                   class="paleta-input"
+                   data-tema="{{ tema }}"
+                   data-key="{{ key }}"
+                   value="{{ paleta[key] }}">
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
 
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#4f46e5;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Acento</div>
-        <div class="paleta-chip-var">--color-acento</div>
-        <div class="paleta-chip-hex">#4f46e5</div>
-        <div class="paleta-chip-uso">Botones primarios, links, focus ring</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#4338ca;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Acento oscuro</div>
-        <div class="paleta-chip-var">--color-acento-oscuro</div>
-        <div class="paleta-chip-hex">#4338ca</div>
-        <div class="paleta-chip-uso">Hover de botones primarios</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#f9fafb; border-bottom:1px solid #e5e7eb;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Fondo</div>
-        <div class="paleta-chip-var">--color-fondo</div>
-        <div class="paleta-chip-hex">#f9fafb</div>
-        <div class="paleta-chip-uso">Fondo general de página</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#ffffff; border-bottom:1px solid #e5e7eb;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Superficie</div>
-        <div class="paleta-chip-var">--color-superficie</div>
-        <div class="paleta-chip-hex">#ffffff</div>
-        <div class="paleta-chip-uso">Tarjetas, inputs, modales</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#111827;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Texto</div>
-        <div class="paleta-chip-var">--color-texto</div>
-        <div class="paleta-chip-hex">#111827</div>
-        <div class="paleta-chip-uso">Texto principal</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#6b7280;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Texto muted</div>
-        <div class="paleta-chip-var">--color-texto-muted</div>
-        <div class="paleta-chip-hex">#6b7280</div>
-        <div class="paleta-chip-uso">Texto secundario, ayuda, labels</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#e5e7eb;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Borde</div>
-        <div class="paleta-chip-var">--color-borde</div>
-        <div class="paleta-chip-hex">#e5e7eb</div>
-        <div class="paleta-chip-uso">Bordes de tarjetas, inputs, separadores</div>
-      </div>
-    </div>
-
-  </div>{# fin grilla interfaz #}
-
-  <p class="paleta-grupo-titulo">Semánticos</p>
-  <div class="paleta-grilla">
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#10b981;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Éxito</div>
-        <div class="paleta-chip-var">--color-exito</div>
-        <div class="paleta-chip-hex">#10b981</div>
-        <div class="paleta-chip-uso">Ingresos, saldo positivo, OK, semáforo verde</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#f59e0b;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Alerta</div>
-        <div class="paleta-chip-var">--color-alerta</div>
-        <div class="paleta-chip-hex">#f59e0b</div>
-        <div class="paleta-chip-uso">Pendiente, advertencia, semáforo amarillo</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#ef4444;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Peligro</div>
-        <div class="paleta-chip-var">--color-peligro</div>
-        <div class="paleta-chip-hex">#ef4444</div>
-        <div class="paleta-chip-uso">Eliminar, errores, saldo negativo, semáforo rojo</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#d1fae5;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Éxito suave</div>
-        <div class="paleta-chip-var">--color-exito-suave</div>
-        <div class="paleta-chip-hex">#d1fae5</div>
-        <div class="paleta-chip-uso">Fondo de badges y banners OK/éxito</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#fef3c7;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Alerta suave</div>
-        <div class="paleta-chip-var">--color-alerta-suave</div>
-        <div class="paleta-chip-hex">#fef3c7</div>
-        <div class="paleta-chip-uso">Fondo de badges y banners pendiente/alerta</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#fee2e2;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Peligro suave</div>
-        <div class="paleta-chip-var">--color-peligro-suave</div>
-        <div class="paleta-chip-hex">#fee2e2</div>
-        <div class="paleta-chip-uso">Fondo de badges y banners error/peligro</div>
-      </div>
-    </div>
-
-  </div>{# fin grilla semánticos #}
-
-  <p class="paleta-grupo-titulo">Personas</p>
-  <div class="paleta-grilla">
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#0284c7;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Elías</div>
-        <div class="paleta-chip-var">--color-persona-elias</div>
-        <div class="paleta-chip-hex">#0284c7</div>
-        <div class="paleta-chip-uso">Gauge, badge, encabezado de columna en tabla de saldos</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#7c3aed;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Mari</div>
-        <div class="paleta-chip-var">--color-persona-mari</div>
-        <div class="paleta-chip-hex">#7c3aed</div>
-        <div class="paleta-chip-uso">Gauge, badge, encabezado de columna en tabla de saldos</div>
-      </div>
-    </div>
-
-  </div>{# fin grilla personas #}
-
-  <p class="paleta-grupo-titulo">Monedas</p>
-  <div class="paleta-grilla">
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#74acdf;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">AR$ — Celeste argentina</div>
-        <div class="paleta-chip-var">--color-moneda-ars</div>
-        <div class="paleta-chip-hex">#74acdf</div>
-        <div class="paleta-chip-uso">Badge AR$ en tabla, selector Moneda, gauge Total (arco ARS)</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#3d8b37;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">USD — Verde dólar</div>
-        <div class="paleta-chip-var">--color-moneda-usd</div>
-        <div class="paleta-chip-hex">#3d8b37</div>
-        <div class="paleta-chip-uso">Badge USD en tabla, selector Moneda, gauge Total (arco USD)</div>
-      </div>
-    </div>
-
-  </div>{# fin grilla monedas #}
-
-  <p class="paleta-grupo-titulo">Grises decorativos</p>
-  <div class="paleta-grilla">
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#1f2937;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Deco 1 — muy oscuro</div>
-        <div class="paleta-chip-var">--color-deco-1</div>
-        <div class="paleta-chip-hex">#1f2937</div>
-        <div class="paleta-chip-uso">Barra de título (header superior)</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#374151;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Deco 2 — oscuro</div>
-        <div class="paleta-chip-var">--color-deco-2</div>
-        <div class="paleta-chip-hex">#374151</div>
-        <div class="paleta-chip-uso">Barra de navegación (tabs Inicio / Resumen / Settings)</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#6b7280;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Deco 3 — medio</div>
-        <div class="paleta-chip-var">--color-deco-3</div>
-        <div class="paleta-chip-hex">#6b7280</div>
-        <div class="paleta-chip-uso">Separadores, iconos secundarios, texto de apoyo</div>
-      </div>
-    </div>
-
-    <div class="paleta-chip">
-      <div class="paleta-chip-muestra" style="background:#d1d5db; border-bottom:1px solid #e5e7eb;"></div>
-      <div class="paleta-chip-info">
-        <div class="paleta-chip-nombre">Deco 4 — suave</div>
-        <div class="paleta-chip-var">--color-deco-4</div>
-        <div class="paleta-chip-hex">#d1d5db</div>
-        <div class="paleta-chip-uso">Hover backgrounds, fondos sutiles, divisores ligeros</div>
-      </div>
-    </div>
-
-  </div>{# fin grilla grises decorativos #}
-
+  <div class="paleta-acciones">
+    <button type="button" class="btn btn-primario" id="btn-guardar-paleta">
+      Guardar paleta
+    </button>
+    <button type="button" class="btn btn-secundario" id="btn-reset-paleta">
+      Descartar cambios
+    </button>
+    <span id="paleta-msg" class="settings-cotizacion-msg" role="status"></span>
+  </div>
 </div>{# fin paleta-colores #}
 
 {% endblock %}
@@ -905,6 +715,85 @@ setInterval(fetchMetrics, 3000);
         msg.textContent = '⚠ Error de red: ' + e.message;
         msg.className = 'settings-cotizacion-msg settings-cotizacion-msg-error';
       }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  });
+})();
+
+
+// ── Guardar paleta de colores ───────────────────────────────────────────────
+(function () {
+  var btn      = document.getElementById('btn-guardar-paleta');
+  var btnReset = document.getElementById('btn-reset-paleta');
+  var msg      = document.getElementById('paleta-msg');
+  if (!btn) return;
+
+  // Snapshot inicial para "Descartar cambios" y para detectar muestra a actualizar.
+  var inputs = document.querySelectorAll('.paleta-input');
+  var iniciales = {};
+  inputs.forEach(function (inp) {
+    iniciales[inp.dataset.tema + ':' + inp.dataset.key] = inp.value;
+  });
+
+  // Actualiza la muestra al lado del input al cambiar el color (preview local).
+  inputs.forEach(function (inp) {
+    inp.addEventListener('input', function () {
+      var muestra = inp.closest('tr').querySelector('.paleta-muestra');
+      if (muestra) muestra.style.background = inp.value;
+    });
+  });
+
+  function _msg(texto, esError) {
+    msg.textContent = texto;
+    msg.className = 'settings-cotizacion-msg' + (esError ? ' settings-cotizacion-msg-error' : '');
+  }
+
+  btnReset.addEventListener('click', function () {
+    inputs.forEach(function (inp) {
+      var ini = iniciales[inp.dataset.tema + ':' + inp.dataset.key];
+      inp.value = ini;
+      var muestra = inp.closest('tr').querySelector('.paleta-muestra');
+      if (muestra) muestra.style.background = ini;
+    });
+    _msg('Cambios descartados.', false);
+  });
+
+  btn.addEventListener('click', async function () {
+    var textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+    _msg('', false);
+
+    var paleta_light = {};
+    var paleta_dark  = {};
+    inputs.forEach(function (inp) {
+      if (inp.dataset.tema === 'light') paleta_light[inp.dataset.key] = inp.value;
+      else                              paleta_dark[inp.dataset.key]  = inp.value;
+    });
+
+    try {
+      const resp = await fetch('/api/paleta', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ paleta_light: paleta_light, paleta_dark: paleta_dark })
+      });
+      const data = await resp.json().catch(function () {
+        return { ok: false, mensaje: 'Respuesta no válida del servidor.' };
+      });
+
+      if (data.ok) {
+        _msg('✓ Paleta guardada. Recargando…', false);
+        setTimeout(function () { window.location.reload(); }, 600);
+        return;
+      }
+      _msg('⚠ ' + (data.mensaje || 'No se pudo guardar.'), true);
+    } catch (e) {
+      _msg('⚠ Error de red: ' + e.message, true);
     } finally {
       btn.disabled = false;
       btn.textContent = textoOriginal;
