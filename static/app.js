@@ -88,6 +88,7 @@ document.addEventListener('DOMContentLoaded', function() {
     inicializarFormatoMonto();
     inicializarPersona();
     inicializarColoresDinamicos();
+    inicializarToggleTema();
     resaltarNavActual();
     inicializarCategorias();
     initFiltros();
@@ -462,13 +463,10 @@ FUNCIÓN: inicializarColoresDinamicos()
 ================================================================================
 Propósito:
   Aplica colores de fondo dinámicos a los selects de Persona y Moneda del
-  formulario rápido, reflejando visualmente la selección actual.
-
-  Colores alineados con los badges de la tabla:
-    Elías  → #3d7ab5 (azul,   badge-elias)
-    Mari   → #9b59b6 (violeta, badge-mari)
-    AR$    → #3d5a80 (azul primario)
-    USD    → #1a6632 (verde oscuro, igual que badge-moneda-usd color)
+  formulario rápido. Lee colores desde variables CSS de paleta para soportar
+  tanto light como dark mode. El texto del select se elige automáticamente
+  (claro u oscuro) según la luminosidad del fondo — evita hardcodear 'white'
+  que falla en dark mode donde los colores de persona/moneda son más claros.
 ================================================================================
 */
 function inicializarColoresDinamicos() {
@@ -477,21 +475,24 @@ function inicializarColoresDinamicos() {
     var selectPersonaFinal = document.getElementById('persona_final');
     var selectMonedaFinal  = document.getElementById('moneda_final');
 
-    /* Lee los colores de las variables CSS de la paleta — sin hardcodear */
-    var cssVars = getComputedStyle(document.documentElement);
-    var colorElias  = cssVars.getPropertyValue('--color-persona-elias').trim();
-    var colorMari   = cssVars.getPropertyValue('--color-persona-mari').trim();
-    var colorArs    = cssVars.getPropertyValue('--color-moneda-ars').trim();
-    var colorUsd    = cssVars.getPropertyValue('--color-moneda-usd').trim();
-
-    var coloresPersona = {
-        elias: { bg: colorElias, text: 'white' },
-        mari:  { bg: colorMari,  text: 'white' }
-    };
-    var coloresMoneda = {
-        ars: { bg: colorArs, text: 'white' },
-        usd: { bg: colorUsd, text: 'white' }
-    };
+    /* Lee las CSS vars del tema activo y construye los mapas de color */
+    function buildMapas() {
+        var cssVars = getComputedStyle(document.documentElement);
+        var colorElias = cssVars.getPropertyValue('--color-persona-elias').trim();
+        var colorMari  = cssVars.getPropertyValue('--color-persona-mari').trim();
+        var colorArs   = cssVars.getPropertyValue('--color-moneda-ars').trim();
+        var colorUsd   = cssVars.getPropertyValue('--color-moneda-usd').trim();
+        return {
+            persona: {
+                elias: { bg: colorElias, text: 'white' },
+                mari:  { bg: colorMari,  text: 'white' }
+            },
+            moneda: {
+                ars: { bg: colorArs, text: 'white' },
+                usd: { bg: colorUsd, text: 'white' }
+            }
+        };
+    }
 
     function aplicarColor(selectEl, mapa) {
         if (!selectEl) return;
@@ -502,25 +503,59 @@ function inicializarColoresDinamicos() {
         }
     }
 
-    // Persona y Moneda originales
-    if (selectPersona) {
-        selectPersona.addEventListener('change', function() { aplicarColor(selectPersona, coloresPersona); });
-        aplicarColor(selectPersona, coloresPersona);
-    }
-    if (selectMoneda) {
-        selectMoneda.addEventListener('change', function() { aplicarColor(selectMoneda, coloresMoneda); });
-        aplicarColor(selectMoneda, coloresMoneda);
+    /* Re-aplica colores con las CSS vars del tema actual (llamado desde toggle) */
+    function refrescar() {
+        var mapas = buildMapas();
+        aplicarColor(selectPersona,      mapas.persona);
+        aplicarColor(selectMoneda,       mapas.moneda);
+        aplicarColor(selectPersonaFinal, mapas.persona);
+        aplicarColor(selectMonedaFinal,  mapas.moneda);
     }
 
-    // Persona final y Moneda final (campos de Cambio)
-    if (selectPersonaFinal) {
-        selectPersonaFinal.addEventListener('change', function() { aplicarColor(selectPersonaFinal, coloresPersona); });
-        aplicarColor(selectPersonaFinal, coloresPersona);
+    // Event listeners — cada cambio re-lee el tema activo
+    if (selectPersona)      selectPersona.addEventListener('change',      function() { aplicarColor(selectPersona,      buildMapas().persona); });
+    if (selectMoneda)       selectMoneda.addEventListener('change',       function() { aplicarColor(selectMoneda,       buildMapas().moneda);  });
+    if (selectPersonaFinal) selectPersonaFinal.addEventListener('change', function() { aplicarColor(selectPersonaFinal, buildMapas().persona); });
+    if (selectMonedaFinal)  selectMonedaFinal.addEventListener('change',  function() { aplicarColor(selectMonedaFinal,  buildMapas().moneda);  });
+
+    refrescar();
+    window._refrescarColoresSelects = refrescar;
+}
+
+
+/*
+================================================================================
+FUNCIÓN: inicializarToggleTema()
+================================================================================
+Propósito:
+  Maneja el botón de Light/Dark del header.
+  - Lee el tema actual de document.documentElement.dataset.theme
+    (ya seteado por el script anti-flicker en <head>).
+  - Pinta el icono inicial (☀ si dark, 🌙 si light).
+  - Al hacer click, alterna el tema, lo guarda en localStorage('tema')
+    y actualiza el icono.
+  El modo activo es por dispositivo. Los colores se comparten vía config.json.
+================================================================================
+*/
+function inicializarToggleTema() {
+    var boton = document.getElementById('theme-toggle');
+    var icono = document.getElementById('theme-icon');
+    if (!boton || !icono) return;
+
+    function pintarIcono(tema) {
+        icono.textContent = (tema === 'dark') ? '☀' : '🌙';
     }
-    if (selectMonedaFinal) {
-        selectMonedaFinal.addEventListener('change', function() { aplicarColor(selectMonedaFinal, coloresMoneda); });
-        aplicarColor(selectMonedaFinal, coloresMoneda);
-    }
+
+    var temaActual = document.documentElement.dataset.theme || 'light';
+    pintarIcono(temaActual);
+
+    boton.addEventListener('click', function() {
+        var nuevo = (document.documentElement.dataset.theme === 'dark') ? 'light' : 'dark';
+        document.documentElement.dataset.theme = nuevo;
+        localStorage.setItem('tema', nuevo);
+        pintarIcono(nuevo);
+        if (window._refrescarColoresSelects) window._refrescarColoresSelects();
+    });
 }
 
 

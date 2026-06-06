@@ -49,6 +49,9 @@ Cada página hija define su propio {% block contenido %}.
 
   <!-- HEADER -->
   <header class="site-header">
+    <button type="button" id="theme-toggle" class="header-theme-btn" title="Cambiar tema" aria-label="Cambiar tema">
+      <span id="theme-icon" class="theme-icon">🌙</span>
+    </button>
     <div class="header-content">
       <h1>💰 Fondo</h1>
       <p class="subtitulo">El fondo familiar más lindo</p>
@@ -91,7 +94,7 @@ Cada página hija define su propio {% block contenido %}.
   <div id="modal-confirmacion" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div class="tarjeta" style="max-width:400px; width:90%; text-align:center; padding:2rem;">
       <h3 style="margin-bottom:1rem;">¿Confirmar eliminación?</h3>
-      <p style="margin-bottom:1.5rem; color:var(--color-texto-suave);">Esta acción no se puede deshacer.</p>
+      <p style="margin-bottom:1.5rem; color:var(--color-texto-muted);">Esta acción no se puede deshacer.</p>
       <div style="display:flex; gap:1rem; justify-content:center;">
         <button id="modal-cancelar" class="btn-secundario">Cancelar</button>
         <button id="modal-confirmar" class="btn-eliminar">Eliminar</button>

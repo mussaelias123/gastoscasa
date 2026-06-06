@@ -51,7 +51,11 @@
 
 ## 4. Reglas globales (NO negociables)
 
-1. **Paleta de colores**: todos los colores se referencian con `var(--color-...)` definidos en `static/style.css → :root`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres). Definición y leyenda en página Settings → Paleta.
+1. **Paleta de colores**: todos los colores se referencian con `var(--color-...)`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres de color). Arquitectura:
+   - **Valores runtime**: `config.json → paleta_light / paleta_dark` (21 vars c/u). `base.html` los inyecta en `<style>` en el `<head>` como `:root { ... }` y `html[data-theme="dark"] { ... }`.
+   - **Fallbacks**: `static/style.css → :root` define los mismos valores por si `config.json` no carga.
+   - **Excepciones documentadas** (hardcode intencional): `login.html` (página standalone sin acceso a config); `.dash-toggle-btn.activo { color: #ffffff }` (blanco intencional: mejor contraste que `var(--color-superficie)` en dark mode, 4.47:1 vs 3.27:1).
+   - Definición y leyenda en página Settings → Paleta.
 2. **Verificación**: tras cualquier cambio, ingresar a `https://miller-unventured-courtly.ngrok-free.dev/` con conector `Claude in Chrome` y confirmar que la app no se rompe.
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.

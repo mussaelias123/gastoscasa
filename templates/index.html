@@ -209,7 +209,7 @@
   {# Los <circle> con valor 0 NO se renderizan: el stroke-linecap: round
      dejaba un puntito redondo del color en el extremo aunque el dash fuera 0. #}
   {% set ga = gauges.ars %}
-  <div class="gauge-wrap">
+  <div class="gauge-wrap gauge-wrap-ars">
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
       {% if ga.elias > 0 %}
@@ -234,7 +234,7 @@
 
   {# — Gauge USD: Elías vs Mari — #}
   {% set gu = gauges.usd %}
-  <div class="gauge-wrap">
+  <div class="gauge-wrap gauge-wrap-usd">
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
       {% if gu.elias > 0 %}
