@@ -47,34 +47,38 @@ Cada página hija define su propio {% block contenido %}.
   <div id="dev-banner">⚙ APP — MODO DESARROLLO</div>
   {% endif %}
 
-  <!-- HEADER -->
-  <header class="site-header">
-    <button type="button" id="theme-toggle" class="header-theme-btn" title="Cambiar tema" aria-label="Cambiar tema">
-      <span id="theme-icon" class="theme-icon">🌙</span>
-    </button>
-    <div class="header-content">
-      <h1>💰 Fondo</h1>
-      <p class="subtitulo">El fondo familiar más lindo</p>
-    </div>
-    {% if user_email %}
-    <div class="header-user">
-      {% if user_photo %}
-      <img src="{{ user_photo }}" alt="" class="header-user-photo" referrerpolicy="no-referrer">
+  {# HEADER + NAV van juntos en un contenedor sticky: quedan siempre visibles
+     al hacer scroll, como celdas fijadas en Excel. #}
+  <div class="site-topbar">
+    <!-- HEADER -->
+    <header class="site-header">
+      <button type="button" id="theme-toggle" class="header-theme-btn" title="Cambiar tema" aria-label="Cambiar tema">
+        <span id="theme-icon" class="theme-icon">🌙</span>
+      </button>
+      <div class="header-content">
+        <h1>💰 Fondo</h1>
+        <p class="subtitulo">El fondo familiar más lindo</p>
+      </div>
+      {% if user_email %}
+      <div class="header-user">
+        {% if user_photo %}
+        <img src="{{ user_photo }}" alt="" class="header-user-photo" referrerpolicy="no-referrer">
+        {% endif %}
+        <span class="header-user-name">{{ user_name or user_email }}</span>
+        <a href="{{ url_for('auth.logout') }}" class="header-logout-btn" title="Cerrar sesión">Salir</a>
+      </div>
       {% endif %}
-      <span class="header-user-name">{{ user_name or user_email }}</span>
-      <a href="{{ url_for('auth.logout') }}" class="header-logout-btn" title="Cerrar sesión">Salir</a>
-    </div>
-    {% endif %}
-  </header>
+    </header>
 
-  <!-- NAVEGACIÓN -->
-  <nav class="site-nav">
-    <ul>
-      <li><a href="{{ url_for('index') }}">🏠 Inicio</a></li>
-      <li><a href="{{ url_for('resumen') }}">📊 Resumen</a></li>
-      <li><a href="{{ url_for('settings') }}">⚙ Settings</a></li>
-    </ul>
-  </nav>
+    <!-- NAVEGACIÓN -->
+    <nav class="site-nav">
+      <ul>
+        <li><a href="{{ url_for('index') }}">🏠 Inicio</a></li>
+        <li><a href="{{ url_for('resumen') }}">📊 Resumen</a></li>
+        <li><a href="{{ url_for('settings') }}">⚙ Settings</a></li>
+      </ul>
+    </nav>
+  </div>
 
   <!-- CONTENIDO PRINCIPAL -->
   <main class="contenido-principal">
