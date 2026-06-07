@@ -1586,7 +1586,7 @@ a.btn-filtro {
   font-size: 0.87rem;
   font-family: var(--fuente-principal);
   color: var(--color-texto);
-  background-color: white;
+  background-color: var(--color-superficie);
   width: 100%;
   box-sizing: border-box;
 }
