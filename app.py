@@ -248,6 +248,54 @@ def dias_desde_fecha(fecha_str):
 
 
 # =============================================================================
+# HELPER: _calcular_gauges(saldos, cotizacion_valor, historico=False)
+# Propósito: arma el dict de los 3 gauges de distribución (ARS, USD, Total).
+#   Compartido por la ruta '/' y por la API '/api/saldos'.
+# =============================================================================
+def _calcular_gauges(saldos, cotizacion_valor, historico=False):
+    """Distribución para los 3 gauges circulares.
+
+    - ARS / USD: Elías vs Mari en cada moneda (exacto, valores nativos).
+    - Total: ARS vs USD de toda la caja.
+        · historico=False: valúa los pesos a la cotización vigente
+          (distribución *actual* de la caja).
+        · historico=True: usa la suma de monto_usd congelado por fila
+          (ars_total_usd vs usd_total_usd), fiel al valor de cada fecha,
+          sin inventar una cotización anacrónica que no guardamos.
+    """
+    def _gauge(a, b):
+        """(pct_a, pct_b) normalizados a 100, usando solo valores ≥ 0."""
+        pa, pb = max(float(a), 0), max(float(b), 0)
+        total = pa + pb
+        if total <= 0:
+            return 0.0, 0.0
+        return round(pa / total * 100, 2), round(pb / total * 100, 2)
+
+    cotizacion_valor = float(cotizacion_valor or 1.0)
+    g_ars = _gauge(saldos['elias_ars'], saldos['mari_ars'])
+    g_usd = _gauge(saldos['elias_usd'], saldos['mari_usd'])
+
+    if historico:
+        g_total = _gauge(saldos.get('ars_total_usd', 0.0),
+                         saldos.get('usd_total_usd', 0.0))
+    else:
+        total_ars = float(saldos.get('elias_ars', 0.0)) + float(saldos.get('mari_ars', 0.0))
+        total_usd = float(saldos.get('elias_usd', 0.0)) + float(saldos.get('mari_usd', 0.0))
+        total_ars_en_usd = (total_ars / cotizacion_valor) if cotizacion_valor > 0 else 0.0
+        g_total = _gauge(total_ars_en_usd, total_usd)
+
+    return {
+        'ars':   {'elias': g_ars[0],   'mari':  g_ars[1]},
+        'usd':   {'elias': g_usd[0],   'mari':  g_usd[1]},
+        'total': {'ars':   g_total[0], 'usd':   g_total[1]},
+        # Valor informativo que el frontend muestra como "1 USD = AR$ X".
+        'cotizacion': int(cotizacion_valor),
+        # El frontend usa esto para ocultar la tasa "@ $X/USD" en modo histórico.
+        'historico':  historico,
+    }
+
+
+# =============================================================================
 # RUTA: Página principal — Saldos + formulario + tabla de movimientos
 # URL: http://localhost:5000/
 # =============================================================================
@@ -260,32 +308,9 @@ def index():
     cfg    = config.cargar_config(CONFIG_FILE)
     saldos = database.calcular_saldos()
 
-    # ── Cálculo de gauges circulares ──────────────────────────────────────────
-    def _gauge(a, b):
-        """Retorna (pct_a, pct_b) normalizados a 100, usando solo valores ≥ 0."""
-        pa, pb = max(float(a), 0), max(float(b), 0)
-        total = pa + pb
-        if total <= 0:
-            return 0.0, 0.0
-        return round(pa / total * 100, 2), round(pb / total * 100, 2)
-
+    # ── Gauges de distribución (helper compartido con /api/saldos) ────────────
     cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
-    g_ars       = _gauge(saldos['elias_ars'], saldos['mari_ars'])
-    g_usd       = _gauge(saldos['elias_usd'], saldos['mari_usd'])
-    # El gauge Total (ARS vs USD) representa la *distribución actual* de la
-    # caja, por eso valúa los pesos con la cotización vigente (no con la suma
-    # histórica de monto_usd, que refleja el valor del momento de cada alta).
-    total_ars = float(saldos.get('elias_ars', 0.0)) + float(saldos.get('mari_ars', 0.0))
-    total_usd = float(saldos.get('elias_usd', 0.0)) + float(saldos.get('mari_usd', 0.0))
-    total_ars_en_usd = (total_ars / cotizacion_valor) if cotizacion_valor > 0 else 0.0
-    g_total     = _gauge(total_ars_en_usd, total_usd)
-    gauges = {
-        'ars':   {'elias': g_ars[0],   'mari':  g_ars[1]},
-        'usd':   {'elias': g_usd[0],   'mari':  g_usd[1]},
-        'total': {'ars':   g_total[0], 'usd':   g_total[1]},
-        # Valor informativo que el frontend muestra como "1 USD = AR$ X".
-        'cotizacion': int(cotizacion_valor),
-    }
+    gauges = _calcular_gauges(saldos, cotizacion_valor)
 
     mes_actual = date.today().strftime('%Y-%m')
     mes = request.args.get('mes', mes_actual)
@@ -342,6 +367,34 @@ def index():
         vista=vista,
         gauges=gauges,
     )
+
+
+# =============================================================================
+# RUTA: API — saldos a una fecha (JSON, para recalcular sin recargar)
+# URL: GET /api/saldos?hasta=YYYY-MM-DD   (sin 'hasta' = toda la base)
+# =============================================================================
+@app.route('/api/saldos')
+def api_saldos():
+    try:
+        hasta = (request.args.get('hasta') or '').strip()
+        # 'hasta' inválido o vacío → None: agrega toda la base (modo actual).
+        if not _re.match(r'^\d{4}-\d{2}-\d{2}$', hasta):
+            hasta = None
+
+        cfg = config.cargar_config(CONFIG_FILE)
+        cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
+        saldos = database.calcular_saldos(hasta)
+        gauges = _calcular_gauges(saldos, cotizacion_valor, historico=bool(hasta))
+
+        return jsonify({
+            'ok':        True,
+            'saldos':    saldos,
+            'gauges':    gauges,
+            'historico': bool(hasta),
+            'fecha':     hasta,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 # =============================================================================

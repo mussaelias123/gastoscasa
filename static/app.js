@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Inicializamos las funcionalidades de la página
     inicializarFechaHoy();
+    inicializarSaldosFecha();
     inicializarFormatoMonto();
     inicializarPersona();
     inicializarColoresDinamicos();
@@ -1056,6 +1057,149 @@ function actualizarSaldos(saldos) {
     if (elTotalUsd) {
         elTotalUsd.textContent = fmtUsd(totalUsd);
         elTotalUsd.className = 'saldo-monto ' + (totalUsd < 0 ? 'saldo-negativo' : 'saldo-positivo');
+    }
+}
+
+
+/*
+================================================================================
+FUNCIÓN: actualizarGauges(gauges)
+================================================================================
+Refresca los 3 gauges circulares (ARS, USD, Total) desde el objeto que devuelve
+/api/saldos, sin recargar la página. Pokea por id los arcos, el texto central y
+las leyendas — misma filosofía que actualizarSaldos().
+
+gauges = { ars:{elias,mari}, usd:{elias,mari}, total:{ars,usd},
+           cotizacion, historico }
+================================================================================
+*/
+function actualizarGauges(gauges) {
+    if (!gauges) return;
+
+    // Setea un arco: dasharray = porcentaje, offset (segundo arco) = arranque,
+    // y lo oculta con .gauge-arc-oculto cuando vale 0 (evita el puntito del
+    // stroke-linecap:round con dasharray 0).
+    function _setArc(id, valor, offset) {
+        var arc = document.getElementById(id);
+        if (!arc) return;
+        valor = valor || 0;
+        arc.setAttribute('stroke-dasharray', valor + ' 100');
+        if (offset !== null && offset !== undefined) {
+            arc.setAttribute('stroke-dashoffset', '-' + (offset || 0));
+        }
+        arc.classList.toggle('gauge-arc-oculto', !(valor > 0));
+    }
+    function _setText(id, txt) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = txt;
+    }
+
+    var ga = gauges.ars   || { elias: 0, mari: 0 };
+    var gu = gauges.usd   || { elias: 0, mari: 0 };
+    var gt = gauges.total || { ars: 0, usd: 0 };
+
+    // Arcos (el 2º arco arranca donde termina el 1º).
+    _setArc('gauge-arc-ars-elias',   ga.elias, null);
+    _setArc('gauge-arc-ars-mari',    ga.mari,  ga.elias);
+    _setArc('gauge-arc-usd-elias',   gu.elias, null);
+    _setArc('gauge-arc-usd-mari',    gu.mari,  gu.elias);
+    _setArc('gauge-arc-total-ars',   gt.ars,   null);
+    _setArc('gauge-arc-total-usd',   gt.usd,   gt.ars);
+
+    // Texto central "NN% / NN%". Usamos Math.floor para igualar el filtro Jinja
+    // `|int` del template (trunca), y que server-render y update JS coincidan.
+    _setText('gauge-sub-ars',   Math.floor(ga.elias) + '% / ' + Math.floor(ga.mari) + '%');
+    _setText('gauge-sub-usd',   Math.floor(gu.elias) + '% / ' + Math.floor(gu.mari) + '%');
+    _setText('gauge-sub-total', Math.floor(gt.ars)   + '% / ' + Math.floor(gt.usd)  + '%');
+
+    // Leyendas (porcentaje con decimales, como en el template).
+    _setText('gauge-leg-ars-elias',   ga.elias);
+    _setText('gauge-leg-ars-mari',    ga.mari);
+    _setText('gauge-leg-usd-elias',   gu.elias);
+    _setText('gauge-leg-usd-mari',    gu.mari);
+    _setText('gauge-leg-total-ars',   gt.ars);
+    _setText('gauge-leg-total-usd',   gt.usd);
+
+    // Tasa "@ $X/USD": se oculta en modo histórico (no aplica una cotización
+    // única para una fecha pasada).
+    var tasa = document.getElementById('gauge-tasa');
+    if (tasa) {
+        if (gauges.historico) {
+            tasa.style.display = 'none';
+        } else {
+            tasa.style.display = '';
+            if (gauges.cotizacion != null) {
+                tasa.textContent = '@ $' + gauges.cotizacion + '/USD';
+            }
+        }
+    }
+}
+
+
+/*
+================================================================================
+FUNCIÓN: inicializarSaldosFecha()
+================================================================================
+Selector de fecha en la tarjeta de saldos. Sin fecha = saldos de toda la base
+(modo actual). Al pickear una fecha, pide /api/saldos?hasta=... y refresca tabla
++ gauges SIN recargar la página. El botón "↺ Todo" vuelve al modo completo.
+
+Solo actúa en la página principal (donde existe #saldos-fecha).
+================================================================================
+*/
+function inicializarSaldosFecha() {
+    var input = document.getElementById('saldos-fecha');
+    if (!input) return;  // no estamos en la página principal
+
+    var btnReset = document.getElementById('saldos-reset');
+    var titulo   = document.getElementById('saldos-titulo');
+
+    // Carga saldos+gauges para una fecha (o toda la base si fecha es null/'').
+    function cargarSaldosFecha(fecha) {
+        var url = '/api/saldos' + (fecha ? ('?hasta=' + encodeURIComponent(fecha)) : '');
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || !data.ok) {
+                    console.error('Error /api/saldos:', data && data.error);
+                    return;
+                }
+                actualizarSaldos(data.saldos);
+                actualizarGauges(data.gauges);
+
+                if (data.historico && data.fecha) {
+                    var p = String(data.fecha).split('-');
+                    var fechaFmt = (p.length === 3) ? (p[2] + '/' + p[1] + '/' + p[0]) : data.fecha;
+                    if (titulo) titulo.textContent = '💰 Saldos al ' + fechaFmt;
+                    if (btnReset) btnReset.hidden = false;
+                } else {
+                    if (titulo) titulo.textContent = '💰 Saldos actuales';
+                    if (btnReset) btnReset.hidden = true;
+                }
+            })
+            .catch(function(err) {
+                console.error('Error de red en /api/saldos:', err);
+            });
+    }
+
+    // flatpickr: valor interno YYYY-MM-DD, visible DD/MM/AAAA, sin fechas futuras.
+    var fp = flatpickr(input, {
+        locale: 'es',
+        dateFormat: 'Y-m-d',
+        altInput: true,
+        altFormat: 'd/m/Y',
+        maxDate: 'today',
+        allowInput: true,
+        onChange: function(selectedDates, dateStr) {
+            if (dateStr) cargarSaldosFecha(dateStr);  // clear() dispara con '' → se ignora
+        }
+    });
+
+    if (btnReset) {
+        btnReset.addEventListener('click', function() {
+            fp.clear();                // limpia el input (vuelve al placeholder)
+            cargarSaldosFecha(null);   // recalcula con toda la base
+        });
     }
 }
 

@@ -2834,6 +2834,68 @@ a.btn-filtro {
   margin: 0 0 0.4rem;
 }
 
+/* ── Header de saldos: título a la izquierda, selector de fecha a la derecha ── */
+.tarjeta-saldos .saldos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+
+/* Dentro del header el título no lleva margen (lo aporta .saldos-header) */
+.tarjeta-saldos .saldos-header .carga-rapida-titulo {
+  margin: 0;
+}
+
+.saldos-fecha-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* flatpickr (altInput:true) crea un input visible que copia la clase del
+   original; por eso estilamos por clase, no por #id (el original queda oculto). */
+.saldos-fecha-input {
+  width: 8rem;
+  max-width: 50vw;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.8rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+}
+.saldos-fecha-input:focus {
+  outline: none;
+  border-color: var(--color-acento);
+  box-shadow: var(--sombra-focus);
+}
+.saldos-fecha-input::placeholder {
+  color: var(--color-texto-muted);
+}
+
+/* Botón "↺ Todo": chrome estructural (deco). Oculto hasta que haya fecha. */
+.saldos-reset {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.78rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background: var(--color-deco-3);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.saldos-reset:hover {
+  background: var(--color-deco-4);
+}
+.saldos-reset[hidden] {
+  display: none;
+}
+
 /* Tabla traspuesta: 3 columnas (label + AR$ + USD), 3 filas (Elías/Mari/Total).
    Anchos fijos vía <colgroup> (table-layout:fixed lee los anchos de <col>,
    no de las celdas del body). Fuente fluida vía cqi. */
@@ -3052,6 +3114,13 @@ a.btn-filtro {
   stroke-width: 3.8;
   stroke-linecap: round;
   transition: stroke-dasharray 0.5s ease;
+}
+
+/* Arco con valor 0: se oculta por completo (no solo dasharray 0) para que el
+   stroke-linecap:round no deje un puntito de color en el extremo. Lo togglea
+   actualizarGauges() al cambiar la fecha. */
+.gauge-arc-oculto {
+  display: none;
 }
 
 /* Colores de Elías y Mari (igual que sus badges) */
