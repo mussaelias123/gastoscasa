@@ -351,27 +351,6 @@ body {
 
 
 /* ============================================================================
-   FOOTER (pie de página)
-   ============================================================================ */
-.site-footer {
-  background-color: var(--color-texto);
-  color: rgba(255, 255, 255, 0.7);
-  text-align: center;
-  padding: 1.2rem;
-  font-size: 0.85rem;
-}
-
-.site-footer p {
-  margin: 0.2rem 0;
-}
-
-.site-footer .stack-info {
-  font-size: 0.75rem;
-  opacity: 0.6;
-}
-
-
-/* ============================================================================
    ENCABEZADO DE PÁGINA (título + botón en la misma línea)
    ============================================================================ */
 .pagina-header {
