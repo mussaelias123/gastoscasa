@@ -4,8 +4,8 @@
     {
       "name": "gastos-casa",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["app.py"],
-      "port": 5000
+      "runtimeArgs": ["app.py", "--config", "config.dev.json"],
+      "port": 5050
     }
   ]
 }
