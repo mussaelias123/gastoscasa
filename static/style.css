@@ -199,6 +199,21 @@ body {
 
 
 /* ============================================================================
+   TOPBAR FIJA (header + nav siempre visibles, como celdas fijadas en Excel)
+   ============================================================================ */
+.site-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 500;            /* Sobre el contenido; bajo el modal (1000) y el dev-banner (9999) */
+  box-shadow: var(--sombra-card);
+}
+/* En modo DEV, el banner fijo ocupa los 24px superiores: la topbar se pega debajo. */
+body.has-dev-banner .site-topbar {
+  top: 24px;
+}
+
+
+/* ============================================================================
    HEADER (encabezado superior)
    ============================================================================ */
 .site-header {

@@ -6,7 +6,7 @@
 - `static/style.css` (3227 líneas): estilos globales + variables.
 - `static/app.js` (1164 líneas): interactividad cliente, AJAX, edición inline.
 - `templates/`:
-  - `base.html` — layout (header, nav). Todas extienden esto.
+  - `base.html` — layout. Header + nav van en `.site-topbar` (sticky, siempre visible al scrollear; `top:24px` si hay dev-banner). Todas extienden esto.
   - `index.html` — pantalla principal (saldos + form rápido + tabla).
   - `nuevo.html` — formulario completo de alta.
   - `editar.html` — edición completa de movimiento.
