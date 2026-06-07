@@ -45,7 +45,7 @@
 |----------------------------------|------------------------------------|------------------------------------|
 | `conectar()`                     | `Connection` (row_factory=Row)     | Caller debe cerrar                 |
 | `inicializar_db()`               | None                               | Idempotente. Llamar al boot        |
-| `calcular_saldos()`              | `dict` con 8 claves                | Ver claves abajo                   |
+| `calcular_saldos(hasta=None)`    | `dict` con 8 claves                | `hasta='YYYY-MM-DD'` → saldos ≤ esa fecha (inclusive). `None` = toda la DB |
 | `obtener_movimientos(...)`       | `(filas, total)`                   | Filtros: persona, moneda, mes      |
 | `agregar_movimiento(...)`        | `id` nuevo                         | 13 parámetros — ver firma          |
 | `eliminar_movimiento(id)`        | None                               |                                    |
@@ -71,6 +71,7 @@ Lógica clave:
 - Gastos: suman `monto + COALESCE(costo_envio, 0)`.
 - Conversión USD usa `monto_usd` ya guardado en la fila (no recalcula).
 - Costo envío en USD se prorratea: `costo_envio * (monto_usd / monto)`.
+- `hasta` (opcional): si matchea `YYYY-MM-DD` agrega `WHERE fecha <= ?` a ambas queries (filtro inclusive). `fecha` es TEXT ISO → comparación de strings ordena cronológicamente. El SQL interpola un literal fijo; el valor viaja parametrizado (`?`).
 
 ## Reglas específicas DB
 1. **Saldos NUNCA almacenados**, siempre derivados.

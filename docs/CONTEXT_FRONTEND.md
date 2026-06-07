@@ -81,7 +81,9 @@ No-color (también en `:root`): `--fuente-principal`, `--radio-borde`, `--espaci
 | `initFiltros()` / `initOrden()` | Filtros y ordenamiento de tabla                      |
 | `initEdicionInline()`           | Doble click → editar fila in-place                   |
 | `activarEdicion()` / `guardarEdicion()` / `cancelarEdicion()` | Ciclo edición |
-| `actualizarSaldos()`            | Refresca saldos en DOM                               |
+| `actualizarSaldos()`            | Refresca las 6 celdas de saldos en DOM               |
+| `actualizarGauges()`            | Refresca los 3 gauges (arcos/textos/leyendas) sin recargar |
+| `inicializarSaldosFecha()`      | Date picker en tarjeta saldos; `fetch /api/saldos` → saldos+gauges a una fecha |
 | `crearFilaMovimiento()`         | Renderea fila tras AJAX                              |
 | `mostrarToast()`                | Toast confirmación                                   |
 | `initFormAjax()`                | Submit sin recarga                                   |

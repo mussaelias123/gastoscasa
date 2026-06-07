@@ -36,6 +36,7 @@
 
 import sqlite3    # Librería estándar de Python para SQLite (ya viene incluida)
 import os         # Para trabajar con rutas de archivos
+import re         # Para validar el formato de fecha en calcular_saldos(hasta)
 
 
 # =============================================================================
@@ -177,14 +178,26 @@ def inicializar_db():
 #   - por moneda origen: {ars_total_usd, usd_total_usd}
 #     (útil para el gauge Total de la página de inicio).
 #
-def calcular_saldos():
+def calcular_saldos(hasta=None):
     conn = conectar()
     cursor = conn.cursor()
+
+    # Filtro opcional "saldos hasta una fecha" (inclusive). 'fecha' es TEXT
+    # YYYY-MM-DD: la comparación de strings ISO ordena cronológicamente bien,
+    # sin necesidad de parseo. hasta=None → sin filtro: agrega TODA la tabla
+    # (comportamiento original intacto).
+    # NOTA: filtro_fecha es un literal fijo (no dato de usuario); el valor
+    # 'hasta' viaja por '?' parametrizado, así que no hay riesgo de inyección.
+    filtro_fecha = ''
+    params = []
+    if hasta and re.match(r'^\d{4}-\d{2}-\d{2}$', hasta):
+        filtro_fecha = 'WHERE fecha <= ?'
+        params = [hasta]
 
     # Query 1: saldos por persona y moneda en moneda nativa (interfaz original).
     # Para ingresos de categoría "sueldo" se usa el factor_aplicado guardado en la fila.
     # Si factor_aplicado es NULL (movimientos viejos sin factor), se usa el monto completo.
-    cursor.execute('''
+    cursor.execute(f'''
         SELECT persona,
                moneda,
                SUM(CASE
@@ -197,15 +210,16 @@ def calcular_saldos():
                    END) AS ingresos,
                SUM(CASE WHEN tipo = 'gasto' THEN monto + COALESCE(costo_envio, 0) ELSE 0 END) AS gastos
         FROM movimientos
+        {filtro_fecha}
         GROUP BY persona, moneda
-    ''')
+    ''', params)
     filas = cursor.fetchall()
 
     # Query 2: saldos acumulados en USD agrupados por persona Y moneda.
     # Si monto_usd es NULL (pendiente de backfill), se ignora esa fila en el SUM.
     # Se replica el mismo criterio de factor_aplicado para sueldos.
     # El costo_envio se prorratea: costo_envio * (monto_usd / monto).
-    cursor.execute('''
+    cursor.execute(f'''
         SELECT persona,
                moneda,
                SUM(CASE
@@ -224,8 +238,9 @@ def calcular_saldos():
                        ELSE 0
                    END) AS gastos_usd
         FROM movimientos
+        {filtro_fecha}
         GROUP BY persona, moneda
-    ''')
+    ''', params)
     filas_usd = cursor.fetchall()
 
     conn.close()

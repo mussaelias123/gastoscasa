@@ -23,6 +23,7 @@
 | GET    | `/resumen`                | `resumen`             | Dashboard con métricas mensuales.                |
 | POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD.               |
 | GET    | `/api/metrics`            | `metrics`             | JSON con métricas (CPU, RAM, etc.).              |
+| GET    | `/api/saldos`             | `api_saldos`          | JSON `{saldos, gauges, historico, fecha}`. `?hasta=YYYY-MM-DD` = saldos a esa fecha; sin `hasta` = toda la DB. |
 | GET/POST | `/settings`             | `settings`            | Página de configuración (cfg.json + paleta).     |
 | POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
 | GET    | `/git/ping`               | `git_ping`            | Verifica que git esté disponible.                |
@@ -33,6 +34,7 @@
 
 ## Helpers internos clave
 - `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
+- `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `index` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
 - `PALETA_META`: lista `(key, nombre, uso)` con las 21 variables de paleta. Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
