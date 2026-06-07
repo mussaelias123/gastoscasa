@@ -79,10 +79,22 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
 </section>
 
 {# ══════════════════════════════════════════════════════════════════════════
-   SECCIÓN 2: ANÁLISIS DE CATEGORÍAS
+   SECCIÓN 2: SUELDOS
    ══════════════════════════════════════════════════════════════════════════ #}
 <section class="dash-section-wrapper">
-  <h3 class="dash-section-title">Análisis de categorías</h3>
+  <h3 class="dash-section-title">Sueldos</h3>
+
+  <div class="dash-chart-card">
+    <h4 class="dash-chart-titulo">Sueldo por persona · últimos 6 meses</h4>
+    <div class="dash-chart-contenedor dash-chart-wide"><canvas id="chart-sueldo-persona"></canvas></div>
+  </div>
+</section>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   SECCIÓN 3: ANÁLISIS DE GASTOS
+   ══════════════════════════════════════════════════════════════════════════ #}
+<section class="dash-section-wrapper">
+  <h3 class="dash-section-title">Análisis de gastos</h3>
 
   <div class="dash-graficos-grid">
     {# Donut del mes #}
@@ -110,7 +122,7 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
 </section>
 
 {# ══════════════════════════════════════════════════════════════════════════
-   SECCIÓN 3: GASTOS DE ENVÍO
+   SECCIÓN 4: GASTOS DE ENVÍO
    ══════════════════════════════════════════════════════════════════════════ #}
 <section class="dash-section-wrapper">
   <h3 class="dash-section-title">Gastos de envío</h3>
@@ -135,7 +147,7 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
 </section>
 
 {# ══════════════════════════════════════════════════════════════════════════
-   SECCIÓN 4: GASTOS FIJOS
+   SECCIÓN 5: GASTOS FIJOS
    ══════════════════════════════════════════════════════════════════════════ #}
 <section class="dash-section-wrapper">
   <h3 class="dash-section-title">Gastos fijos</h3>
@@ -361,7 +373,42 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
     }
   });
 
-  /* ── SECCIÓN 2: Categorías ──────────────────────────────────────────── */
+  /* ── SECCIÓN 2: Sueldos ─────────────────────────────────────────────── */
+
+  /* Sueldo por persona — evolución 6 meses (Elías vs Mari). Solo categoría 'Sueldo'. */
+  function sueldoMes(m, persona) {
+    var k = mk(m);
+    return MOVIMIENTOS.filter(function(mv){
+      return mv.fecha.startsWith(k) && mv.tipo==='ingreso' && mv.categoria==='Sueldo' && mv.persona===persona;
+    }).reduce(function(a,v){ return a + mUSD(v); }, 0);
+  }
+
+  var ctxSueldo = document.getElementById('chart-sueldo-persona').getContext('2d');
+  new Chart(ctxSueldo, {
+    type:'line',
+    data:{
+      labels: MESES6.map(ma),
+      datasets:[
+        { label:'Elías', data:MESES6.map(function(m){return sueldoMes(m,'elias');}),
+          borderColor:C.elias, backgroundColor:C.elias+'20', fill:false, tension:0.3,
+          pointRadius:4, pointBackgroundColor:C.elias, pointBorderColor:C.superficie, pointBorderWidth:2, borderWidth:2 },
+        { label:'Mari', data:MESES6.map(function(m){return sueldoMes(m,'mari');}),
+          borderColor:C.mari, backgroundColor:C.mari+'20', fill:false, tension:0.3,
+          pointRadius:4, pointBackgroundColor:C.mari, pointBorderColor:C.superficie, pointBorderWidth:2, borderWidth:2 }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',font:{size:11}}},
+                tooltip:{callbacks:{label:function(c){return '  '+c.dataset.label+': '+fmtUSD(c.raw);}}} },
+      scales:{
+        y:{beginAtZero:true,ticks:{callback:fmtCorto,font:{size:10}},grid:{color:C.borde+'60'}},
+        x:{ticks:{font:{size:10}},grid:{display:false}}
+      }
+    }
+  });
+
+  /* ── SECCIÓN 3: Gastos por categoría ────────────────────────────────── */
 
   /* Donut de categorías */
   var ctx4 = document.getElementById('chart-cat-donut').getContext('2d');
@@ -457,7 +504,7 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
 
   renderCatToggles();
 
-  /* ── SECCIÓN 3: Envíos ──────────────────────────────────────────────── */
+  /* ── SECCIÓN 4: Envíos ──────────────────────────────────────────────── */
   var ctx6 = document.getElementById('chart-envios').getContext('2d');
   var envioData = MESES6.map(function(m) {
     var k = mk(m);
@@ -483,7 +530,7 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
     }
   });
 
-  /* ── SECCIÓN 4: Gastos fijos (seleccionable) ─────────────────────────── */
+  /* ── SECCIÓN 5: Gastos fijos (seleccionable) ─────────────────────────── */
   /* Detectamos descripciones de fijos en cualquier moneda — todo va a USD. */
   var fijosDescs = [];
   MOVIMIENTOS.forEach(function(mv){

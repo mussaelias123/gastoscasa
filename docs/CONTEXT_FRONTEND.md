@@ -10,7 +10,7 @@
   - `index.html` — pantalla principal (saldos + form rápido + tabla).
   - `nuevo.html` — formulario completo de alta.
   - `editar.html` — edición completa de movimiento.
-  - `resumen.html` — dashboard mensual con gauges y métricas.
+  - `resumen.html` — dashboard mensual (Chart.js), 5 secciones: saldos, sueldos (Elías vs Mari, evolución 6 meses), análisis de gastos, envíos, fijos.
   - `gastos_fijos.html` — gestión de fijos recurrentes y cuotas.
   - `settings.html` — configuración + paleta + git backup.
   - `login.html` — pantalla pre-OAuth.
