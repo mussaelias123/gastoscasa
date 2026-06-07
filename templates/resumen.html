@@ -79,33 +79,14 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
 </section>
 
 {# ══════════════════════════════════════════════════════════════════════════
-   SECCIÓN 2: ANÁLISIS DE INGRESOS
+   SECCIÓN 2: SUELDOS
    ══════════════════════════════════════════════════════════════════════════ #}
 <section class="dash-section-wrapper">
-  <h3 class="dash-section-title">Análisis de ingresos</h3>
+  <h3 class="dash-section-title">Sueldos</h3>
 
-  <div class="dash-graficos-grid">
-    {# Donut del mes #}
-    <div class="dash-chart-card">
-      <h4 class="dash-chart-titulo" id="ing-donut-titulo">Distribución del mes</h4>
-      <div class="dash-chart-contenedor dash-donut-contenedor">
-        <canvas id="chart-ing-donut"></canvas>
-        <div class="dash-donut-centro" id="ing-donut-centro"></div>
-      </div>
-    </div>
-
-    {# Ranking #}
-    <div class="dash-chart-card">
-      <h4 class="dash-chart-titulo" id="ing-ranking-titulo">Ranking del mes</h4>
-      <div id="ranking-ingresos" class="dash-ranking"></div>
-    </div>
-  </div>
-
-  {# Evolución por categoría de ingreso (seleccionable) #}
   <div class="dash-chart-card">
-    <h4 class="dash-chart-titulo">Evolución de ingresos por categoría · últimos 6 meses</h4>
-    <div class="dash-toggle-bar" id="ing-toggles"></div>
-    <div class="dash-chart-contenedor dash-chart-wide"><canvas id="chart-ing-evolucion"></canvas></div>
+    <h4 class="dash-chart-titulo">Sueldo por persona · últimos 6 meses</h4>
+    <div class="dash-chart-contenedor dash-chart-wide"><canvas id="chart-sueldo-persona"></canvas></div>
   </div>
 </section>
 
@@ -300,11 +281,6 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
     mm.filter(function(v){ return v.tipo==='gasto' && v.categoria!=='Cambio'; })
       .forEach(function(v){ perMap[v.persona]=(perMap[v.persona]||0)+mUSD(v); });
 
-    /* Ingresos por categoría (excluye Cambio: la entrada de un cambio no es ingreso real) */
-    var ingCatMap = {};
-    mm.filter(function(v){ return v.tipo==='ingreso' && v.categoria!=='Cambio'; })
-      .forEach(function(v){ var c=v.categoria||'Sin categoría'; ingCatMap[c]=(ingCatMap[c]||0)+mUSD(v); });
-
     var envio = mm.reduce(function(a,v){ return a + envUSD(v); }, 0);
     var envioCnt = mm.filter(function(v){ return v.costo_envio && v.costo_envio > 0; }).length;
 
@@ -314,7 +290,6 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
     return {
       ingUSD: sumaTipo('ingreso'), gasUSD: sumaTipo('gasto'),
       categorias: catMap, personas: perMap,
-      ingCategorias: ingCatMap,
       envio: envio, envioCnt: envioCnt,
       fijosTotal: fijosTotal
     };
@@ -398,32 +373,33 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
     }
   });
 
-  /* ── SECCIÓN 2: Ingresos ────────────────────────────────────────────── */
+  /* ── SECCIÓN 2: Sueldos ─────────────────────────────────────────────── */
 
-  /* Donut de ingresos por categoría */
-  var ctxIngDonut = document.getElementById('chart-ing-donut').getContext('2d');
-  var chartIngDonut = new Chart(ctxIngDonut, {
-    type:'doughnut',
-    data:{ labels:[], datasets:[{ data:[], backgroundColor:PALETA, borderWidth:2, borderColor:C.superficie, hoverOffset:8 }] },
-    options:{
-      responsive:true, maintainAspectRatio:false, cutout:'62%',
-      plugins:{
-        legend:{position:'bottom',labels:{font:{size:10},usePointStyle:true,pointStyle:'circle',padding:10}},
-        tooltip:{callbacks:{label:function(c){
-          var t=c.dataset.data.reduce(function(a,b){return a+b;},0);
-          return '  '+c.label+': '+fmtUSD(c.raw)+' ('+(t>0?((c.raw/t)*100).toFixed(1):0)+'%)';
-        }}}
-      }
-    }
-  });
+  /* Sueldo por persona — evolución 6 meses (Elías vs Mari). Solo categoría 'Sueldo'. */
+  function sueldoMes(m, persona) {
+    var k = mk(m);
+    return MOVIMIENTOS.filter(function(mv){
+      return mv.fecha.startsWith(k) && mv.tipo==='ingreso' && mv.categoria==='Sueldo' && mv.persona===persona;
+    }).reduce(function(a,v){ return a + mUSD(v); }, 0);
+  }
 
-  /* Evolución de ingresos por categoría (seleccionable) */
-  var ctxIngEvol = document.getElementById('chart-ing-evolucion').getContext('2d');
-  var chartIngEvol = new Chart(ctxIngEvol, {
-    type:'line', data:{ labels:MESES6.map(ma), datasets:[] },
+  var ctxSueldo = document.getElementById('chart-sueldo-persona').getContext('2d');
+  new Chart(ctxSueldo, {
+    type:'line',
+    data:{
+      labels: MESES6.map(ma),
+      datasets:[
+        { label:'Elías', data:MESES6.map(function(m){return sueldoMes(m,'elias');}),
+          borderColor:C.elias, backgroundColor:C.elias+'20', fill:false, tension:0.3,
+          pointRadius:4, pointBackgroundColor:C.elias, pointBorderColor:C.superficie, pointBorderWidth:2, borderWidth:2 },
+        { label:'Mari', data:MESES6.map(function(m){return sueldoMes(m,'mari');}),
+          borderColor:C.mari, backgroundColor:C.mari+'20', fill:false, tension:0.3,
+          pointRadius:4, pointBackgroundColor:C.mari, pointBorderColor:C.superficie, pointBorderWidth:2, borderWidth:2 }
+      ]
+    },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false},
+      plugins:{ legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',font:{size:11}}},
                 tooltip:{callbacks:{label:function(c){return '  '+c.dataset.label+': '+fmtUSD(c.raw);}}} },
       scales:{
         y:{beginAtZero:true,ticks:{callback:fmtCorto,font:{size:10}},grid:{color:C.borde+'60'}},
@@ -431,67 +407,6 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
       }
     }
   });
-
-  /* Detectar categorías de ingreso (excluyendo Cambio). AR$ y USD → todo en USD. */
-  var allIng = {};
-  MOVIMIENTOS.forEach(function(mv){
-    if (mv.tipo==='ingreso' && mv.categoria && mv.categoria!=='Cambio') {
-      allIng[mv.categoria] = true;
-    }
-  });
-  var ingList = Object.keys(allIng).sort();
-  var ingActivas = {};
-  /* Activar top 3 por monto en USD */
-  var ingTotals = {};
-  ingList.forEach(function(c){ ingTotals[c]=0; });
-  MOVIMIENTOS.forEach(function(mv){
-    if (mv.tipo==='ingreso' && mv.categoria && mv.categoria!=='Cambio')
-      ingTotals[mv.categoria] = (ingTotals[mv.categoria]||0) + mUSD(mv);
-  });
-  var ingSorted = ingList.slice().sort(function(a,b){return ingTotals[b]-ingTotals[a];});
-  ingSorted.slice(0,3).forEach(function(c){ ingActivas[c]=true; });
-
-  function renderIngToggles() {
-    var cont = document.getElementById('ing-toggles');
-    cont.innerHTML = '';
-    ingList.forEach(function(cat, idx) {
-      var btn = document.createElement('button');
-      btn.className = 'dash-toggle-btn' + (ingActivas[cat] ? ' activo' : '');
-      btn.textContent = cat;
-      btn.style.borderColor = PALETA[idx % PALETA.length];
-      if (ingActivas[cat]) btn.style.backgroundColor = PALETA[idx % PALETA.length];
-      btn.addEventListener('click', function() {
-        ingActivas[cat] = !ingActivas[cat];
-        renderIngToggles();
-        actualizarIngEvol();
-      });
-      cont.appendChild(btn);
-    });
-  }
-
-  function actualizarIngEvol() {
-    var datasets = [];
-    ingList.forEach(function(cat, idx) {
-      if (!ingActivas[cat]) return;
-      var color = PALETA[idx % PALETA.length];
-      datasets.push({
-        label: cat,
-        data: MESES6.map(function(m) {
-          var k = mk(m);
-          return MOVIMIENTOS.filter(function(mv){
-            return mv.fecha.startsWith(k) && mv.tipo==='ingreso' && mv.categoria===cat;
-          }).reduce(function(a,v){return a + mUSD(v);},0);
-        }),
-        borderColor: color, backgroundColor: color+'20', fill:false,
-        tension:0.3, pointRadius:4, pointBackgroundColor:color,
-        pointBorderColor:C.superficie, pointBorderWidth:2, borderWidth:2
-      });
-    });
-    chartIngEvol.data.datasets = datasets;
-    chartIngEvol.update();
-  }
-
-  renderIngToggles();
 
   /* ── SECCIÓN 3: Gastos por categoría ────────────────────────────────── */
 
@@ -727,43 +642,6 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
       ahEl.textContent = '—';
       ahEl.className = 'dash-kpi-valor';
     }
-
-    /* ── Ingresos: donut + ranking por categoría (en USD) ── */
-    var ingCats = Object.keys(d.ingCategorias).sort(function(a,b){return d.ingCategorias[b]-d.ingCategorias[a];});
-    chartIngDonut.data.labels = ingCats;
-    chartIngDonut.data.datasets[0].data = ingCats.map(function(c){return d.ingCategorias[c];});
-    chartIngDonut.update();
-    var totalIng = ingCats.reduce(function(a,c){return a+d.ingCategorias[c];},0);
-    var centroIng = document.getElementById('ing-donut-centro');
-    centroIng.innerHTML = totalIng > 0
-      ? '<span class="donut-pct">' + fmtCorto(totalIng) + '</span><span class="donut-pct-label">total</span>'
-      : '<span class="donut-sin-datos">Sin datos</span>';
-    document.getElementById('ing-donut-titulo').textContent = 'Distribución · ' + ma(m);
-
-    var ri = document.getElementById('ranking-ingresos');
-    ri.innerHTML = '';
-    if (ingCats.length === 0) { ri.innerHTML = '<div class="dash-ranking-vacio">Sin ingresos este mes</div>'; }
-    else {
-      var maxIng = d.ingCategorias[ingCats[0]];
-      ingCats.forEach(function(cat, i) {
-        var monto = d.ingCategorias[cat];
-        var pct = totalIng > 0 ? ((monto/totalIng)*100).toFixed(1) : 0;
-        var bw = maxIng > 0 ? ((monto/maxIng)*100).toFixed(1) : 0;
-        var row = document.createElement('div'); row.className = 'dash-ranking-row';
-        row.innerHTML =
-          '<div class="dash-ranking-pos">'+(i+1)+'</div>' +
-          '<div class="dash-ranking-info">' +
-            '<div class="dash-ranking-header"><span class="dash-ranking-cat">'+cat+'</span><span class="dash-ranking-monto">'+fmtUSD(monto)+'</span></div>' +
-            '<div class="dash-ranking-bar-bg"><div class="dash-ranking-bar" style="width:'+bw+'%;background:'+PALETA[i%PALETA.length]+'"></div></div>' +
-            '<div class="dash-ranking-pct">'+pct+'% del total</div>' +
-          '</div>';
-        ri.appendChild(row);
-      });
-    }
-    document.getElementById('ing-ranking-titulo').textContent = 'Ranking · ' + ma(m);
-
-    /* Evolución de ingresos por categoría */
-    actualizarIngEvol();
 
     /* Personas */
     chartPersonas.data.datasets[0].data = [d.personas['elias']||0, d.personas['mari']||0];
