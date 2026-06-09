@@ -48,6 +48,18 @@
       </span>
     </div>
 
+    <div class="settings-campo">
+      <label for="backup_dir">Carpeta de backups</label>
+      <input type="text" id="backup_dir" name="backup_dir"
+             value="{{ cfg.backup_dir | default('backups') }}" maxlength="500"
+             placeholder="backups">
+      <span class="settings-ayuda">
+        Ruta donde se guardan los backups de la base de datos.
+        Relativa a la carpeta del proyecto, o absoluta.
+        Vacío equivale a <code>backups/</code>.
+      </span>
+    </div>
+
   </div>
 
   {# ── SECCIÓN: COTIZACIÓN USD → ARS (automática) ──────────────────────── #}

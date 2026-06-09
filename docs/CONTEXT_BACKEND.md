@@ -41,9 +41,12 @@
 - `_HEX_RE`: regex `^#[0-9a-fA-F]{6}$` para validar hex de la paleta.
 
 ## Schedulers en hilo
-- `iniciar_scheduler_backup()`: backup `gastos.db` cada hora a `backups/`.
+- `iniciar_scheduler_backup()`: backup `gastos.db` cada hora a la carpeta configurada en `backup_dir`.
 - `iniciar_scheduler_cotizacion()`: refresh cotización USD a horarios fijos.
 - Ambos se inician en `run_flask()`. NO bloquean request loop.
+
+## Helper de backup
+- `_get_backup_dir()`: lee `backup_dir` de config en caliente (sin reiniciar). Si es ruta relativa, la resuelve contra la carpeta del proyecto. Si es vacía, usa `backups/`.
 
 ## Modo servicio (Windows)
 `python app.py install|start|stop|remove` invoca subprocess sobre `build/nssm/nssm.exe`.
@@ -54,6 +57,7 @@
 3. **Sueldo + factor**: si `tipo='ingreso'` y `categoria='sueldo'`, guardar `factor_aplicado = cfg['factor_sueldo']` (default 0.7). El cálculo de saldos lo aplica.
 4. **Cuotas**: si `cuotas_checkbox` y `total_cuotas`, se crea fila en `gastos_fijos` con `es_cuota=1`. Categoría `Fijo` con `gasto_fijo` existente avanza la cuota.
 5. **Cambio**: tipo `cambio` genera 2 inserts. Movimiento 1 = gasto en moneda origen. Movimiento 2 = ingreso en moneda destino. Categoría = `Cambio`.
+6. **backup_dir**: clave de config editable desde Settings. Default `"backups"` (relativo). `_get_backup_dir()` lo resuelve en caliente; un cambio aplica sin reiniciar.
 
 ## Al modificar este dominio, actualizar:
 - Esta tabla de rutas (sección "Mapa de rutas").

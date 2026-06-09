@@ -36,8 +36,10 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - Si `ngrok_enabled=False` o falta token → no se levanta (solo localhost).
 
 ## Backups
-- Cada hora en `backups/gastos_YYYY-MM-DD_HH-MM.db`.
-- Limpieza automática de antiguos.
+- Carpeta configurable desde Settings → campo "Carpeta de backups" (`backup_dir` en `config.json`).
+- Default: `backups/` relativo a la raíz del proyecto. Acepta rutas absolutas.
+- Horario: todos los jueves (scheduler interno). Se aplica el cambio de carpeta sin reiniciar.
+- Formato: `gastos_YYYY-MM-DD_HH-MM.db`. Máximo 10 archivos; los más viejos se borran.
 - Backup pre-evento: `gastos_pre_<motivo>_<timestamp>.db` → manual antes de migración.
 
 ## Build (rara vez se toca)

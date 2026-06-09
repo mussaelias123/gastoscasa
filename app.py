@@ -750,6 +750,7 @@ def settings():
             'factor_sueldo':  float(request.form.get('factor_sueldo', 0.7)),
             'google_client_id':     request.form.get('google_client_id', '').strip(),
             'google_client_secret': request.form.get('google_client_secret', '').strip(),
+            'backup_dir':     request.form.get('backup_dir', '').strip(),
         }
         config.guardar_config(nuevos, CONFIG_FILE)
         flash('Configuración guardada. Reiniciá la app para aplicar los cambios.')
@@ -924,17 +925,26 @@ def git_restore():
 
 _BASE_DIR_BACKUP = os.path.dirname(os.path.abspath(__file__))
 _DB_PATH         = os.path.join(_BASE_DIR_BACKUP, 'gastos.db')
-_BACKUP_DIR      = os.path.join(_BASE_DIR_BACKUP, 'backups')
 _MAX_BACKUPS     = 10
 
 
+def _get_backup_dir():
+    """Resuelve la carpeta de backups leyendo config en caliente."""
+    cfg = config.cargar_config(CONFIG_FILE)
+    raw = cfg.get('backup_dir', 'backups') or 'backups'
+    if os.path.isabs(raw):
+        return raw
+    return os.path.join(_BASE_DIR_BACKUP, raw)
+
+
 def hacer_backup_db(motivo='programado'):
-    """Copia la base de datos al directorio backups/ usando la API de SQLite."""
+    """Copia la base de datos al directorio de backups usando la API de SQLite."""
     import sqlite3
+    backup_dir = _get_backup_dir()
     try:
-        os.makedirs(_BACKUP_DIR, exist_ok=True)
+        os.makedirs(backup_dir, exist_ok=True)
         ahora     = datetime.now().strftime('%Y-%m-%d_%H-%M')
-        dest      = os.path.join(_BACKUP_DIR, f'gastos_{ahora}.db')
+        dest      = os.path.join(backup_dir, f'gastos_{ahora}.db')
         origen    = sqlite3.connect(_DB_PATH)
         respaldo  = sqlite3.connect(dest)
         origen.backup(respaldo)
@@ -948,20 +958,22 @@ def hacer_backup_db(motivo='programado'):
 
 def _limpiar_backups_antiguos():
     """Elimina los backups más viejos si hay más de _MAX_BACKUPS."""
+    backup_dir = _get_backup_dir()
     try:
         archivos = sorted(
-            [f for f in os.listdir(_BACKUP_DIR) if f.startswith('gastos_') and f.endswith('.db')],
+            [f for f in os.listdir(backup_dir) if f.startswith('gastos_') and f.endswith('.db')],
         )
         while len(archivos) > _MAX_BACKUPS:
-            os.remove(os.path.join(_BACKUP_DIR, archivos.pop(0)))
+            os.remove(os.path.join(backup_dir, archivos.pop(0)))
     except Exception as e:
         print(f"AVISO: No se pudieron limpiar backups viejos: {e}")
 
 
 def _ultimo_backup_fecha():
     """Devuelve la fecha del backup más reciente, o None si no hay ninguno."""
+    backup_dir = _get_backup_dir()
     try:
-        archivos = [f for f in os.listdir(_BACKUP_DIR) if f.startswith('gastos_') and f.endswith('.db')]
+        archivos = [f for f in os.listdir(backup_dir) if f.startswith('gastos_') and f.endswith('.db')]
         if not archivos:
             return None
         ultimo = sorted(archivos)[-1]
