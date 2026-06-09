@@ -28,3 +28,6 @@ build/dist/
 
 # Worktrees temporales de Claude Code (agentes con isolation)
 .claude/worktrees/
+
+# Logs (NSSM AppStdout/AppStderr → logs/, ver docs/CONTEXT_DEPLOY.md)
+logs/

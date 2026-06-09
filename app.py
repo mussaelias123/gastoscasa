@@ -14,8 +14,9 @@
 #   Los saldos se calculan dinámicamente sumando ingresos y restando gastos.
 #
 # MODOS DE EJECUCIÓN:
-#   - Normal:   python app.py
-#   - Servicio: python app.py install | start | stop | remove
+#   - Normal/Dev:  python app.py   (lo levanta también NSSM en producción)
+#   - Servicio:    NSSM envuelve `python app.py` (no hay comandos de servicio
+#                  propios; ver docs/CONTEXT_DEPLOY.md).
 #
 # CÓMO CORRER ESTE PROGRAMA:
 #   1. Abrir terminal en la carpeta gastos-casa/
@@ -30,7 +31,6 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
 import os
-import shutil
 import threading
 import time
 from datetime import datetime, timedelta
@@ -38,15 +38,10 @@ from datetime import datetime, timedelta
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
 # -----------------------------------------------------------------------------
-# Detección PyInstaller: cuando corre como .exe, los templates/static están
-# en sys._MEIPASS en lugar de junto al .py
+# Carpeta base del proyecto: templates/ y static/ viven junto a este .py.
 # -----------------------------------------------------------------------------
-if getattr(sys, 'frozen', False):
-    BASE_DIR = sys._MEIPASS
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-from math import ceil
 import re as _re
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 import database
@@ -1165,63 +1160,11 @@ def run_flask():
 
 
 # =============================================================================
-# SOPORTE DE SERVICIO WINDOWS (pywin32)
-# =============================================================================
-#
-# Para instalar/gestionar el servicio:
-#   python app.py install   — registra el servicio en Windows
-#   python app.py start     — inicia el servicio
-#   python app.py stop      — detiene el servicio
-#   python app.py remove    — desinstala el servicio
-#
-# Requiere: pip install pywin32
-# Requiere ejecutar con privilegios de administrador para install/remove.
-#
-try:
-    import win32serviceutil
-    import win32service
-    import win32event
-    import servicemanager
-
-    class GastosCasaService(win32serviceutil.ServiceFramework):
-        _svc_name_         = "GastosCasa"
-        _svc_display_name_ = "Gastos Casa"
-        _svc_description_  = "Aplicacion de control de gastos personales"
-
-        def __init__(self, args):
-            win32serviceutil.ServiceFramework.__init__(self, args)
-            self.stop_event = win32event.CreateEvent(None, 0, 0, None)
-
-        def SvcStop(self):
-            self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-            self.stop_event.set()
-
-        def SvcDoRun(self):
-            servicemanager.LogMsg(
-                servicemanager.EVENTLOG_INFORMATION_TYPE,
-                servicemanager.PYS_SERVICE_STARTED,
-                (self._svc_name_, '')
-            )
-            run_flask()
-            win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
-
-    _WIN32_DISPONIBLE = True
-
-except ImportError:
-    _WIN32_DISPONIBLE = False
-
-
-# =============================================================================
 # PUNTO DE ENTRADA
 # =============================================================================
-
-_COMANDOS_SERVICIO = ('install', 'start', 'stop', 'remove', 'restart', 'status')
+#
+# En producción NSSM envuelve este mismo `python app.py` (no hay comandos de
+# servicio propios). En desarrollo se corre igual, a mano. Ver CONTEXT_DEPLOY.md.
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1 and sys.argv[1] in _COMANDOS_SERVICIO:
-        if not _WIN32_DISPONIBLE:
-            print("ERROR: pywin32 no está instalado. Ejecutá: pip install pywin32")
-            sys.exit(1)
-        win32serviceutil.HandleCommandLine(GastosCasaService)
-    else:
-        run_flask()
+    run_flask()

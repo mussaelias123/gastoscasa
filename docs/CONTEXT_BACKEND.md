@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Este doc es para tareas que tocan `app.py`.
 
 ## Archivos del dominio
-- `app.py` (1076 líneas): rutas, schedulers, formatters Jinja, ngrok, modo servicio.
+- `app.py` (~1170 líneas): rutas, schedulers, formatters Jinja, ngrok, backups.
 - Imports clave: `database`, `auth`, `cotizacion`, `config`.
 
 ## Patrón general de ruta
@@ -54,7 +54,8 @@
 - Carpeta de backups editable desde Settings vía `accion='guardar_backup_dir'` (POST `/settings`).
 
 ## Modo servicio (Windows)
-`python app.py install|start|stop|remove` usa pywin32 (servicio Windows). El registro NSSM es opcional (ver `CONTEXT_DEPLOY.md`).
+`app.py` no tiene comandos de servicio propios. En producción NSSM envuelve
+`python app.py` (mismo entry point que dev). Ver `docs/CONTEXT_DEPLOY.md`.
 
 ## Reglas específicas backend
 1. **Toda ruta que muta DB debe responder a AJAX y a request normal** (formulario sin JS sigue funcionando).
