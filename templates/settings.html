@@ -309,75 +309,39 @@
   {% endif %}
 </div>
 
-{# ── SECCIÓN: BACKUP DE LA BASE DE DATOS ─────────────────────────────────── #}
+{# ── SECCIÓN: BACKUPS DE LA BASE DE DATOS ────────────────────────────────── #}
 <div class="tarjeta settings-seccion" id="backup-db">
-  <h3 class="settings-titulo-seccion">💾 Backup de la base de datos</h3>
+  <h3 class="settings-titulo-seccion">💾 Backups de la base de datos</h3>
 
-  <p class="settings-info">
-    Copias de seguridad de tus datos (<code>gastos.db</code>). Se crean automáticamente
-    todos los jueves y podés crear una manual cuando quieras. Se conservan los últimos 10 backups.
-  </p>
-
-  {# ── Carpeta de backups ── #}
-  <div class="git-bloque">
-    <h4 class="git-subtitulo">Carpeta de backups</h4>
-    <form action="{{ url_for('settings') }}" method="POST">
-      <input type="hidden" name="accion" value="guardar_backup_dir">
-      <div class="settings-campo">
-        <label for="backup_dir">Ruta de guardado</label>
-        <input type="text" id="backup_dir" name="backup_dir"
-               value="{{ cfg.backup_dir | default('backups') }}" maxlength="500"
-               placeholder="backups">
-        <span class="settings-ayuda">
-          Relativa a la carpeta del proyecto, o ruta absoluta.
-          Vacío equivale a <code>backups/</code>.
-        </span>
-      </div>
-      <div class="settings-campo">
-        <button type="submit" class="btn btn-secundario">Guardar carpeta</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="git-separador"></div>
-
-  {# ── Crear backup manual ── #}
-  <div class="git-bloque">
-    <h4 class="git-subtitulo">Crear backup ahora</h4>
-    <p class="settings-ayuda">Genera una copia inmediata de la base de datos en la carpeta de arriba.</p>
-    <div class="settings-campo">
-      <button type="button" class="btn btn-primario" id="btn-crear-backup" onclick="crearBackup()">
-        Crear backup
-      </button>
-    </div>
+  {# 1) Crear backup — ancho completo #}
+  <div class="settings-campo">
+    <button type="button" class="btn btn-primario btn-guardar-rapido"
+            id="btn-crear-backup" onclick="crearBackup()">Crear backup</button>
     <div id="backup-resultado" class="git-resultado" style="display:none;"></div>
   </div>
 
-  <div class="git-separador"></div>
-
-  {# ── Restaurar backup ── #}
-  <div class="git-bloque">
-    <h4 class="git-subtitulo">Restaurar backup</h4>
-    <p class="settings-ayuda">
-      Reemplaza los datos actuales por los del backup elegido. Antes de hacerlo,
-      se guarda automáticamente una copia del estado actual por si querés volver.
-    </p>
-    <div class="settings-campo">
-      <label for="backup-select">Seleccioná un backup</label>
-      <div class="git-select-row">
-        <select id="backup-select" class="git-select">
-          <option value="">Cargando backups...</option>
-        </select>
-        <button type="button" class="btn btn-secundario" onclick="cargarBackups()" title="Actualizar lista">↺</button>
-      </div>
-    </div>
-    <div class="settings-campo">
-      <button type="button" class="btn btn-peligro" id="btn-restaurar-backup" onclick="confirmarRestore()" disabled>
-        Restaurar a este backup
-      </button>
+  {# 2) Seleccionar backup + Restaurar #}
+  <div class="settings-campo">
+    <div class="git-select-row">
+      <select id="backup-select" class="git-select">
+        <option value="">Cargando backups...</option>
+      </select>
+      <button type="button" class="btn btn-peligro" id="btn-restaurar-backup"
+              onclick="confirmarRestore()" disabled>Restaurar backup</button>
     </div>
     <div id="restore-resultado" class="git-resultado" style="display:none;"></div>
   </div>
+
+  {# 3) Ruta de backups + Guardar carpeta #}
+  <form action="{{ url_for('settings') }}" method="POST" class="settings-campo">
+    <input type="hidden" name="accion" value="guardar_backup_dir">
+    <div class="input-con-boton">
+      <input type="text" id="backup_dir" name="backup_dir"
+             value="{{ cfg.backup_dir | default('backups') }}" maxlength="500"
+             placeholder="Carpeta de backups (ej: backups)">
+      <button type="submit" class="btn btn-secundario">Guardar carpeta</button>
+    </div>
+  </form>
 
 </div>
 
