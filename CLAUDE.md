@@ -27,8 +27,12 @@
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
 | Frontend      | `static/style.css`, `static/app.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
-| Deploy/serv   | `build/`, NSSM, ngrok                                  | `docs/CONTEXT_DEPLOY.md`         |
+| Deploy/serv   | NSSM (`build/nssm/nssm.exe`, fuera de git), ngrok, `logs/` | `docs/CONTEXT_DEPLOY.md`     |
 | Scripts ad-hoc| `TempScripts/`                                         | (one-shot, no producción)        |
+
+> **Dev / Prod**: `E:\Fondo` = producción (servicio Windows `GastosCasa` vía NSSM,
+> arranca solo). `E:\FondoDev` = desarrollo, se corre a mano con `python app.py`.
+> El proyecto **no se compila**: NSSM solo envuelve `python app.py`.
 
 ---
 

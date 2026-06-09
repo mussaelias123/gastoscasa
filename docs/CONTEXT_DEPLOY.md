@@ -1,12 +1,19 @@
 # Contexto: Deploy y verificación
 
-> Leer junto con `CLAUDE.md`. Para build, servicio Windows, ngrok, verificación.
+> Leer junto con `CLAUDE.md`. Para servicio Windows (NSSM), ngrok, logs, verificación.
 
 ## Stack
-- Servicio Windows: NSSM (`build/nssm/nssm.exe`).
+- **No se compila.** La app corre como `python app.py`; en producción NSSM
+  envuelve ese mismo comando (no hay PyInstaller, instalador ni comandos de
+  servicio propios en `app.py`).
+- Servicio Windows: NSSM (`build/nssm/nssm.exe`, binario fuera de git).
 - Túnel público: ngrok con dominio fijo.
-- Empaquetado opcional: PyInstaller (`build/gastos-casa.spec`) + Inno Setup (`build/setup_installer.iss`).
 - Backups DB: semanal (jueves) via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings.
+
+## Entornos dev / prod
+- **Prod**: `E:\Fondo` → servicio Windows `GastosCasa` vía NSSM (arranca solo).
+- **Dev**: `E:\FondoDev` → `python app.py` a mano (puerto propio, login bypasseado,
+  no se expone a la red).
 
 ## URL pública (verificación)
 ```
@@ -45,11 +52,13 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - Formato: `gastos_YYYY-MM-DD_HH-MM.db`. Máximo 10 archivos; los más viejos se borran solos.
 - **Importante**: las viejas rutas `/git/*` se eliminaron. El "restore" anterior revertía código, no datos.
 
-## Build (rara vez se toca)
-- `build/build.bat` → ejecuta PyInstaller con `gastos-casa.spec`.
-- `build/setup_installer.iss` → instalador Windows.
-- `build/download_nssm.ps1` → traer NSSM si falta.
-- `build/README-BUILD.md` → instrucciones detalladas.
+## Convención de logs
+- NSSM redirige la salida del proceso a `logs/`:
+  - `AppStdout` → `logs/` (stdout).
+  - `AppStderr` → `logs/` (stderr).
+- Rotación activada en NSSM: `AppRotateFiles 1`, `AppRotateBytes 1048576` (1 MB).
+- `logs/` está en `.gitignore` (no se versiona).
+- En código se loguea con `print()` usando prefijos: `OK:` / `AVISO:` / `ERROR:`.
 
 ## Reglas específicas
 1. **Verificación obligatoria** post-cambio en ngrok URL (no localhost), salvo que el usuario diga lo contrario.
