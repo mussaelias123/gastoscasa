@@ -27,7 +27,8 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 
 ## Modo desarrollo local
 - `python app.py` levanta Flask + scheduler + ngrok según config.
-- `python app.py --config config.dev.json` para entorno paralelo.
+- Cada entorno (DEV / PROD) tiene su propio `config.json` en la carpeta del clon. No existe `--config`.
+- `config.json` está gitignored: DEV y PROD usan sus propios valores sin interferencia.
 - Banner naranja "MODO DESARROLLO" si `app_name` contiene `DEV`.
 
 ## ngrok

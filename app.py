@@ -30,17 +30,13 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
 import os
-import argparse
 import subprocess
 import shutil
 import threading
 import time
 from datetime import datetime, timedelta
 
-_parser = argparse.ArgumentParser()
-_parser.add_argument('--config', default='config.json', help='Ruta al archivo de configuración')
-_args, _ = _parser.parse_known_args()
-CONFIG_FILE = _args.config
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
 # -----------------------------------------------------------------------------
 # Detección PyInstaller: cuando corre como .exe, los templates/static están
