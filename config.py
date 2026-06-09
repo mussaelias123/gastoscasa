@@ -32,6 +32,11 @@ DEFAULTS = {
     "google_client_id": "",
     "google_client_secret": "",
     "secret_key": "",
+    # ── Bypass de login SOLO para DEV ───────────────────────────────────────
+    # Si True, se saltea el login de Google, pero ÚNICAMENTE bajo triple cerrojo
+    # (ver auth.py → require_login): auth_disabled + localhost + ngrok apagado.
+    # En PROD: dejar SIEMPRE en False. Default seguro = False.
+    "auth_disabled": False,
     # ── Paletas de colores — editables desde Settings ──────────────────────────
     # 21 variables base. Los aliases (--color-primario, etc.) siguen en style.css
     # como var() y NO se mueven aquí.

@@ -118,8 +118,25 @@ def init_auth(app, config_file):
         if request.endpoint in rutas_publicas:
             return None
 
-        # Si no hay OAuth configurado, dejar pasar (para que puedan configurar)
         cfg_actual = cfg_module.cargar_config(config_file)
+
+        # ── Bypass DEV con TRIPLE CERROJO ─────────────────────────────────────
+        # El login se saltea SOLO si se cumplen las TRES condiciones a la vez:
+        #   a. auth_disabled == True en config.json
+        #   b. el request viene de localhost (127.0.0.1 / ::1)
+        #   c. ngrok está apagado
+        # El cerrojo (c) garantiza que no hay proxy, así que request.remote_addr
+        # es confiable; por eso NO se usa X-Forwarded-For acá.
+        # Si CUALQUIERA falla → sigue el flujo de login normal (PROD intacto).
+        if (cfg_actual.get('auth_disabled') is True
+                and request.remote_addr in ('127.0.0.1', '::1')
+                and not cfg_actual.get('ngrok_enabled')):
+            if not session.get('user_email'):
+                session['user_email'] = 'dev@local'
+                session['user_name'] = 'DEV'
+            return None
+
+        # Si no hay OAuth configurado, dejar pasar (para que puedan configurar)
         if not cfg_actual.get('google_client_id') or not cfg_actual.get('google_client_secret'):
             return None
 
