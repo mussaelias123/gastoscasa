@@ -30,17 +30,12 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
 import os
-import argparse
-import subprocess
 import shutil
 import threading
 import time
 from datetime import datetime, timedelta
 
-_parser = argparse.ArgumentParser()
-_parser.add_argument('--config', default='config.json', help='Ruta al archivo de configuración')
-_args, _ = _parser.parse_known_args()
-CONFIG_FILE = _args.config
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
 # -----------------------------------------------------------------------------
 # Detección PyInstaller: cuando corre como .exe, los templates/static están
@@ -741,6 +736,14 @@ def settings():
                 flash('Gasto fijo actualizado.')
             return redirect(url_for('settings') + '#gastos-fijos')
 
+        if accion == 'guardar_backup_dir':
+            config.guardar_config(
+                {'backup_dir': request.form.get('backup_dir', '').strip()},
+                CONFIG_FILE,
+            )
+            flash('Carpeta de backups guardada.')
+            return redirect(url_for('settings') + '#backup-db')
+
         nuevos = {
             'port':           int(request.form.get('port', 5000)),
             'app_name':       request.form.get('app_name', 'Gastos Casa').strip(),
@@ -812,105 +815,98 @@ def api_paleta():
 
 
 # =============================================================================
-# RUTA: Git commit desde la interfaz
-# URL: POST /git/commit
+# RUTAS: Backups de la base de datos (desde Settings)
 # =============================================================================
+#
+# - GET  /api/backups            → lista los backups .db de la carpeta.
+# - POST /api/backups/crear      → crea un backup manual de gastos.db.
+# - POST /api/backups/restaurar  → restaura un backup elegido sobre gastos.db,
+#                                   guardando antes una copia de seguridad del
+#                                   estado actual (gastos_<fecha>_pre-restore.db).
 
-@app.route('/git/ping')
-def git_ping():
-    return jsonify({'ok': True, 'version': 'v2-con-git'})
+def _listar_backups():
+    """Lista los backups .db de la carpeta configurada, del más nuevo al más viejo."""
+    backup_dir = _get_backup_dir()
+    items = []
+    try:
+        for f in os.listdir(backup_dir):
+            if not (f.startswith('gastos_') and f.endswith('.db')):
+                continue
+            ruta = os.path.join(backup_dir, f)
+            try:
+                size_mb = round(os.path.getsize(ruta) / 1024 / 1024, 2)
+                mtime   = os.path.getmtime(ruta)
+            except OSError:
+                continue
+            etiqueta = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+            if '_pre-restore' in f:
+                etiqueta += ' (previo a un restore)'
+            items.append({'archivo': f, 'etiqueta': etiqueta, 'size_mb': size_mb, '_mtime': mtime})
+    except OSError:
+        pass
+    items.sort(key=lambda x: x['_mtime'], reverse=True)
+    for it in items:
+        it.pop('_mtime', None)
+    return items
 
 
-@app.route('/git/commit', methods=['POST'])
-def git_commit():
-    descripcion = request.form.get('descripcion', '').strip()
-    ahora = datetime.now().strftime('%Y-%m-%d %H:%M')
+@app.route('/api/backups')
+def api_backups():
+    return jsonify({'ok': True, 'backups': _listar_backups(), 'carpeta': _get_backup_dir()})
 
-    if descripcion:
-        mensaje = f"{ahora} — {descripcion}"
-    else:
-        mensaje = f"Backup automático {ahora}"
 
-    repo_dir = os.path.dirname(os.path.abspath(__file__))
+@app.route('/api/backups/crear', methods=['POST'])
+def api_backups_crear():
+    nombre = hacer_backup_db('backup manual')
+    if nombre:
+        return jsonify({'ok': True, 'mensaje': f'Backup creado: {nombre}', 'backups': _listar_backups()})
+    return jsonify({'ok': False, 'mensaje': 'No se pudo crear el backup. Revisá la carpeta de backups.'}), 500
+
+
+@app.route('/api/backups/restaurar', methods=['POST'])
+def api_backups_restaurar():
+    import sqlite3
+    archivo = request.form.get('archivo', '').strip()
+
+    # Validación anti path-traversal: solo nombre de archivo, sin separadores.
+    if not archivo or os.path.basename(archivo) != archivo or not archivo.endswith('.db'):
+        return jsonify({'ok': False, 'mensaje': 'Nombre de backup inválido.'}), 400
+
+    backup_dir = _get_backup_dir()
+    origen     = os.path.join(backup_dir, archivo)
+    if not os.path.isfile(origen):
+        return jsonify({'ok': False, 'mensaje': 'El backup elegido no existe.'}), 404
 
     try:
-        git_opts = [
-            '-c', f'safe.directory={repo_dir}',
-            '-c', 'user.email=app@gastoscasa.local',
-            '-c', 'user.name=Gastos Casa',
-        ]
+        os.makedirs(backup_dir, exist_ok=True)
 
-        add = subprocess.run(['git'] + git_opts + ['add', '.'], cwd=repo_dir,
-                             capture_output=True, text=True, encoding='utf-8', errors='replace')
-        if add.returncode != 0:
-            return jsonify({'ok': False, 'mensaje': f'git add falló: {(add.stderr or add.stdout).strip()}'})
+        # 1) Copia de seguridad del estado actual antes de pisar nada.
+        if os.path.isfile(_DB_PATH):
+            sello  = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            seguro = os.path.join(backup_dir, f'gastos_{sello}_pre-restore.db')
+            src = sqlite3.connect(_DB_PATH)
+            dst = sqlite3.connect(seguro)
+            src.backup(dst)
+            src.close()
+            dst.close()
+            print(f"OK: Backup de seguridad pre-restore: {os.path.basename(seguro)}")
 
-        resultado = subprocess.run(
-            ['git'] + git_opts + ['commit', '-m', mensaje],
-            cwd=repo_dir, capture_output=True, text=True, encoding='utf-8', errors='replace'
-        )
+        # 2) Restaurar: copiar el backup elegido sobre gastos.db (API SQLite).
+        src = sqlite3.connect(origen)
+        dst = sqlite3.connect(_DB_PATH)
+        src.backup(dst)
+        src.close()
+        dst.close()
+        print(f"OK: Base de datos restaurada desde {archivo}")
 
-        if resultado.returncode == 0:
-            hacer_backup_db('backup manual')
-            return jsonify({'ok': True, 'mensaje': f'Commit creado y base de datos respaldada: "{mensaje}"'})
-        elif 'nothing to commit' in resultado.stdout or 'nothing to commit' in resultado.stderr:
-            hacer_backup_db('backup manual (sin cambios en código)')
-            return jsonify({'ok': True, 'mensaje': 'Base de datos respaldada. No había cambios en el código desde el último backup.'})
-        else:
-            return jsonify({'ok': False, 'mensaje': (resultado.stderr or resultado.stdout).strip()})
-
-    except FileNotFoundError:
-        return jsonify({'ok': False, 'mensaje': 'Git no está instalado o no se encuentra en el PATH.'})
+        return jsonify({
+            'ok': True,
+            'mensaje': f'Datos restaurados desde {archivo}. Se guardó una copia previa por las dudas. Recargá la página.',
+            'backups': _listar_backups(),
+        })
     except Exception as e:
-        return jsonify({'ok': False, 'mensaje': str(e)})
-
-
-@app.route('/git/log')
-def git_log():
-    repo_dir = os.path.dirname(os.path.abspath(__file__))
-    git_opts = ['-c', f'safe.directory={repo_dir}']
-    try:
-        resultado = subprocess.run(
-            ['git'] + git_opts + ['log', '--pretty=format:%H|%s|%ar', '-20'],
-            cwd=repo_dir, capture_output=True, text=True, encoding='utf-8', errors='replace'
-        )
-        if resultado.returncode != 0:
-            return jsonify({'ok': False, 'commits': [], 'mensaje': resultado.stderr.strip()})
-        commits = []
-        for linea in resultado.stdout.strip().splitlines():
-            if '|' in linea:
-                partes = linea.split('|', 2)
-                commits.append({'hash': partes[0], 'mensaje': partes[1], 'cuando': partes[2]})
-        return jsonify({'ok': True, 'commits': commits})
-    except Exception as e:
-        return jsonify({'ok': False, 'commits': [], 'mensaje': str(e)})
-
-
-@app.route('/git/restore', methods=['POST'])
-def git_restore():
-    commit_hash = request.form.get('hash', '').strip()
-    if not commit_hash or len(commit_hash) < 7:
-        return jsonify({'ok': False, 'mensaje': 'Hash de commit inválido.'})
-
-    repo_dir = os.path.dirname(os.path.abspath(__file__))
-    git_opts = [
-        '-c', f'safe.directory={repo_dir}',
-        '-c', 'user.email=app@gastoscasa.local',
-        '-c', 'user.name=Gastos Casa',
-    ]
-    try:
-        resultado = subprocess.run(
-            ['git'] + git_opts + ['checkout', commit_hash, '--', '.'],
-            cwd=repo_dir, capture_output=True, text=True, encoding='utf-8', errors='replace'
-        )
-        if resultado.returncode == 0:
-            return jsonify({'ok': True, 'mensaje': f'Proyecto restaurado al commit {commit_hash[:7]}. Recargá la página para ver los cambios.'})
-        else:
-            return jsonify({'ok': False, 'mensaje': (resultado.stderr or resultado.stdout).strip()})
-    except FileNotFoundError:
-        return jsonify({'ok': False, 'mensaje': 'Git no está instalado o no se encuentra en el PATH.'})
-    except Exception as e:
-        return jsonify({'ok': False, 'mensaje': str(e)})
+        print(f"ERROR: Restore de DB falló: {e}")
+        return jsonify({'ok': False, 'mensaje': f'No se pudo restaurar: {e}'}), 500
 
 
 # =============================================================================
@@ -924,17 +920,28 @@ def git_restore():
 
 _BASE_DIR_BACKUP = os.path.dirname(os.path.abspath(__file__))
 _DB_PATH         = os.path.join(_BASE_DIR_BACKUP, 'gastos.db')
-_BACKUP_DIR      = os.path.join(_BASE_DIR_BACKUP, 'backups')
 _MAX_BACKUPS     = 10
 
 
+def _get_backup_dir():
+    """Resuelve la carpeta de backups leyendo config en caliente."""
+    cfg = config.cargar_config(CONFIG_FILE)
+    raw = cfg.get('backup_dir', 'backups') or 'backups'
+    if os.path.isabs(raw):
+        return raw
+    return os.path.join(_BASE_DIR_BACKUP, raw)
+
+
 def hacer_backup_db(motivo='programado'):
-    """Copia la base de datos al directorio backups/ usando la API de SQLite."""
+    """Copia la base de datos al directorio de backups usando la API de SQLite.
+
+    Devuelve el nombre del archivo creado, o None si falló."""
     import sqlite3
+    backup_dir = _get_backup_dir()
     try:
-        os.makedirs(_BACKUP_DIR, exist_ok=True)
+        os.makedirs(backup_dir, exist_ok=True)
         ahora     = datetime.now().strftime('%Y-%m-%d_%H-%M')
-        dest      = os.path.join(_BACKUP_DIR, f'gastos_{ahora}.db')
+        dest      = os.path.join(backup_dir, f'gastos_{ahora}.db')
         origen    = sqlite3.connect(_DB_PATH)
         respaldo  = sqlite3.connect(dest)
         origen.backup(respaldo)
@@ -942,26 +949,30 @@ def hacer_backup_db(motivo='programado'):
         respaldo.close()
         print(f"OK: Backup de DB ({motivo}): {os.path.basename(dest)}")
         _limpiar_backups_antiguos()
+        return os.path.basename(dest)
     except Exception as e:
         print(f"ERROR: Backup de DB falló: {e}")
+        return None
 
 
 def _limpiar_backups_antiguos():
     """Elimina los backups más viejos si hay más de _MAX_BACKUPS."""
+    backup_dir = _get_backup_dir()
     try:
         archivos = sorted(
-            [f for f in os.listdir(_BACKUP_DIR) if f.startswith('gastos_') and f.endswith('.db')],
+            [f for f in os.listdir(backup_dir) if f.startswith('gastos_') and f.endswith('.db')],
         )
         while len(archivos) > _MAX_BACKUPS:
-            os.remove(os.path.join(_BACKUP_DIR, archivos.pop(0)))
+            os.remove(os.path.join(backup_dir, archivos.pop(0)))
     except Exception as e:
         print(f"AVISO: No se pudieron limpiar backups viejos: {e}")
 
 
 def _ultimo_backup_fecha():
     """Devuelve la fecha del backup más reciente, o None si no hay ninguno."""
+    backup_dir = _get_backup_dir()
     try:
-        archivos = [f for f in os.listdir(_BACKUP_DIR) if f.startswith('gastos_') and f.endswith('.db')]
+        archivos = [f for f in os.listdir(backup_dir) if f.startswith('gastos_') and f.endswith('.db')]
         if not archivos:
             return None
         ultimo = sorted(archivos)[-1]

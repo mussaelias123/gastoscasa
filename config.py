@@ -37,6 +37,9 @@ DEFAULTS = {
     # (ver auth.py → require_login): auth_disabled + localhost + ngrok apagado.
     # En PROD: dejar SIEMPRE en False. Default seguro = False.
     "auth_disabled": False,
+    # ── Backups de la base de datos ────────────────────────────────────────────
+    # Ruta relativa a la carpeta del proyecto, o absoluta. Default: "backups".
+    "backup_dir": "backups",
     # ── Paletas de colores — editables desde Settings ──────────────────────────
     # 21 variables base. Los aliases (--color-primario, etc.) siguen en style.css
     # como var() y NO se mueven aquí.

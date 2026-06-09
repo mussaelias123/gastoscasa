@@ -26,11 +26,12 @@
 | GET    | `/api/saldos`             | `api_saldos`          | JSON `{saldos, gauges, historico, fecha}`. `?hasta=YYYY-MM-DD` = saldos a esa fecha; sin `hasta` = toda la DB. |
 | GET/POST | `/settings`             | `settings`            | Página de configuración (cfg.json + paleta).     |
 | POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
-| GET    | `/git/ping`               | `git_ping`            | Verifica que git esté disponible.                |
-| POST   | `/git/commit`             | `git_commit`          | Commit + push automático.                        |
-| GET    | `/git/log`                | `git_log`             | Últimos commits.                                 |
-| POST   | `/git/restore`            | `git_restore`         | Restore a commit anterior.                       |
+| GET    | `/api/backups`            | `api_backups`         | JSON `{backups:[{archivo,etiqueta,size_mb}], carpeta}`. Lista backups `.db`. |
+| POST   | `/api/backups/crear`      | `api_backups_crear`   | Crea backup manual de `gastos.db`. Devuelve `{ok,mensaje,backups}`. |
+| POST   | `/api/backups/restaurar`  | `api_backups_restaurar` | Restaura `gastos.db` desde `archivo` (form). Hace copia `..._pre-restore.db` antes. |
 | GET    | `/login`, `/auth/google`, `/auth/google/callback`, `/logout` | (blueprint `auth`) | OAuth Google. Ver `CONTEXT_AUTH.md`. |
+
+> **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
 ## Helpers internos clave
 - `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
@@ -41,12 +42,19 @@
 - `_HEX_RE`: regex `^#[0-9a-fA-F]{6}$` para validar hex de la paleta.
 
 ## Schedulers en hilo
-- `iniciar_scheduler_backup()`: backup `gastos.db` cada hora a `backups/`.
+- `iniciar_scheduler_backup()`: backup `gastos.db` cada hora a la carpeta configurada en `backup_dir`.
 - `iniciar_scheduler_cotizacion()`: refresh cotización USD a horarios fijos.
 - Ambos se inician en `run_flask()`. NO bloquean request loop.
 
+## Helpers de backup
+- `_get_backup_dir()`: lee `backup_dir` de config en caliente (sin reiniciar). Si es ruta relativa, la resuelve contra la carpeta del proyecto. Si es vacía, usa `backups/`.
+- `hacer_backup_db(motivo)`: copia `gastos.db` → `gastos_<fecha>.db`. Devuelve el nombre del archivo o `None` si falló.
+- `_listar_backups()`: lista los `.db` de la carpeta (más nuevo primero) con `archivo`, `etiqueta`, `size_mb`.
+- Restore (`api_backups_restaurar`): valida nombre (anti path-traversal), guarda `gastos_<fecha>_pre-restore.db`, luego copia el backup elegido sobre `gastos.db` (API SQLite).
+- Carpeta de backups editable desde Settings vía `accion='guardar_backup_dir'` (POST `/settings`).
+
 ## Modo servicio (Windows)
-`python app.py install|start|stop|remove` invoca subprocess sobre `build/nssm/nssm.exe`.
+`python app.py install|start|stop|remove` usa pywin32 (servicio Windows). El registro NSSM es opcional (ver `CONTEXT_DEPLOY.md`).
 
 ## Reglas específicas backend
 1. **Toda ruta que muta DB debe responder a AJAX y a request normal** (formulario sin JS sigue funcionando).
@@ -54,6 +62,7 @@
 3. **Sueldo + factor**: si `tipo='ingreso'` y `categoria='sueldo'`, guardar `factor_aplicado = cfg['factor_sueldo']` (default 0.7). El cálculo de saldos lo aplica.
 4. **Cuotas**: si `cuotas_checkbox` y `total_cuotas`, se crea fila en `gastos_fijos` con `es_cuota=1`. Categoría `Fijo` con `gasto_fijo` existente avanza la cuota.
 5. **Cambio**: tipo `cambio` genera 2 inserts. Movimiento 1 = gasto en moneda origen. Movimiento 2 = ingreso en moneda destino. Categoría = `Cambio`.
+6. **backup_dir**: clave de config editable desde Settings. Default `"backups"` (relativo). `_get_backup_dir()` lo resuelve en caliente; un cambio aplica sin reiniciar.
 
 ## Al modificar este dominio, actualizar:
 - Esta tabla de rutas (sección "Mapa de rutas").
