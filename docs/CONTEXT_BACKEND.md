@@ -26,11 +26,12 @@
 | GET    | `/api/saldos`             | `api_saldos`          | JSON `{saldos, gauges, historico, fecha}`. `?hasta=YYYY-MM-DD` = saldos a esa fecha; sin `hasta` = toda la DB. |
 | GET/POST | `/settings`             | `settings`            | Página de configuración (cfg.json + paleta).     |
 | POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
-| GET    | `/git/ping`               | `git_ping`            | Verifica que git esté disponible.                |
-| POST   | `/git/commit`             | `git_commit`          | Commit + push automático.                        |
-| GET    | `/git/log`                | `git_log`             | Últimos commits.                                 |
-| POST   | `/git/restore`            | `git_restore`         | Restore a commit anterior.                       |
+| GET    | `/api/backups`            | `api_backups`         | JSON `{backups:[{archivo,etiqueta,size_mb}], carpeta}`. Lista backups `.db`. |
+| POST   | `/api/backups/crear`      | `api_backups_crear`   | Crea backup manual de `gastos.db`. Devuelve `{ok,mensaje,backups}`. |
+| POST   | `/api/backups/restaurar`  | `api_backups_restaurar` | Restaura `gastos.db` desde `archivo` (form). Hace copia `..._pre-restore.db` antes. |
 | GET    | `/login`, `/auth/google`, `/auth/google/callback`, `/logout` | (blueprint `auth`) | OAuth Google. Ver `CONTEXT_AUTH.md`. |
+
+> **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
 ## Helpers internos clave
 - `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
@@ -45,11 +46,15 @@
 - `iniciar_scheduler_cotizacion()`: refresh cotización USD a horarios fijos.
 - Ambos se inician en `run_flask()`. NO bloquean request loop.
 
-## Helper de backup
+## Helpers de backup
 - `_get_backup_dir()`: lee `backup_dir` de config en caliente (sin reiniciar). Si es ruta relativa, la resuelve contra la carpeta del proyecto. Si es vacía, usa `backups/`.
+- `hacer_backup_db(motivo)`: copia `gastos.db` → `gastos_<fecha>.db`. Devuelve el nombre del archivo o `None` si falló.
+- `_listar_backups()`: lista los `.db` de la carpeta (más nuevo primero) con `archivo`, `etiqueta`, `size_mb`.
+- Restore (`api_backups_restaurar`): valida nombre (anti path-traversal), guarda `gastos_<fecha>_pre-restore.db`, luego copia el backup elegido sobre `gastos.db` (API SQLite).
+- Carpeta de backups editable desde Settings vía `accion='guardar_backup_dir'` (POST `/settings`).
 
 ## Modo servicio (Windows)
-`python app.py install|start|stop|remove` invoca subprocess sobre `build/nssm/nssm.exe`.
+`python app.py install|start|stop|remove` usa pywin32 (servicio Windows). El registro NSSM es opcional (ver `CONTEXT_DEPLOY.md`).
 
 ## Reglas específicas backend
 1. **Toda ruta que muta DB debe responder a AJAX y a request normal** (formulario sin JS sigue funcionando).

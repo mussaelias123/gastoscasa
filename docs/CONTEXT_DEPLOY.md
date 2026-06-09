@@ -6,7 +6,7 @@
 - Servicio Windows: NSSM (`build/nssm/nssm.exe`).
 - Túnel público: ngrok con dominio fijo.
 - Empaquetado opcional: PyInstaller (`build/gastos-casa.spec`) + Inno Setup (`build/setup_installer.iss`).
-- Backups DB: hourly via scheduler interno (`app.py → _scheduler_backup`).
+- Backups DB: semanal (jueves) via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings.
 
 ## URL pública (verificación)
 ```
@@ -36,12 +36,14 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - API local de ngrok: `http://localhost:4040/api/tunnels` (útil para inspección).
 - Si `ngrok_enabled=False` o falta token → no se levanta (solo localhost).
 
-## Backups
-- Carpeta configurable desde Settings → campo "Carpeta de backups" (`backup_dir` en `config.json`).
-- Default: `backups/` relativo a la raíz del proyecto. Acepta rutas absolutas.
-- Horario: todos los jueves (scheduler interno). Se aplica el cambio de carpeta sin reiniciar.
-- Formato: `gastos_YYYY-MM-DD_HH-MM.db`. Máximo 10 archivos; los más viejos se borran.
-- Backup pre-evento: `gastos_pre_<motivo>_<timestamp>.db` → manual antes de migración.
+## Backups (de la base de datos)
+- Son copias de `gastos.db`, NO de código. Gestionados desde Settings → "Backup de la base de datos".
+- Carpeta configurable: campo "Ruta de guardado" (`backup_dir` en `config.json`). Default `backups/` relativo; acepta rutas absolutas. Se aplica sin reiniciar.
+- Automático: todos los jueves (scheduler interno `_scheduler_backup`). Si estuvo apagado >7 días, corre al arrancar.
+- Manual: botón "Crear backup" → `POST /api/backups/crear`.
+- Restore: elegir backup en el desplegable → `POST /api/backups/restaurar`. Antes guarda `gastos_<fecha>_pre-restore.db` (deshacer posible).
+- Formato: `gastos_YYYY-MM-DD_HH-MM.db`. Máximo 10 archivos; los más viejos se borran solos.
+- **Importante**: las viejas rutas `/git/*` se eliminaron. El "restore" anterior revertía código, no datos.
 
 ## Build (rara vez se toca)
 - `build/build.bat` → ejecuta PyInstaller con `gastos-casa.spec`.
@@ -52,7 +54,7 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 ## Reglas específicas
 1. **Verificación obligatoria** post-cambio en ngrok URL (no localhost), salvo que el usuario diga lo contrario.
 2. **Restart del servicio** es operación con permisos elevados. Confirmar con usuario antes.
-3. **Backups antes de migrar datos** (manual, no confiar solo en hourly).
+3. **Backups antes de migrar datos** (manual desde Settings, no confiar solo en el automático semanal).
 4. **No commitear** `build/dist/`, `*.exe`, `gastos.db`, `backups/`.
 
 ## Al modificar este dominio, actualizar:

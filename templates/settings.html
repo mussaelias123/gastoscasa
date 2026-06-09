@@ -48,18 +48,6 @@
       </span>
     </div>
 
-    <div class="settings-campo">
-      <label for="backup_dir">Carpeta de backups</label>
-      <input type="text" id="backup_dir" name="backup_dir"
-             value="{{ cfg.backup_dir | default('backups') }}" maxlength="500"
-             placeholder="backups">
-      <span class="settings-ayuda">
-        Ruta donde se guardan los backups de la base de datos.
-        Relativa a la carpeta del proyecto, o absoluta.
-        Vacío equivale a <code>backups/</code>.
-      </span>
-    </div>
-
   </div>
 
   {# ── SECCIÓN: COTIZACIÓN USD → ARS (automática) ──────────────────────── #}
@@ -321,51 +309,74 @@
   {% endif %}
 </div>
 
-{# ── SECCIÓN: GIT / BACKUP Y RESTORE ─────────────────────────────────────── #}
-<div class="tarjeta settings-seccion" id="git-backup">
-  <h3 class="settings-titulo-seccion">💾 Backup y Restore</h3>
+{# ── SECCIÓN: BACKUP DE LA BASE DE DATOS ─────────────────────────────────── #}
+<div class="tarjeta settings-seccion" id="backup-db">
+  <h3 class="settings-titulo-seccion">💾 Backup de la base de datos</h3>
 
-  {# ── Backup ── #}
   <p class="settings-info">
-    Guardá el estado actual de la aplicación. Si algo se rompe, podés volver a cualquier punto exacto.
+    Copias de seguridad de tus datos (<code>gastos.db</code>). Se crean automáticamente
+    todos los jueves y podés crear una manual cuando quieras. Se conservan los últimos 10 backups.
   </p>
 
+  {# ── Carpeta de backups ── #}
   <div class="git-bloque">
-    <h4 class="git-subtitulo">Crear backup</h4>
-    <div class="settings-campo">
-      <label for="git-descripcion">Descripción <span class="settings-opcional">(opcional)</span></label>
-      <input type="text" id="git-descripcion" placeholder="Ej: agrego filtro por categoría" maxlength="200">
-      <span class="settings-ayuda">Se suma al backup junto con la fecha y hora automáticamente.</span>
-    </div>
-    <div class="settings-campo">
-      <button type="button" class="btn btn-primario" id="btn-git-commit" onclick="hacerCommit()">
-        Guardar backup
-      </button>
-    </div>
-    <div id="git-resultado" class="git-resultado" style="display:none;"></div>
+    <h4 class="git-subtitulo">Carpeta de backups</h4>
+    <form action="{{ url_for('settings') }}" method="POST">
+      <input type="hidden" name="accion" value="guardar_backup_dir">
+      <div class="settings-campo">
+        <label for="backup_dir">Ruta de guardado</label>
+        <input type="text" id="backup_dir" name="backup_dir"
+               value="{{ cfg.backup_dir | default('backups') }}" maxlength="500"
+               placeholder="backups">
+        <span class="settings-ayuda">
+          Relativa a la carpeta del proyecto, o ruta absoluta.
+          Vacío equivale a <code>backups/</code>.
+        </span>
+      </div>
+      <div class="settings-campo">
+        <button type="submit" class="btn btn-secundario">Guardar carpeta</button>
+      </div>
+    </form>
   </div>
 
   <div class="git-separador"></div>
 
-  {# ── Restore ── #}
+  {# ── Crear backup manual ── #}
   <div class="git-bloque">
-    <h4 class="git-subtitulo">Restaurar backup</h4>
+    <h4 class="git-subtitulo">Crear backup ahora</h4>
+    <p class="settings-ayuda">Genera una copia inmediata de la base de datos en la carpeta de arriba.</p>
     <div class="settings-campo">
-      <label for="git-select">Seleccioná un punto de restauración</label>
-      <div class="git-select-row">
-        <select id="git-select" class="git-select">
-          <option value="">Cargando backups...</option>
-        </select>
-        <button type="button" class="btn btn-secundario" onclick="cargarCommits()" title="Actualizar lista">↺</button>
-      </div>
-      <span class="settings-ayuda">Se muestran los últimos 20 backups.</span>
-    </div>
-    <div class="settings-campo">
-      <button type="button" class="btn btn-peligro" id="btn-git-restore" onclick="confirmarRestore()" disabled>
-        Restaurar a este punto
+      <button type="button" class="btn btn-primario" id="btn-crear-backup" onclick="crearBackup()">
+        Crear backup
       </button>
     </div>
-    <div id="git-restore-resultado" class="git-resultado" style="display:none;"></div>
+    <div id="backup-resultado" class="git-resultado" style="display:none;"></div>
+  </div>
+
+  <div class="git-separador"></div>
+
+  {# ── Restaurar backup ── #}
+  <div class="git-bloque">
+    <h4 class="git-subtitulo">Restaurar backup</h4>
+    <p class="settings-ayuda">
+      Reemplaza los datos actuales por los del backup elegido. Antes de hacerlo,
+      se guarda automáticamente una copia del estado actual por si querés volver.
+    </p>
+    <div class="settings-campo">
+      <label for="backup-select">Seleccioná un backup</label>
+      <div class="git-select-row">
+        <select id="backup-select" class="git-select">
+          <option value="">Cargando backups...</option>
+        </select>
+        <button type="button" class="btn btn-secundario" onclick="cargarBackups()" title="Actualizar lista">↺</button>
+      </div>
+    </div>
+    <div class="settings-campo">
+      <button type="button" class="btn btn-peligro" id="btn-restaurar-backup" onclick="confirmarRestore()" disabled>
+        Restaurar a este backup
+      </button>
+    </div>
+    <div id="restore-resultado" class="git-resultado" style="display:none;"></div>
   </div>
 
 </div>
@@ -497,119 +508,113 @@
 {% block scripts %}
 <script>
 
-// ── Git commit ───────────────────────────────────────────────────────────────
+// ── Backup de la base de datos ───────────────────────────────────────────────
 
-async function hacerCommit() {
-  const btn        = document.getElementById('btn-git-commit');
-  const descripcion = document.getElementById('git-descripcion').value.trim();
-  const resultado  = document.getElementById('git-resultado');
-
-  btn.disabled    = true;
-  btn.textContent = 'Guardando...';
-  resultado.style.display = 'none';
-
-  const formData = new FormData();
-  formData.append('descripcion', descripcion);
-
-  try {
-    const resp = await fetch('/git/commit', { method: 'POST', body: formData });
-    const data = await resp.json();
-
-    resultado.style.display = 'block';
-    if (data.ok) {
-      resultado.className = 'git-resultado git-resultado-ok';
-      resultado.textContent = '✓ ' + data.mensaje;
-      document.getElementById('git-descripcion').value = '';
-    } else {
-      resultado.className = 'git-resultado git-resultado-error';
-      resultado.textContent = '✗ ' + data.mensaje;
-    }
-  } catch (e) {
-    resultado.style.display  = 'block';
-    resultado.className      = 'git-resultado git-resultado-error';
-    resultado.textContent    = '✗ Error inesperado. Revisá la consola.';
-  } finally {
-    btn.disabled    = false;
-    btn.textContent = 'Guardar backup';
-    cargarCommits();
-  }
+function _pintarResultado(el, ok, texto) {
+  el.style.display = 'block';
+  el.className = 'git-resultado ' + (ok ? 'git-resultado-ok' : 'git-resultado-error');
+  el.textContent = (ok ? '✓ ' : '✗ ') + texto;
 }
 
-// ── Git restore ──────────────────────────────────────────────────────────────
+function _renderBackups(backups) {
+  const select     = document.getElementById('backup-select');
+  const btnRestore = document.getElementById('btn-restaurar-backup');
 
-async function cargarCommits() {
-  const select = document.getElementById('git-select');
-  const btnRestore = document.getElementById('btn-git-restore');
+  if (!backups || backups.length === 0) {
+    select.innerHTML = '<option value="">No hay backups todavía</option>';
+    btnRestore.disabled = true;
+    return;
+  }
+
+  select.innerHTML = backups.map(b =>
+    `<option value="${b.archivo}">${b.etiqueta} — ${b.size_mb} MB</option>`
+  ).join('');
+  btnRestore.disabled = false;
+}
+
+async function cargarBackups() {
+  const select = document.getElementById('backup-select');
   select.innerHTML = '<option value="">Cargando...</option>';
-  btnRestore.disabled = true;
+  document.getElementById('btn-restaurar-backup').disabled = true;
 
   try {
-    const resp = await fetch('/git/log');
+    const resp = await fetch('/api/backups');
     const data = await resp.json();
-
-    if (!data.ok || data.commits.length === 0) {
-      select.innerHTML = '<option value="">No hay backups disponibles</option>';
-      return;
-    }
-
-    select.innerHTML = data.commits.map(c =>
-      `<option value="${c.hash}">${c.mensaje} — ${c.cuando}</option>`
-    ).join('');
-
-    btnRestore.disabled = false;
+    _renderBackups(data.ok ? data.backups : []);
   } catch (e) {
     select.innerHTML = '<option value="">Error al cargar backups</option>';
   }
 }
 
-function confirmarRestore() {
-  const select = document.getElementById('git-select');
-  const hash   = select.value;
-  const texto  = select.options[select.selectedIndex]?.text || '';
+async function crearBackup() {
+  const btn       = document.getElementById('btn-crear-backup');
+  const resultado = document.getElementById('backup-resultado');
 
-  if (!hash) return;
+  btn.disabled    = true;
+  btn.textContent = 'Creando...';
+  resultado.style.display = 'none';
 
-  const confirmado = confirm(
-    `¿Restaurar el proyecto a este punto?\n\n"${texto}"\n\nTodos los archivos volverán a ese estado. Esta acción se puede deshacer haciendo otro restore.`
-  );
-  if (confirmado) hacerRestore(hash);
+  try {
+    const resp = await fetch('/api/backups/crear', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const data = await resp.json();
+    _pintarResultado(resultado, data.ok, data.mensaje);
+    if (data.ok && data.backups) _renderBackups(data.backups);
+  } catch (e) {
+    _pintarResultado(resultado, false, 'Error inesperado. Revisá la consola.');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Crear backup';
+  }
 }
 
-async function hacerRestore(hash) {
-  const btn       = document.getElementById('btn-git-restore');
-  const resultado = document.getElementById('git-restore-resultado');
+function confirmarRestore() {
+  const select  = document.getElementById('backup-select');
+  const archivo = select.value;
+  const texto   = select.options[select.selectedIndex]?.text || '';
+
+  if (!archivo) return;
+
+  const confirmado = confirm(
+    `¿Restaurar los datos desde este backup?\n\n"${texto}"\n\n` +
+    `Tus datos actuales se reemplazan por los del backup. Antes se guarda una ` +
+    `copia de seguridad del estado actual por si querés volver.`
+  );
+  if (confirmado) hacerRestore(archivo);
+}
+
+async function hacerRestore(archivo) {
+  const btn       = document.getElementById('btn-restaurar-backup');
+  const resultado = document.getElementById('restore-resultado');
 
   btn.disabled    = true;
   btn.textContent = 'Restaurando...';
   resultado.style.display = 'none';
 
   const formData = new FormData();
-  formData.append('hash', hash);
+  formData.append('archivo', archivo);
 
   try {
-    const resp = await fetch('/git/restore', { method: 'POST', body: formData });
+    const resp = await fetch('/api/backups/restaurar', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: formData
+    });
     const data = await resp.json();
-
-    resultado.style.display = 'block';
-    if (data.ok) {
-      resultado.className = 'git-resultado git-resultado-ok';
-      resultado.textContent = '✓ ' + data.mensaje;
-    } else {
-      resultado.className = 'git-resultado git-resultado-error';
-      resultado.textContent = '✗ ' + data.mensaje;
-    }
+    _pintarResultado(resultado, data.ok, data.mensaje);
+    if (data.ok && data.backups) _renderBackups(data.backups);
   } catch (e) {
-    resultado.style.display = 'block';
-    resultado.className     = 'git-resultado git-resultado-error';
-    resultado.textContent   = '✗ Error inesperado.';
+    _pintarResultado(resultado, false, 'Error inesperado. Revisá la consola.');
   } finally {
     btn.disabled    = false;
-    btn.textContent = 'Restaurar a este punto';
+    btn.textContent = 'Restaurar a este backup';
   }
 }
 
-// Cargar commits al abrir la página
-cargarCommits();
+// Cargar la lista de backups al abrir la página
+cargarBackups();
 
 function togglePass(inputId, btn) {
   const input = document.getElementById(inputId);
