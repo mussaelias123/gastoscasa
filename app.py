@@ -1139,6 +1139,9 @@ def run_flask():
     elif cfg.get('ngrok_enabled', False) and 'DEV' not in cfg.get('app_name', ''):
         host = '127.0.0.1'
         iniciar_ngrok(port, cfg.get('ngrok_authtoken', ''), cfg.get('ngrok_domain', ''))
+    elif 'DEV' in cfg.get('app_name', '') or cfg.get('auth_disabled', False):
+        host = '127.0.0.1'
+        print("AVISO: modo DEV / auth_disabled — la app solo escucha en localhost (no se expone a la red).")
     else:
         host = '0.0.0.0'
 

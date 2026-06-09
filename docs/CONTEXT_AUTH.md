@@ -30,6 +30,25 @@ Para agregar usuario: editar la lista en `auth.py`. **No hay UI para esto** (dec
    - Y `session['user_email']` falta o no está en whitelist.
 4. Si `google_client_id` o `google_client_secret` faltan en config → middleware deja pasar (modo bootstrap para configurar).
 
+## Bypass DEV (`auth_disabled`) — TRIPLE CERROJO
+Permite que el entorno DEV no pida login de Google, sin debilitar PROD.
+
+- Clave de config: `auth_disabled` (en `config.py → DEFAULTS`, default **`False`**).
+- En `require_login()` (después de `rutas_publicas`) el login se saltea **SOLO si
+  se cumplen las TRES condiciones a la vez**:
+  1. `cfg.get('auth_disabled') is True`
+  2. `request.remote_addr in ('127.0.0.1', '::1')` (localhost)
+  3. `not cfg.get('ngrok_enabled')` (ngrok apagado)
+- Si las tres se cumplen y no hay sesión → inyecta usuario falso
+  (`user_email='dev@local'`, `user_name='DEV'`) y `return None`.
+- Si **cualquiera** falla → flujo de login normal, sin tocar nada. PROD idéntico.
+- El cerrojo (3) garantiza que no hay proxy ⇒ `remote_addr` es confiable;
+  por eso **NO** se usa `X-Forwarded-For` en este chequeo.
+- `app.py → run_flask()`: si `app_name` contiene `'DEV'` **o** `auth_disabled=True`
+  → bind a `127.0.0.1` (solo local, no se expone a la red). PROD con ngrok ya
+  usaba `127.0.0.1`; ese caso no cambia.
+- **Regla**: en PROD `auth_disabled` debe quedar SIEMPRE en `False`.
+
 ## Configuración de cookie de sesión
 - Nombre: `gastos_session`
 - Lifetime: 90 días
