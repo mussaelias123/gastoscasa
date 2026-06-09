@@ -25,3 +25,6 @@ env/
 # Build
 build/dist/
 *.exe
+
+# Worktrees temporales de Claude Code (agentes con isolation)
+.claude/worktrees/
