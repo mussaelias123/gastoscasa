@@ -430,6 +430,19 @@ body.has-dev-banner .site-topbar {
   text-decoration: none;
 }
 
+/* Botón de acento (indigo): acción primaria con buen contraste en light y dark.
+   A diferencia de .btn-primario (deco-2), no se confunde con el fondo en dark. */
+.btn-acento {
+  background-color: var(--color-acento);
+  color: white;
+}
+
+.btn-acento:hover {
+  background-color: var(--color-acento-oscuro);
+  color: white;
+  text-decoration: none;
+}
+
 .btn-editar {
   background-color: var(--color-borde);  /* gris neutro — ISA 101: informativo */
   color: white;
@@ -2628,24 +2641,6 @@ a.btn-filtro {
 /* ============================================================================
    GIT BACKUP Y RESTORE EN SETTINGS
    ============================================================================ */
-
-.git-bloque {
-  padding: 0.25rem 0;
-}
-
-.git-subtitulo {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--color-texto-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 1rem;
-}
-
-.git-separador {
-  border-top: 1px solid var(--color-borde);
-  margin: 1.5rem 0;
-}
 
 .git-select-row {
   display: flex;

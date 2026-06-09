@@ -12,7 +12,7 @@
   - `editar.html` — edición completa de movimiento.
   - `resumen.html` — dashboard mensual (Chart.js), 5 secciones: saldos, sueldos (Elías vs Mari, evolución 6 meses), análisis de gastos, envíos, fijos.
   - `gastos_fijos.html` — gestión de fijos recurrentes y cuotas.
-  - `settings.html` — configuración + paleta + git backup.
+  - `settings.html` — configuración + paleta + backups de la base de datos.
   - `login.html` — pantalla pre-OAuth.
   - `404.html`, `405.html` — errores.
 
@@ -28,6 +28,8 @@ html[data-theme="dark"] { --color-acento: #6366f1; ... }  /* desde cfg.paleta_da
 `static/style.css → :root` sigue definiendo los mismos colores como **fallback** (por si config.py no carga). Regla intacta: **NUNCA usar colores literales**. Siempre `var(--color-...)`.
 
 **Filosofía de grises (regla de diseño):** Chrome estructural/decorativo (botones, nav, headers, bordes, fondos) usa solo `--color-deco-1..4`. Los colores llamativos (`acento`, `exito`, `peligro`, `persona-*`, `moneda-*`) se reservan **exclusivamente** para elementos que transmiten información (badges de tipo, persona, moneda, estados de saldo). No hay aliases: cada regla CSS referencia directamente la variable que necesita.
+
+> **Excepción — botones de acción semánticos:** los botones que disparan una acción importante pueden usar color: `.btn-peligro` (rojo) para destructivas (ej. Restaurar backup) y `.btn-acento` (indigo) para la acción primaria de una sección (ej. Crear backup). Motivo práctico además del semántico: `.btn-primario` usa `--color-deco-2`, que en dark (`#1e293b`) coincide con `--color-superficie` y queda **invisible** sobre una tarjeta. NO revertir `.btn-acento` a `.btn-primario` "para cumplir la filosofía": reintroduce el bug.
 
 **Dark mode:** `document.documentElement.dataset.theme = 'dark'` activa la paleta oscura. Un script inline en `base.html` (antes del stylesheet) lee `localStorage.getItem('tema')` y setea `data-theme` antes del primer paint, evitando parpadeo. Default: `'light'`.
 
