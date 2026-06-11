@@ -31,6 +31,7 @@ from flask import (
     render_template, flash, current_app
 )
 from authlib.integrations.flask_client import OAuth
+from logutil import log
 
 # ── Blueprint de autenticación ───────────────────────────────────────────────
 auth_bp = Blueprint('auth', __name__)
@@ -66,7 +67,7 @@ def init_auth(app, config_file):
     if not secret_key:
         secret_key = secrets.token_hex(32)
         cfg_module.guardar_config({'secret_key': secret_key}, config_file)
-        print("OK: Secret key generada y guardada en config.json.")
+        log("OK: Secret key generada y guardada en config.json.")
 
     app.secret_key = secret_key
 
@@ -201,7 +202,7 @@ def callback():
     try:
         token = oauth.google.authorize_access_token()
     except Exception as e:
-        print(f"ERROR: Auth callback falló: {e}")
+        log(f"ERROR: Auth callback falló: {e}")
         return redirect(url_for('auth.login', error='google_error'))
 
     # Obtener información del usuario desde el token
@@ -218,7 +219,7 @@ def callback():
 
     # ── Verificar si el email está en la lista de permitidos ─────────────────
     if email not in EMAILS_PERMITIDOS:
-        print(f"AVISO: ACCESO DENEGADO — {email} intentó ingresar.")
+        log(f"AVISO: ACCESO DENEGADO — {email} intentó ingresar.")
         return redirect(url_for('auth.login', error='no_permitido'))
 
     # ── Crear sesión ─────────────────────────────────────────────────────────
@@ -232,7 +233,7 @@ def callback():
     if remember:
         session.permanent = True  # Dura 90 días (configurado arriba)
 
-    print(f"OK: Login exitoso — {nombre} ({email})")
+    log(f"OK: Login exitoso — {nombre} ({email})")
     return redirect(url_for('index'))
 
 
@@ -241,5 +242,5 @@ def logout():
     """Cierra la sesión y redirige al login."""
     nombre = session.get('user_name', 'Usuario')
     session.clear()
-    print(f"OK: Logout — {nombre}")
+    log(f"OK: Logout — {nombre}")
     return redirect(url_for('auth.login'))

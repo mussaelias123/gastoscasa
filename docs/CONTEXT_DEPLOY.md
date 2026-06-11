@@ -58,7 +58,9 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
   - `AppStderr` → `logs/` (stderr).
 - Rotación activada en NSSM: `AppRotateFiles 1`, `AppRotateBytes 1048576` (1 MB).
 - `logs/` está en `.gitignore` (no se versiona).
-- En código se loguea con `print()` usando prefijos: `OK:` / `AVISO:` / `ERROR:`.
+- En código se loguea con `log()` de `logutil.py` (NO `print()` directo). Formato de línea:
+  `AAMMDD-HHMMSS | OK:/AVISO:/ERROR: mensaje` — el timestamp lo agrega `log()`,
+  el mensaje no debe traer fecha/hora propia. Ej: `260611-143055 | OK: Login exitoso — Elías (...)`.
 - Arranque: **una sola línea** `OK: App iniciada — ...` (DB, schedulers, puerto, modo). Sin separadores ni texto decorativo en la salida.
 - Se loguea: login/logout/acceso denegado, backups y restores, refrescos de cotización (incluido el del arranque), fallos de ngrok, modo DEV.
 - NO se loguea: URL pública de ngrok, aviso de first_run (el modo va dentro de la línea "App iniciada").

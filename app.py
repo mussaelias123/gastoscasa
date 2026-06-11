@@ -48,6 +48,7 @@ import database
 import config
 import cotizacion
 import psutil
+from logutil import log
 
 
 # =============================================================================
@@ -884,7 +885,7 @@ def api_backups_restaurar():
             src.backup(dst)
             src.close()
             dst.close()
-            print(f"OK: Backup de seguridad pre-restore: {os.path.basename(seguro)}")
+            log(f"OK: Backup de seguridad pre-restore: {os.path.basename(seguro)}")
 
         # 2) Restaurar: copiar el backup elegido sobre gastos.db (API SQLite).
         src = sqlite3.connect(origen)
@@ -892,7 +893,7 @@ def api_backups_restaurar():
         src.backup(dst)
         src.close()
         dst.close()
-        print(f"OK: Base de datos restaurada desde {archivo}")
+        log(f"OK: Base de datos restaurada desde {archivo}")
 
         return jsonify({
             'ok': True,
@@ -900,7 +901,7 @@ def api_backups_restaurar():
             'backups': _listar_backups(),
         })
     except Exception as e:
-        print(f"ERROR: Restore de DB falló: {e}")
+        log(f"ERROR: Restore de DB falló: {e}")
         return jsonify({'ok': False, 'mensaje': f'No se pudo restaurar: {e}'}), 500
 
 
@@ -942,11 +943,11 @@ def hacer_backup_db(motivo='programado'):
         origen.backup(respaldo)
         origen.close()
         respaldo.close()
-        print(f"OK: Backup de DB ({motivo}): {os.path.basename(dest)}")
+        log(f"OK: Backup de DB ({motivo}): {os.path.basename(dest)}")
         _limpiar_backups_antiguos()
         return os.path.basename(dest)
     except Exception as e:
-        print(f"ERROR: Backup de DB falló: {e}")
+        log(f"ERROR: Backup de DB falló: {e}")
         return None
 
 
@@ -960,7 +961,7 @@ def _limpiar_backups_antiguos():
         while len(archivos) > _MAX_BACKUPS:
             os.remove(os.path.join(backup_dir, archivos.pop(0)))
     except Exception as e:
-        print(f"AVISO: No se pudieron limpiar backups viejos: {e}")
+        log(f"AVISO: No se pudieron limpiar backups viejos: {e}")
 
 
 def _ultimo_backup_fecha():
@@ -991,7 +992,7 @@ def _scheduler_backup():
                 if ultimo is None or ultimo < ahora.date():
                     hacer_backup_db('jueves programado')
         except Exception as e:
-            print(f"AVISO: Error en scheduler de backup: {e}")
+            log(f"AVISO: Error en scheduler de backup: {e}")
         time.sleep(3600)  # revisar cada hora
 
 
@@ -1056,14 +1057,14 @@ def _scheduler_cotizacion():
             time.sleep(segundos)
 
             ok, mensaje = cotizacion.refrescar_cache(CONFIG_FILE)
-            print(f"{'OK' if ok else 'AVISO'}: Scheduler cotización: {mensaje}")
+            log(f"{'OK' if ok else 'AVISO'}: Scheduler cotización: {mensaje}")
 
             if not ok:
                 time.sleep(REINTENTO_FALLO_SEGUNDOS)
                 ok2, mensaje2 = cotizacion.refrescar_cache(CONFIG_FILE)
-                print(f"{'OK' if ok2 else 'AVISO'}: Reintento cotización: {mensaje2}")
+                log(f"{'OK' if ok2 else 'AVISO'}: Reintento cotización: {mensaje2}")
         except Exception as e:
-            print(f"AVISO: Error en scheduler de cotización: {e}")
+            log(f"AVISO: Error en scheduler de cotización: {e}")
             time.sleep(REINTENTO_FALLO_SEGUNDOS)
 
 
@@ -1075,7 +1076,7 @@ def iniciar_scheduler_cotizacion():
     """
     def _refresh_inicial():
         ok, mensaje = cotizacion.refrescar_cache(CONFIG_FILE)
-        print(f"{'OK' if ok else 'AVISO'}: Cotización al inicio: {mensaje}")
+        log(f"{'OK' if ok else 'AVISO'}: Cotización al inicio: {mensaje}")
 
     threading.Thread(
         target=_refresh_inicial,
@@ -1097,7 +1098,7 @@ def iniciar_ngrok(port, authtoken, domain=''):
         from pyngrok import ngrok, conf
 
         if not authtoken:
-            print("AVISO: ngrok habilitado pero ngrok_authtoken está vacío en config.json.")
+            log("AVISO: ngrok habilitado pero ngrok_authtoken está vacío en config.json.")
             return
 
         conf.get_default().auth_token = authtoken
@@ -1107,9 +1108,9 @@ def iniciar_ngrok(port, authtoken, domain=''):
         ngrok.connect(port, "http", **opciones)
 
     except ImportError:
-        print(f"AVISO: pyngrok no esta instalado. La app sigue en http://localhost:{port}")
+        log(f"AVISO: pyngrok no esta instalado. La app sigue en http://localhost:{port}")
     except Exception as e:
-        print(f"AVISO: ngrok no pudo iniciarse: {e}")
+        log(f"AVISO: ngrok no pudo iniciarse: {e}")
 
 
 @app.errorhandler(404)
@@ -1144,13 +1145,13 @@ def run_flask():
     elif 'DEV' in cfg.get('app_name', '') or cfg.get('auth_disabled', False):
         host = '127.0.0.1'
         modo = 'DEV / auth_disabled'
-        print("AVISO: modo DEV / auth_disabled — la app solo escucha en localhost (no se expone a la red).")
+        log("AVISO: modo DEV / auth_disabled — la app solo escucha en localhost (no se expone a la red).")
     else:
         host = '0.0.0.0'
         modo = 'red local'
 
     horas_str = ', '.join(f"{h:02d}:00" for h in HORAS_REFRESH_COTIZACION)
-    print(f"OK: App iniciada — DB gastos.db lista; backup automático los jueves; "
+    log(f"OK: App iniciada — DB gastos.db lista; backup automático los jueves; "
           f"cotización al inicio + diario a {horas_str}; "
           f"servidor en http://localhost:{port} (modo {modo}).")
 
