@@ -909,8 +909,8 @@ def api_backups_restaurar():
 # BACKUP AUTOMÁTICO DE LA BASE DE DATOS
 # =============================================================================
 #
-# - Se ejecuta todos los jueves automáticamente.
-# - Si el servicio estaba apagado el jueves, lo corre al arrancar.
+# - Se ejecuta una vez por día (primer chequeo del día que encuentre pendiente).
+# - Si el servicio estaba apagado, lo corre al arrancar.
 # - Guarda los últimos 10 backups en la carpeta backups/.
 # - Usa la API nativa de SQLite para copiar en caliente (sin cerrar la DB).
 
@@ -952,11 +952,14 @@ def hacer_backup_db(motivo='programado'):
 
 
 def _limpiar_backups_antiguos():
-    """Elimina los backups más viejos si hay más de _MAX_BACKUPS."""
+    """Elimina los backups fechados más viejos si hay más de _MAX_BACKUPS.
+
+    Los archivos sin fecha en el nombre quedan fuera de la rotación."""
     backup_dir = _get_backup_dir()
     try:
         archivos = sorted(
-            [f for f in os.listdir(backup_dir) if f.startswith('gastos_') and f.endswith('.db')],
+            f for f in os.listdir(backup_dir)
+            if f.startswith('gastos_') and f.endswith('.db') and _fecha_de_backup(f) is not None
         )
         while len(archivos) > _MAX_BACKUPS:
             os.remove(os.path.join(backup_dir, archivos.pop(0)))
@@ -964,17 +967,28 @@ def _limpiar_backups_antiguos():
         log(f"AVISO: No se pudieron limpiar backups viejos: {e}")
 
 
+def _fecha_de_backup(nombre):
+    """Extrae la fecha de un nombre gastos_YYYY-MM-DD*.db, o None si no la tiene.
+
+    Archivos renombrados a mano (ej. gastos_PreGitHub.db) devuelven None:
+    no cuentan como backup programado ni entran en la rotación."""
+    try:
+        return datetime.strptime(nombre[len('gastos_'):len('gastos_') + 10], '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
 def _ultimo_backup_fecha():
-    """Devuelve la fecha del backup más reciente, o None si no hay ninguno."""
+    """Devuelve la fecha del backup fechado más reciente, o None si no hay ninguno."""
     backup_dir = _get_backup_dir()
     try:
-        archivos = [f for f in os.listdir(backup_dir) if f.startswith('gastos_') and f.endswith('.db')]
-        if not archivos:
-            return None
-        ultimo = sorted(archivos)[-1]
-        # Formato: gastos_YYYY-MM-DD_HH-MM.db
-        fecha_str = ultimo[len('gastos_'):len('gastos_') + 10]  # YYYY-MM-DD
-        return datetime.strptime(fecha_str, '%Y-%m-%d').date()
+        fechas = [
+            _fecha_de_backup(f)
+            for f in os.listdir(backup_dir)
+            if f.startswith('gastos_') and f.endswith('.db')
+        ]
+        fechas = [f for f in fechas if f is not None]
+        return max(fechas) if fechas else None
     except Exception:
         return None
 
@@ -982,33 +996,22 @@ def _ultimo_backup_fecha():
 def _scheduler_backup():
     """
     Hilo de fondo: comprueba cada hora si toca hacer backup.
-    Regla: si es jueves y todavía no se hizo backup hoy → hacerlo.
+    Regla: si todavía no se hizo backup hoy → hacerlo.
+    La primera vuelta corre al arrancar, así cubre días en que el servicio estuvo apagado.
     """
     while True:
         try:
-            ahora = datetime.now()
-            if ahora.weekday() == 3:  # 3 = jueves
-                ultimo = _ultimo_backup_fecha()
-                if ultimo is None or ultimo < ahora.date():
-                    hacer_backup_db('jueves programado')
+            ultimo = _ultimo_backup_fecha()
+            if ultimo is None or ultimo < datetime.now().date():
+                motivo = 'primer backup' if ultimo is None else 'diario programado'
+                hacer_backup_db(motivo)
         except Exception as e:
             log(f"AVISO: Error en scheduler de backup: {e}")
         time.sleep(3600)  # revisar cada hora
 
 
 def iniciar_scheduler_backup():
-    """
-    Arranca el scheduler y, si corresponde, hace un backup inmediato al inicio.
-    Lógica de recuperación: si el último backup tiene más de 7 días, corre uno ahora.
-    """
-    ultimo = _ultimo_backup_fecha()
-    hoy    = datetime.now().date()
-    dias_sin_backup = (hoy - ultimo).days if ultimo else 999
-
-    if dias_sin_backup >= 7:
-        motivo = 'primer backup' if ultimo is None else f'recuperación ({dias_sin_backup} días sin backup)'
-        threading.Thread(target=hacer_backup_db, args=(motivo,), daemon=True).start()
-
+    """Arranca el hilo del backup diario (la primera vuelta corre enseguida)."""
     hilo = threading.Thread(target=_scheduler_backup, daemon=True, name='backup-scheduler')
     hilo.start()
 
@@ -1151,7 +1154,7 @@ def run_flask():
         modo = 'red local'
 
     horas_str = ', '.join(f"{h:02d}:00" for h in HORAS_REFRESH_COTIZACION)
-    log(f"OK: App iniciada — DB gastos.db lista; backup automático los jueves; "
+    log(f"OK: App iniciada — DB gastos.db lista; backup automático diario; "
           f"cotización al inicio + diario a {horas_str}; "
           f"servidor en http://localhost:{port} (modo {modo}).")
 
