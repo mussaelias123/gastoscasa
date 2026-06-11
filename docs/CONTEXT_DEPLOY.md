@@ -8,7 +8,7 @@
   servicio propios en `app.py`).
 - Servicio Windows: NSSM (`E:\Fondo\nssm.exe`, raíz del clon PROD, binario fuera de git; no existe en DEV).
 - Túnel público: ngrok con dominio fijo.
-- Backups DB: semanal (jueves) via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings.
+- Backups DB: diario via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings. Archivos sin fecha en el nombre (ej. `gastos_PreGitHub.db`) no cuentan como backup ni entran en la rotación.
 
 ## Entornos dev / prod
 - **Prod**: `E:\Fondo` → servicio Windows `GastosCasa` vía NSSM (arranca solo).
@@ -46,7 +46,7 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 ## Backups (de la base de datos)
 - Son copias de `gastos.db`, NO de código. Gestionados desde Settings → "Backup de la base de datos".
 - Carpeta configurable: campo "Ruta de guardado" (`backup_dir` en `config.json`). Default `backups/` relativo; acepta rutas absolutas. Se aplica sin reiniciar.
-- Automático: todos los jueves (scheduler interno `_scheduler_backup`). Si estuvo apagado >7 días, corre al arrancar.
+- Automático: uno por día (scheduler interno `_scheduler_backup`, chequea cada hora). La primera vuelta corre al arrancar, cubre días con el servicio apagado.
 - Manual: botón "Crear backup" → `POST /api/backups/crear`.
 - Restore: elegir backup en el desplegable → `POST /api/backups/restaurar`. Antes guarda `gastos_<fecha>_pre-restore.db` (deshacer posible).
 - Formato: `gastos_YYYY-MM-DD_HH-MM.db`. Máximo 10 archivos; los más viejos se borran solos.
