@@ -47,6 +47,7 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - Son copias de `gastos.db`, NO de código. Gestionados desde Settings → "Backup de la base de datos".
 - Carpeta configurable: campo "Ruta de guardado" (`backup_dir` en `config.json`). Default `backups/` relativo; acepta rutas absolutas. Se aplica sin reiniciar.
 - Automático: uno por día (scheduler interno `_scheduler_backup`, chequea cada hora). La primera vuelta corre al arrancar, cubre días con el servicio apagado.
+- Solo si cambió algo: antes de backupear compara SHA-256 del dump lógico contra `ultimo_backup.json` (vive junto a los backups: archivo, fecha, hash). Sin cambios → no crea archivo (loguea "Backup omitido hoy" 1 vez/día). El backup manual desde Settings siempre crea archivo.
 - Manual: botón "Crear backup" → `POST /api/backups/crear`.
 - Restore: elegir backup en el desplegable → `POST /api/backups/restaurar`. Antes guarda `gastos_<fecha>_pre-restore.db` (deshacer posible).
 - Formato: `gastos_YYYY-MM-DD_HH-MM.db`. Máximo 10 archivos; los más viejos se borran solos.
