@@ -313,10 +313,14 @@
 <div class="tarjeta settings-seccion" id="backup-db">
   <h3 class="settings-titulo-seccion">💾 Backups de la base de datos</h3>
 
-  {# 1) Crear backup — ancho completo #}
+  {# 1) Crear backup — descripción opcional + botón #}
   <div class="settings-campo">
-    <button type="button" class="btn btn-acento btn-guardar-rapido"
-            id="btn-crear-backup" onclick="crearBackup()">Crear backup</button>
+    <div class="input-con-boton">
+      <input type="text" id="backup-desc" maxlength="40"
+             placeholder="Descripción (opcional, ej: antes de borrar cuotas)">
+      <button type="button" class="btn btn-acento"
+              id="btn-crear-backup" onclick="crearBackup()">Crear backup</button>
+    </div>
     <div id="backup-resultado" class="git-resultado" style="display:none;"></div>
   </div>
 
@@ -513,19 +517,25 @@ async function cargarBackups() {
 async function crearBackup() {
   const btn       = document.getElementById('btn-crear-backup');
   const resultado = document.getElementById('backup-resultado');
+  const descInput = document.getElementById('backup-desc');
 
   btn.disabled    = true;
   btn.textContent = 'Creando...';
   resultado.style.display = 'none';
 
+  const formData = new FormData();
+  formData.append('descripcion', descInput.value.trim());
+
   try {
     const resp = await fetch('/api/backups/crear', {
       method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: formData
     });
     const data = await resp.json();
     _pintarResultado(resultado, data.ok, data.mensaje);
     if (data.ok && data.backups) _renderBackups(data.backups);
+    if (data.ok) descInput.value = '';
   } catch (e) {
     _pintarResultado(resultado, false, 'Error inesperado. Revisá la consola.');
   } finally {

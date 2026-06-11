@@ -48,9 +48,9 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - Carpeta configurable: campo "Ruta de guardado" (`backup_dir` en `config.json`). Default `backups/` relativo; acepta rutas absolutas. Se aplica sin reiniciar.
 - Automático: uno por día (scheduler interno `_scheduler_backup`, chequea cada hora). La primera vuelta corre al arrancar, cubre días con el servicio apagado.
 - Solo si cambió algo: antes de backupear compara SHA-256 del dump lógico contra `ultimo_backup.json` (vive junto a los backups: archivo, fecha, hash). Sin cambios → no crea archivo (loguea "Backup omitido hoy" 1 vez/día). El backup manual desde Settings siempre crea archivo.
-- Manual: botón "Crear backup" → `POST /api/backups/crear`.
+- Manual: campo "Descripción" (opcional) + botón "Crear backup" → `POST /api/backups/crear` (form `descripcion`). Siempre crea archivo, aunque no haya cambios.
 - Restore: elegir backup en el desplegable → `POST /api/backups/restaurar`. Antes guarda `gastos_<fecha>_pre-restore.db` (deshacer posible).
-- Formato: `gastos_YYYY-MM-DD_HH-MM.db`. Máximo 10 archivos; los más viejos se borran solos.
+- Formato: `gastos_YYYY-MM-DD_HH-MM[_descripcion].db` (descripción saneada a `[\w-]`, máx 40 chars; se muestra en la etiqueta del desplegable). Máximo 10 archivos fechados; los más viejos se borran solos (los descriptos también rotan: para conservar uno para siempre, renombrarlo sin fecha, ej. `gastos_PreGitHub.db`).
 - **Importante**: las viejas rutas `/git/*` se eliminaron. El "restore" anterior revertía código, no datos.
 
 ## Convención de logs
@@ -70,7 +70,7 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 ## Reglas específicas
 1. **Verificación obligatoria** post-cambio en ngrok URL (no localhost), salvo que el usuario diga lo contrario.
 2. **Restart del servicio** es operación con permisos elevados. Confirmar con usuario antes.
-3. **Backups antes de migrar datos** (manual desde Settings, no confiar solo en el automático semanal).
+3. **Backups antes de migrar datos** (manual desde Settings con descripción, no confiar solo en el automático diario).
 4. **No commitear** `build/dist/`, `*.exe`, `gastos.db`, `backups/`.
 
 ## Al modificar este dominio, actualizar:

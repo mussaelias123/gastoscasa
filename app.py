@@ -822,6 +822,7 @@ def api_paleta():
 
 def _listar_backups():
     """Lista los backups .db de la carpeta configurada, del más nuevo al más viejo."""
+    import re
     backup_dir = _get_backup_dir()
     items = []
     try:
@@ -837,6 +838,11 @@ def _listar_backups():
             etiqueta = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
             if '_pre-restore' in f:
                 etiqueta += ' (previo a un restore)'
+            else:
+                # Descripción de backup manual: lo que sigue a gastos_FECHA_HORA_
+                m = re.match(r'^gastos_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_(.+)\.db$', f)
+                if m:
+                    etiqueta += f' — {m.group(1)}'
             items.append({'archivo': f, 'etiqueta': etiqueta, 'size_mb': size_mb, '_mtime': mtime})
     except OSError:
         pass
@@ -853,7 +859,8 @@ def api_backups():
 
 @app.route('/api/backups/crear', methods=['POST'])
 def api_backups_crear():
-    nombre = hacer_backup_db('backup manual')
+    descripcion = request.form.get('descripcion', '').strip()
+    nombre = hacer_backup_db('backup manual', descripcion or None)
     if nombre:
         return jsonify({'ok': True, 'mensaje': f'Backup creado: {nombre}', 'backups': _listar_backups()})
     return jsonify({'ok': False, 'mensaje': 'No se pudo crear el backup. Revisá la carpeta de backups.'}), 500
@@ -969,16 +976,25 @@ def _guardar_estado_backup(estado):
         log(f"AVISO: No se pudo guardar ultimo_backup.json: {e}")
 
 
-def hacer_backup_db(motivo='programado'):
+def _slug_descripcion(texto):
+    """Convierte la descripción del backup en sufijo seguro para nombre de archivo."""
+    import re
+    slug = re.sub(r'[^\w\-]+', '-', (texto or '').strip()).strip('-')
+    return slug[:40]
+
+
+def hacer_backup_db(motivo='programado', descripcion=None):
     """Copia la base de datos al directorio de backups usando la API de SQLite.
 
-    Devuelve el nombre del archivo creado, o None si falló."""
+    Si viene descripción (backup manual), se agrega al final del nombre:
+    gastos_<fecha>_<descripcion>.db. Devuelve el nombre creado, o None si falló."""
     import sqlite3
     backup_dir = _get_backup_dir()
     try:
         os.makedirs(backup_dir, exist_ok=True)
         ahora     = datetime.now().strftime('%Y-%m-%d_%H-%M')
-        dest      = os.path.join(backup_dir, f'gastos_{ahora}.db')
+        slug      = _slug_descripcion(descripcion)
+        dest      = os.path.join(backup_dir, f"gastos_{ahora}{('_' + slug) if slug else ''}.db")
         origen    = sqlite3.connect(_DB_PATH)
         respaldo  = sqlite3.connect(dest)
         origen.backup(respaldo)
