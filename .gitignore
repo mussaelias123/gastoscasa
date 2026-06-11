@@ -1,6 +1,5 @@
 # Configuración local (contiene tokens y ajustes del entorno)
 config.json
-config.dev.json
 
 # Variables de entorno
 .env

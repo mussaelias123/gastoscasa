@@ -201,7 +201,7 @@ def callback():
     try:
         token = oauth.google.authorize_access_token()
     except Exception as e:
-        print(f"ERROR auth callback: {e}")
+        print(f"ERROR: Auth callback falló: {e}")
         return redirect(url_for('auth.login', error='google_error'))
 
     # Obtener información del usuario desde el token
@@ -218,7 +218,7 @@ def callback():
 
     # ── Verificar si el email está en la lista de permitidos ─────────────────
     if email not in EMAILS_PERMITIDOS:
-        print(f"ACCESO DENEGADO: {email} intentó ingresar.")
+        print(f"AVISO: ACCESO DENEGADO — {email} intentó ingresar.")
         return redirect(url_for('auth.login', error='no_permitido'))
 
     # ── Crear sesión ─────────────────────────────────────────────────────────

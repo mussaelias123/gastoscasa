@@ -1010,7 +1010,6 @@ def iniciar_scheduler_backup():
 
     hilo = threading.Thread(target=_scheduler_backup, daemon=True, name='backup-scheduler')
     hilo.start()
-    print("OK: Scheduler de backup de DB iniciado (todos los jueves).")
 
 
 # =============================================================================
@@ -1074,17 +1073,18 @@ def iniciar_scheduler_cotizacion():
     al iniciar el servicio (en hilo separado, no bloqueante), y luego refresca
     diariamente a las horas de HORAS_REFRESH_COTIZACION.
     """
+    def _refresh_inicial():
+        ok, mensaje = cotizacion.refrescar_cache(CONFIG_FILE)
+        print(f"{'OK' if ok else 'AVISO'}: Cotización al inicio: {mensaje}")
+
     threading.Thread(
-        target=cotizacion.refrescar_cache,
-        args=(CONFIG_FILE,),
+        target=_refresh_inicial,
         daemon=True,
         name='cotizacion-inicial'
     ).start()
 
     hilo = threading.Thread(target=_scheduler_cotizacion, daemon=True, name='cotizacion-scheduler')
     hilo.start()
-    horas_str = ', '.join(f"{h:02d}:00" for h in HORAS_REFRESH_COTIZACION)
-    print(f"OK: Scheduler de cotización iniciado (al inicio + diario a {horas_str}).")
 
 
 # =============================================================================
@@ -1098,18 +1098,16 @@ def iniciar_ngrok(port, authtoken, domain=''):
 
         if not authtoken:
             print("AVISO: ngrok habilitado pero ngrok_authtoken está vacío en config.json.")
-            print("   La app sigue disponible en http://localhost:{port}")
             return
 
         conf.get_default().auth_token = authtoken
         opciones = {}
         if domain:
             opciones['hostname'] = domain
-        tunel = ngrok.connect(port, "http", **opciones)
-        print(f">> App publica en: {tunel.public_url}")
+        ngrok.connect(port, "http", **opciones)
 
     except ImportError:
-        print("AVISO: pyngrok no esta instalado. La app sigue en http://localhost:{port}")
+        print(f"AVISO: pyngrok no esta instalado. La app sigue en http://localhost:{port}")
     except Exception as e:
         print(f"AVISO: ngrok no pudo iniciarse: {e}")
 
@@ -1130,31 +1128,31 @@ def run_flask():
     Se usa tanto en modo normal como en modo servicio Windows.
     """
     database.inicializar_db()
-    print("OK: Base de datos inicializada (archivo: gastos.db)")
     iniciar_scheduler_backup()
     iniciar_scheduler_cotizacion()
-    print("-" * 50)
 
     cfg = config.cargar_config(CONFIG_FILE)
     port = cfg.get('port', 5000)
 
     if cfg.get('first_run', True):
         host = '127.0.0.1'
-        print("AVISO: first_run=true — la app solo escucha en localhost.")
-        print("   Abrí http://localhost:{} y completá la configuración en Settings.".format(port))
+        modo = 'first_run — solo localhost, completar Settings'
     elif cfg.get('ngrok_enabled', False) and 'DEV' not in cfg.get('app_name', ''):
         host = '127.0.0.1'
         iniciar_ngrok(port, cfg.get('ngrok_authtoken', ''), cfg.get('ngrok_domain', ''))
+        modo = 'producción — expuesta vía ngrok'
     elif 'DEV' in cfg.get('app_name', '') or cfg.get('auth_disabled', False):
         host = '127.0.0.1'
+        modo = 'DEV / auth_disabled'
         print("AVISO: modo DEV / auth_disabled — la app solo escucha en localhost (no se expone a la red).")
     else:
         host = '0.0.0.0'
+        modo = 'red local'
 
-    print("-" * 50)
-    print("OK: Servidor iniciado. Abri tu navegador en: http://localhost:{}".format(port))
-    print("  (Para detener el servidor: Ctrl+C)")
-    print("-" * 50)
+    horas_str = ', '.join(f"{h:02d}:00" for h in HORAS_REFRESH_COTIZACION)
+    print(f"OK: App iniciada — DB gastos.db lista; backup automático los jueves; "
+          f"cotización al inicio + diario a {horas_str}; "
+          f"servidor en http://localhost:{port} (modo {modo}).")
 
     app.run(debug=False, host=host, port=port, use_reloader=False)
 
