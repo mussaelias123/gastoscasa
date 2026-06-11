@@ -6,7 +6,7 @@
 - **No se compila.** La app corre como `python app.py`; en producción NSSM
   envuelve ese mismo comando (no hay PyInstaller, instalador ni comandos de
   servicio propios en `app.py`).
-- Servicio Windows: NSSM (`build/nssm/nssm.exe`, binario fuera de git).
+- Servicio Windows: NSSM (`E:\Fondo\nssm.exe`, raíz del clon PROD, binario fuera de git; no existe en DEV).
 - Túnel público: ngrok con dominio fijo.
 - Backups DB: semanal (jueves) via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings.
 
@@ -29,8 +29,8 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - Ejecutable apuntado a: `C:/Users/elias/AppData/Local/Programs/Python/Python313/python.exe`.
 - Working dir: carpeta del repo.
 - Comandos:
-  - Restart: requiere admin. Vía `powershell Start-Process ... -Verb RunAs`.
-  - Status: `build/nssm/nssm.exe status GastosCasa`.
+  - Restart: requiere admin. Vía `Start-Process E:\Fondo\nssm.exe -ArgumentList 'restart','GastosCasa' -Verb RunAs`.
+  - Status: `E:\Fondo\nssm.exe status GastosCasa` (no requiere admin).
 
 ## Modo desarrollo local
 - `python app.py` levanta Flask + scheduler + ngrok según config.
