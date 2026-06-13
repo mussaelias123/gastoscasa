@@ -8,7 +8,9 @@ config.json
 gastos.db
 
 # Backups automáticos de la DB (no van en Git, son datos)
+# backups/ = carpeta de PROD; backupsdev/ = carpeta local de DEV (backup_dir)
 backups/
+backupsdev/
 
 # Python
 __pycache__/

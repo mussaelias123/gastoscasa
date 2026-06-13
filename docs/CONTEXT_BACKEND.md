@@ -27,7 +27,7 @@
 | GET/POST | `/settings`             | `settings`            | Página de configuración (cfg.json + paleta).     |
 | POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
 | GET    | `/api/backups`            | `api_backups`         | JSON `{backups:[{archivo,etiqueta,size_mb}], carpeta}`. Lista backups `.db`. |
-| POST   | `/api/backups/crear`      | `api_backups_crear`   | Crea backup manual de `gastos.db`. Devuelve `{ok,mensaje,backups}`. |
+| POST   | `/api/backups/crear`      | `api_backups_crear`   | Crea backup manual de `gastos.db`. Form `descripcion` (opcional) → sufijo en el nombre. Devuelve `{ok,mensaje,backups}`. |
 | POST   | `/api/backups/restaurar`  | `api_backups_restaurar` | Restaura `gastos.db` desde `archivo` (form). Hace copia `..._pre-restore.db` antes. |
 | GET    | `/login`, `/auth/google`, `/auth/google/callback`, `/logout` | (blueprint `auth`) | OAuth Google. Ver `CONTEXT_AUTH.md`. |
 
@@ -42,14 +42,15 @@
 - `_HEX_RE`: regex `^#[0-9a-fA-F]{6}$` para validar hex de la paleta.
 
 ## Schedulers en hilo
-- `iniciar_scheduler_backup()`: backup `gastos.db` cada hora a la carpeta configurada en `backup_dir`.
+- `iniciar_scheduler_backup()`: chequea cada hora; backup de `gastos.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.
 - `iniciar_scheduler_cotizacion()`: refresh cotización USD a horarios fijos.
 - Ambos se inician en `run_flask()`. NO bloquean request loop.
 
 ## Helpers de backup
 - `_get_backup_dir()`: lee `backup_dir` de config en caliente (sin reiniciar). Si es ruta relativa, la resuelve contra la carpeta del proyecto. Si es vacía, usa `backups/`.
-- `hacer_backup_db(motivo)`: copia `gastos.db` → `gastos_<fecha>.db`. Devuelve el nombre del archivo o `None` si falló.
-- `_listar_backups()`: lista los `.db` de la carpeta (más nuevo primero) con `archivo`, `etiqueta`, `size_mb`.
+- `hacer_backup_db(motivo, descripcion=None)`: copia `gastos.db` → `gastos_<fecha>[_descripcion].db` y registra hash en `ultimo_backup.json`. Devuelve el nombre del archivo o `None` si falló.
+- `_hash_datos_db(ruta)` / `_leer_estado_backup()` / `_guardar_estado_backup()`: detección de cambios (SHA-256 del dump lógico + json de estado).
+- `_listar_backups()`: lista los `.db` de la carpeta (más nuevo primero) con `archivo`, `etiqueta` (incluye descripción si la hay), `size_mb`.
 - Restore (`api_backups_restaurar`): valida nombre (anti path-traversal), guarda `gastos_<fecha>_pre-restore.db`, luego copia el backup elegido sobre `gastos.db` (API SQLite).
 - Carpeta de backups editable desde Settings vía `accion='guardar_backup_dir'` (POST `/settings`).
 

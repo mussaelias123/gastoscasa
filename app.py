@@ -822,6 +822,7 @@ def api_paleta():
 
 def _listar_backups():
     """Lista los backups .db de la carpeta configurada, del más nuevo al más viejo."""
+    import re
     backup_dir = _get_backup_dir()
     items = []
     try:
@@ -837,6 +838,11 @@ def _listar_backups():
             etiqueta = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
             if '_pre-restore' in f:
                 etiqueta += ' (previo a un restore)'
+            else:
+                # Descripción de backup manual: lo que sigue a gastos_FECHA_HORA_
+                m = re.match(r'^gastos_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_(.+)\.db$', f)
+                if m:
+                    etiqueta += f' — {m.group(1)}'
             items.append({'archivo': f, 'etiqueta': etiqueta, 'size_mb': size_mb, '_mtime': mtime})
     except OSError:
         pass
@@ -853,7 +859,8 @@ def api_backups():
 
 @app.route('/api/backups/crear', methods=['POST'])
 def api_backups_crear():
-    nombre = hacer_backup_db('backup manual')
+    descripcion = request.form.get('descripcion', '').strip()
+    nombre = hacer_backup_db('backup manual', descripcion or None)
     if nombre:
         return jsonify({'ok': True, 'mensaje': f'Backup creado: {nombre}', 'backups': _listar_backups()})
     return jsonify({'ok': False, 'mensaje': 'No se pudo crear el backup. Revisá la carpeta de backups.'}), 500
@@ -910,6 +917,8 @@ def api_backups_restaurar():
 # =============================================================================
 #
 # - Se ejecuta una vez por día (primer chequeo del día que encuentre pendiente).
+# - Solo crea archivo si los datos cambiaron desde el último backup (se compara
+#   el hash del dump lógico contra el guardado en ultimo_backup.json).
 # - Si el servicio estaba apagado, lo corre al arrancar.
 # - Guarda los últimos 10 backups en la carpeta backups/.
 # - Usa la API nativa de SQLite para copiar en caliente (sin cerrar la DB).
@@ -928,21 +937,80 @@ def _get_backup_dir():
     return os.path.join(_BASE_DIR_BACKUP, raw)
 
 
-def hacer_backup_db(motivo='programado'):
+def _hash_datos_db(ruta_db):
+    """SHA-256 del dump lógico de una DB SQLite.
+
+    Se hashea el dump (no el archivo binario) porque SQLite puede tocar
+    bytes internos sin que cambien los datos."""
+    import sqlite3
+    import hashlib
+    con = sqlite3.connect(ruta_db)
+    try:
+        h = hashlib.sha256()
+        for linea in con.iterdump():
+            h.update(linea.encode('utf-8'))
+        return h.hexdigest()
+    finally:
+        con.close()
+
+
+def _leer_estado_backup():
+    """Lee ultimo_backup.json (archivo, fecha y hash del último backup), o {}."""
+    import json
+    ruta = os.path.join(_get_backup_dir(), 'ultimo_backup.json')
+    try:
+        with open(ruta, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _guardar_estado_backup(estado):
+    """Persiste ultimo_backup.json junto a los backups. Falla con AVISO, no rompe."""
+    import json
+    ruta = os.path.join(_get_backup_dir(), 'ultimo_backup.json')
+    try:
+        with open(ruta, 'w', encoding='utf-8') as f:
+            json.dump(estado, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log(f"AVISO: No se pudo guardar ultimo_backup.json: {e}")
+
+
+def _slug_descripcion(texto):
+    """Convierte la descripción del backup en sufijo seguro para nombre de archivo."""
+    import re
+    slug = re.sub(r'[^\w\-]+', '-', (texto or '').strip()).strip('-')
+    return slug[:40]
+
+
+def hacer_backup_db(motivo='programado', descripcion=None):
     """Copia la base de datos al directorio de backups usando la API de SQLite.
 
-    Devuelve el nombre del archivo creado, o None si falló."""
+    Si viene descripción (backup manual), se agrega al final del nombre:
+    gastos_<fecha>_<descripcion>.db. Devuelve el nombre creado, o None si falló."""
     import sqlite3
     backup_dir = _get_backup_dir()
     try:
         os.makedirs(backup_dir, exist_ok=True)
         ahora     = datetime.now().strftime('%Y-%m-%d_%H-%M')
-        dest      = os.path.join(backup_dir, f'gastos_{ahora}.db')
+        slug      = _slug_descripcion(descripcion)
+        dest      = os.path.join(backup_dir, f"gastos_{ahora}{('_' + slug) if slug else ''}.db")
         origen    = sqlite3.connect(_DB_PATH)
         respaldo  = sqlite3.connect(dest)
         origen.backup(respaldo)
         origen.close()
         respaldo.close()
+        # El hash se calcula sobre el archivo recién copiado, no sobre la DB
+        # viva: si entra un movimiento entre la copia y el hash, el hash queda
+        # "viejo" y el próximo chequeo hace backup de más (nunca de menos).
+        try:
+            _guardar_estado_backup({
+                'archivo': os.path.basename(dest),
+                'creado':  datetime.now().isoformat(timespec='seconds'),
+                'hash':    _hash_datos_db(dest),
+            })
+        except Exception as e:
+            log(f"AVISO: No se pudo registrar el hash del backup: {e}")
         log(f"OK: Backup de DB ({motivo}): {os.path.basename(dest)}")
         _limpiar_backups_antiguos()
         return os.path.basename(dest)
@@ -993,18 +1061,32 @@ def _ultimo_backup_fecha():
         return None
 
 
+_aviso_sin_cambios = None  # última fecha en que se logueó "sin cambios" (evita 24 líneas/día)
+
+
 def _scheduler_backup():
     """
     Hilo de fondo: comprueba cada hora si toca hacer backup.
-    Regla: si todavía no se hizo backup hoy → hacerlo.
+    Regla: si todavía no se hizo backup hoy Y los datos cambiaron desde el
+    último backup → hacerlo. Si no hubo cambios, sigue chequeando cada hora:
+    un movimiento cargado a la tarde genera backup ese mismo día.
     La primera vuelta corre al arrancar, así cubre días en que el servicio estuvo apagado.
     """
+    global _aviso_sin_cambios
     while True:
         try:
+            hoy    = datetime.now().date()
             ultimo = _ultimo_backup_fecha()
-            if ultimo is None or ultimo < datetime.now().date():
-                motivo = 'primer backup' if ultimo is None else 'diario programado'
-                hacer_backup_db(motivo)
+            if ultimo is None:
+                # Sin backups fechados en la carpeta: backupear sí o sí,
+                # aunque el json diga que los datos no cambiaron.
+                hacer_backup_db('primer backup')
+            elif ultimo < hoy:
+                if _hash_datos_db(_DB_PATH) != _leer_estado_backup().get('hash'):
+                    hacer_backup_db('diario programado')
+                elif _aviso_sin_cambios != hoy:
+                    log("OK: Backup omitido hoy: sin cambios en los datos desde el último backup.")
+                    _aviso_sin_cambios = hoy
         except Exception as e:
             log(f"AVISO: Error en scheduler de backup: {e}")
         time.sleep(3600)  # revisar cada hora
