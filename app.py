@@ -740,18 +740,16 @@ def settings():
             flash('Carpeta de backups guardada.')
             return redirect(url_for('settings') + '#backup-db')
 
+        # Guardado general: solo campos visibles en la UI de Settings.
+        # ngrok / OAuth / puerto se manejan fuera (config.json) y NO se tocan acá:
+        # config.guardar_config hace merge parcial, así que las claves ausentes
+        # conservan su valor previo.
         nuevos = {
-            'port':           int(request.form.get('port', 5000)),
-            'app_name':       request.form.get('app_name', 'Gastos Casa').strip(),
-            'ngrok_enabled':  request.form.get('ngrok_enabled') == 'on',
-            'ngrok_authtoken': request.form.get('ngrok_authtoken', '').strip(),
-            'ngrok_domain':   request.form.get('ngrok_domain', '').strip(),
-            'factor_sueldo':  float(request.form.get('factor_sueldo', 0.7)),
-            'google_client_id':     request.form.get('google_client_id', '').strip(),
-            'google_client_secret': request.form.get('google_client_secret', '').strip(),
+            'app_name':      request.form.get('app_name', cfg.get('app_name', 'Gastos Casa')).strip(),
+            'factor_sueldo': float(request.form.get('factor_sueldo', cfg.get('factor_sueldo', 0.7))),
         }
         config.guardar_config(nuevos, CONFIG_FILE)
-        flash('Configuración guardada. Reiniciá la app para aplicar los cambios.')
+        flash('Configuración guardada.')
         return redirect(url_for('settings'))
 
     cfg = config.cargar_config(CONFIG_FILE)

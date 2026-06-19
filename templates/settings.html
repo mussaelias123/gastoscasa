@@ -7,7 +7,7 @@
 {% block contenido %}
 
 <div class="pagina-header">
-  <h2>⚙ Settings</h2>
+  <h2>⚙ Ajustes</h2>
 </div>
 
 {% with mensajes = get_flashed_messages() %}
@@ -18,458 +18,253 @@
   {% endif %}
 {% endwith %}
 
-<form action="{{ url_for('settings') }}" method="POST" class="form-settings">
+<div class="settings-layout">
 
-  {# ── SECCIÓN: GENERAL ──────────────────────────────────────────────────── #}
-  <div class="tarjeta settings-seccion">
-    <h3 class="settings-titulo-seccion">General</h3>
+  {# ════════════════════ COLUMNA IZQUIERDA — CONFIGURACIÓN ════════════════════ #}
+  <div class="settings-main">
 
-    <div class="settings-campo">
-      <label for="app_name">Nombre de la aplicación</label>
-      <input type="text" id="app_name" name="app_name"
-             value="{{ cfg.app_name }}" maxlength="100" required>
-    </div>
+    {# ── GENERAL ──────────────────────────────────────────────────────────── #}
+    <form action="{{ url_for('settings') }}" method="POST" class="tarjeta settings-card">
+      <h3 class="settings-titulo-seccion">General</h3>
 
-    <div class="settings-campo">
-      <label for="port">Puerto</label>
-      <input type="number" id="port" name="port"
-             value="{{ cfg.port }}" min="1024" max="65535" required>
-      <span class="settings-ayuda">Número de puerto donde corre la app (default: 5000).</span>
-    </div>
+      <div class="settings-campo">
+        <label for="app_name">Nombre de la aplicación</label>
+        <input type="text" id="app_name" name="app_name"
+               value="{{ cfg.app_name }}" maxlength="100" required>
+      </div>
 
-    <div class="settings-campo">
-      <label for="factor_sueldo">Factor de sueldo (0.0 – 1.0)</label>
-      <input type="number" id="factor_sueldo" name="factor_sueldo"
-             value="{{ cfg.factor_sueldo }}" min="0" max="1" step="0.01" required>
-      <span class="settings-ayuda">
-        Porcentaje del sueldo bruto que ingresa al fondo común.
-        Ejemplo: <strong>0.7</strong> significa que el 70% del sueldo se suma al saldo.
-        Se aplica automáticamente a movimientos de tipo <em>Ingreso / Sueldo</em>.
-      </span>
-    </div>
-
-  </div>
-
-  {# ── SECCIÓN: COTIZACIÓN USD → ARS (automática) ──────────────────────── #}
-  <div class="tarjeta settings-seccion settings-cotizacion">
-    <h3 class="settings-titulo-seccion">Tipo de cambio USD → ARS (automático)</h3>
-
-    {# Cálculo de antigüedad para decidir estado del badge.
-       Usamos datetime.now() vs cotizacion_fecha (YYYY-MM-DD) y
-       cotizacion_ultimo_intento (ISO datetime) del config. #}
-    {% set _cot_valor = cfg.cotizacion_valor | default(0) %}
-    {% set _cot_fecha = cfg.cotizacion_fecha %}
-    {% set _cot_ok    = cfg.cotizacion_ok | default(false) %}
-    {% set _cot_ult   = cfg.cotizacion_ultimo_intento %}
-
-    {# Días transcurridos desde cotizacion_fecha (si existe). #}
-    {% set _dias_desde = dias_desde_fecha(_cot_fecha) if _cot_fecha else 99999 %}
-
-    <div class="settings-cotizacion-valor">
-      1 USD = AR$ {{ _cot_valor | int }}
-    </div>
-
-    <div class="settings-cotizacion-meta">
-      Actualizado el
-      <strong>
-        {% if _cot_fecha %}{{ _cot_fecha | fmt_fecha }}{% else %}nunca{% endif %}
-      </strong>
-    </div>
-
-    {# Estado: verde si ok y <48hs; amarillo si falló o >24hs. #}
-    <div class="settings-cotizacion-estado">
-      {% if _cot_ok and _dias_desde is defined and _dias_desde <= 2 %}
-        <span class="badge-estado-cotizacion badge-estado-ok">
-          ✓ Cotización actualizada
+      <div class="settings-campo">
+        <label for="factor_sueldo">Factor de sueldo</label>
+        <input type="number" id="factor_sueldo" name="factor_sueldo"
+               value="{{ cfg.factor_sueldo }}" min="0" max="1" step="0.01" required
+               class="input-corto">
+        <span class="settings-ayuda">
+          Porción del sueldo que entra al fondo común. <strong>0.85</strong> = 85%.
         </span>
+      </div>
+
+      {# Cotización USD → ARS (lectura + refresco manual) #}
+      {% set _cot_valor = cfg.cotizacion_valor | default(0) %}
+      {% set _cot_fecha = cfg.cotizacion_fecha %}
+      {% set _cot_ok    = cfg.cotizacion_ok | default(false) %}
+      {% set _cot_ult   = cfg.cotizacion_ultimo_intento %}
+      {% set _dias_desde = dias_desde_fecha(_cot_fecha) if _cot_fecha else 99999 %}
+
+      <div class="settings-campo settings-campo-ultimo">
+        <label>Tipo de cambio USD → ARS</label>
+        <div class="cot-box">
+          <div class="cot-box-info">
+            <span class="cot-valor">1 USD = AR$ {{ _cot_valor | int }}</span>
+            {% if _cot_ok and _dias_desde is defined and _dias_desde <= 2 %}
+              <span class="badge-estado badge-estado-ok">✓ Al día</span>
+            {% else %}
+              <span class="badge-estado badge-estado-pendiente">⚠ Desactualizada</span>
+            {% endif %}
+          </div>
+          <button type="button" id="btn-refresh-cotizacion" class="btn btn-secundario btn-sm">
+            ↻ Actualizar
+          </button>
+        </div>
+        <span class="settings-ayuda">
+          Actualización automática diaria desde dolarapi.com (dólar oficial).
+          Última: {% if _cot_fecha %}{{ _cot_fecha | fmt_fecha }}{% else %}nunca{% endif %}.
+          <span id="cot-refresh-msg" class="settings-cotizacion-msg" role="status"></span>
+        </span>
+      </div>
+
+      <div class="settings-acciones">
+        <button type="submit" class="btn btn-acento">Guardar cambios</button>
+      </div>
+    </form>
+
+    {# ── PALETA DE COLORES ────────────────────────────────────────────────── #}
+    <div class="tarjeta settings-card" id="paleta-colores">
+      <div class="settings-card-header">
+        <h3 class="settings-titulo-seccion">Paleta de colores</h3>
+        <span class="settings-card-meta">21 colores · light + dark</span>
+      </div>
+
+      {% set grupos = {
+        'acento':'Marca', 'acento-oscuro':'Marca',
+        'fondo':'Superficies', 'superficie':'Superficies', 'texto':'Superficies',
+        'texto-muted':'Superficies', 'borde':'Superficies',
+        'exito':'Estados', 'alerta':'Estados', 'peligro':'Estados',
+        'exito-suave':'Estados', 'alerta-suave':'Estados', 'peligro-suave':'Estados',
+        'persona-elias':'Personas', 'persona-mari':'Personas',
+        'moneda-ars':'Monedas', 'moneda-usd':'Monedas',
+        'deco-1':'Decorativos', 'deco-2':'Decorativos', 'deco-3':'Decorativos', 'deco-4':'Decorativos'
+      } %}
+      {% set ns = namespace(grupo='') %}
+
+      <div class="paleta-tabla-wrap">
+        <table class="paleta-tabla">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Uso</th>
+              <th class="col-pick">Light</th>
+              <th class="col-pick">Dark</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key, nombre, uso in paleta_meta %}
+              {% set g = grupos.get(key, 'Otros') %}
+              {% if g != ns.grupo %}
+                <tr class="paleta-grupo"><td colspan="4">{{ g }}</td></tr>
+                {% set ns.grupo = g %}
+              {% endif %}
+              <tr>
+                <td class="paleta-col-nombre">
+                  <span class="paleta-nombre">{{ nombre }}</span>
+                  <code class="paleta-var">--color-{{ key }}</code>
+                </td>
+                <td class="paleta-uso">{{ uso }}</td>
+                <td class="col-pick">
+                  <input type="color" class="paleta-input"
+                         data-tema="light" data-key="{{ key }}"
+                         value="{{ cfg.paleta_light[key] }}"
+                         aria-label="{{ nombre }} — light">
+                </td>
+                <td class="col-pick">
+                  <input type="color" class="paleta-input"
+                         data-tema="dark" data-key="{{ key }}"
+                         value="{{ cfg.paleta_dark[key] }}"
+                         aria-label="{{ nombre }} — dark">
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="paleta-acciones">
+        <button type="button" class="btn btn-acento" id="btn-guardar-paleta">
+          Guardar paleta
+        </button>
+        <button type="button" class="btn btn-secundario" id="btn-reset-paleta">
+          Descartar
+        </button>
+        <span id="paleta-msg" class="settings-cotizacion-msg" role="status"></span>
+      </div>
+    </div>
+
+    {# ── BACKUPS DE LA BASE ───────────────────────────────────────────────── #}
+    <div class="tarjeta settings-card" id="backup-db">
+      <div class="settings-card-header">
+        <h3 class="settings-titulo-seccion">Backups</h3>
+        <span class="settings-card-meta">Copias de seguridad de la base</span>
+      </div>
+
+      <div class="backup-crear">
+        <input type="text" id="backup-desc" maxlength="40"
+               placeholder="Descripción (opcional)" class="backup-input">
+        <button type="button" class="btn btn-acento" id="btn-crear-backup"
+                onclick="crearBackup()">+ Crear backup</button>
+      </div>
+      <div id="backup-resultado" class="git-resultado" style="display:none;"></div>
+
+      <div class="backup-restaurar">
+        <select id="backup-select" class="backup-select">
+          <option value="">Cargando backups...</option>
+        </select>
+        <button type="button" class="btn btn-peligro btn-sm" id="btn-restaurar-backup"
+                onclick="confirmarRestore()" disabled>↺ Restaurar</button>
+      </div>
+      <div id="restore-resultado" class="git-resultado" style="display:none;"></div>
+    </div>
+
+    {# ── GASTOS FIJOS ─────────────────────────────────────────────────────── #}
+    <div class="tarjeta settings-card" id="gastos-fijos">
+      <div class="settings-card-header">
+        <h3 class="settings-titulo-seccion">Gastos fijos</h3>
+        <span class="settings-card-meta">Pagos que se repiten cada mes</span>
+      </div>
+
+      <form action="{{ url_for('settings') }}" method="POST" class="fijo-crear">
+        <input type="hidden" name="accion" value="agregar_fijo">
+        <input type="text" name="descripcion_fijo" class="fijo-input-desc"
+               placeholder="Ej: Alquiler, EPEC, Netflix..." maxlength="200" required>
+        <button type="submit" class="btn btn-acento">+ Agregar</button>
+      </form>
+
+      {% if fijos %}
+      <ul class="fijos-grid">
+        {% for fijo in fijos %}
+        <li class="fijo-chip {{ '' if fijo['activo'] else 'fijo-chip-inactivo' }}">
+          <form action="{{ url_for('settings') }}" method="POST" class="fijo-chip-form">
+            <input type="hidden" name="accion" value="editar_fijo">
+            <input type="hidden" name="fijo_id" value="{{ fijo['id'] }}">
+            <span class="fijo-chip-icono">📌</span>
+            <input type="text" name="descripcion_fijo" value="{{ fijo['descripcion'] }}"
+                   maxlength="200" required class="fijo-chip-input">
+            <label class="fijo-chip-toggle" title="Activo / inactivo">
+              <input type="checkbox" name="activo" {{ 'checked' if fijo['activo'] }}>
+              <span class="fijo-chip-toggle-track"></span>
+            </label>
+            <button type="submit" class="fijo-chip-btn" title="Guardar">✓</button>
+          </form>
+          <form action="{{ url_for('settings') }}" method="POST" class="fijo-chip-del">
+            <input type="hidden" name="accion" value="eliminar_fijo">
+            <input type="hidden" name="fijo_id" value="{{ fijo['id'] }}">
+            <button type="button" class="fijo-chip-btn fijo-chip-btn-del" title="Eliminar"
+                    onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
       {% else %}
-        <span class="badge-estado-cotizacion badge-estado-alerta">
-          {% if not _cot_ok %}
-            ⚠ La última actualización falló — se está usando el valor anterior.
-          {% else %}
-            ⚠ La última cotización tiene más de 24hs de antigüedad.
-          {% endif %}
-          {% if _cot_ult %}
-            Último intento: {{ _cot_ult | fmt_fecha_hora }}
-          {% endif %}
-        </span>
+      <p class="sin-datos-inline">No hay gastos fijos definidos todavía.</p>
       {% endif %}
     </div>
 
-    <p class="settings-ayuda settings-cotizacion-info">
-      El valor se actualiza automáticamente una vez por día desde dolarapi.com
-      (dólar oficial venta). Se usa en el indicador "Total" de los gauges de saldos
-      para comparar el patrimonio en ARS vs USD en una misma unidad.
-    </p>
+  </div>{# fin settings-main #}
 
-    <div class="settings-cotizacion-acciones">
-      <button type="button" id="btn-refresh-cotizacion" class="btn btn-secundario">
-        Actualizar ahora
-      </button>
-      <span id="cot-refresh-msg" class="settings-cotizacion-msg" role="status"></span>
-    </div>
-  </div>
-
-  {# ── SECCIÓN: ACCESO REMOTO (NGROK) ────────────────────────────────────── #}
-  <div class="tarjeta settings-seccion">
-    <h3 class="settings-titulo-seccion">Acceso remoto (ngrok)</h3>
-
-    <p class="settings-info">
-      Sin ngrok, la app solo es accesible desde esta PC.
-      Activalo para generar una URL pública y acceder desde cualquier dispositivo.
-    </p>
-
-    <div class="settings-campo settings-campo-toggle">
-      <label class="toggle-label">
-        <input type="checkbox" id="ngrok_enabled" name="ngrok_enabled"
-               {% if cfg.ngrok_enabled %}checked{% endif %}>
-        <span class="toggle-texto">Habilitar ngrok</span>
-      </label>
-    </div>
-
-    <div class="settings-campo">
-      <label for="ngrok_authtoken">Auth Token</label>
-      <div class="input-con-boton">
-        <input type="password" id="ngrok_authtoken" name="ngrok_authtoken"
-               value="{{ cfg.ngrok_authtoken }}" placeholder="Pegá tu token de ngrok.com"
-               autocomplete="off">
-        <button type="button" class="btn-secundario btn-toggle-pass"
-                onclick="togglePass('ngrok_authtoken', this)">Mostrar</button>
+  {# ════════════════════ COLUMNA DERECHA — MONITOR (sticky) ════════════════ #}
+  <aside class="settings-aside">
+    <div class="tarjeta settings-card monitor-panel" id="monitor-recursos">
+      <div class="settings-card-header">
+        <h3 class="settings-titulo-seccion">Monitor</h3>
+        <span class="monitor-badge" id="monitor-estado">Cargando...</span>
       </div>
-      <span class="settings-ayuda">Conseguilo gratis en <strong>ngrok.com → Dashboard → Your Authtoken</strong>.</span>
-    </div>
 
-    <div class="settings-campo">
-      <label for="ngrok_domain">Dominio personalizado <span class="settings-opcional">(opcional)</span></label>
-      <input type="text" id="ngrok_domain" name="ngrok_domain"
-             value="{{ cfg.ngrok_domain }}" placeholder="Ej: mi-app.ngrok-free.app">
-      <span class="settings-ayuda">Solo para planes pagos de ngrok. Dejá vacío para usar un dominio generado.</span>
-    </div>
-  </div>
-
-  {# ── SECCIÓN: AUTENTICACIÓN GOOGLE ──────────────────────────────────────── #}
-  <div class="tarjeta settings-seccion">
-    <h3 class="settings-titulo-seccion">Autenticación Google OAuth</h3>
-
-    <p class="settings-info">
-      Protege la app con login de Google. Solo los emails autorizados pueden acceder.
-      Necesitás crear credenciales en
-      <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">
-        Google Cloud Console</a>.
-    </p>
-
-    <div class="settings-campo">
-      <label for="google_client_id">Client ID</label>
-      <div class="input-con-boton">
-        <input type="password" id="google_client_id" name="google_client_id"
-               value="{{ cfg.google_client_id }}" placeholder="xxxxxxx.apps.googleusercontent.com"
-               autocomplete="off">
-        <button type="button" class="btn-secundario btn-toggle-pass"
-                onclick="togglePass('google_client_id', this)">Mostrar</button>
-      </div>
-      <span class="settings-ayuda">Lo encontrás en Google Cloud Console → APIs & Services → Credentials.</span>
-    </div>
-
-    <div class="settings-campo">
-      <label for="google_client_secret">Client Secret</label>
-      <div class="input-con-boton">
-        <input type="password" id="google_client_secret" name="google_client_secret"
-               value="{{ cfg.google_client_secret }}" placeholder="GOCSPX-..."
-               autocomplete="off">
-        <button type="button" class="btn-secundario btn-toggle-pass"
-                onclick="togglePass('google_client_secret', this)">Mostrar</button>
-      </div>
-      <span class="settings-ayuda">El secreto de la credencial OAuth 2.0.</span>
-    </div>
-
-    <div class="settings-campo">
-      <label>URI de redirección (para Google Console)</label>
-      <div class="settings-estado">
-        <code id="oauth-redirect-uri" style="font-size: 0.85rem; word-break: break-all;">
-          {{ request.url_root }}auth/callback
-        </code>
-      </div>
-      <span class="settings-ayuda">
-        Copiá esta URL y agregala como "Authorized redirect URI" en Google Cloud Console.
-        Si usás ngrok, también agregá la versión con la URL de ngrok.
-      </span>
-    </div>
-
-    <div class="settings-campo">
-      <label>Emails autorizados</label>
-      <div class="settings-estado">
-        <span class="badge-estado badge-estado-ok">mussaelias123@gmail.com</span>
-        <span class="badge-estado badge-estado-ok" style="margin-left: 0.5rem;">mossinomariana@gmail.com</span>
-      </div>
-      <span class="settings-ayuda">
-        Solo estos emails pueden iniciar sesión. Para cambiarlos, editá la lista
-        <code>EMAILS_PERMITIDOS</code> en <code>auth.py</code>.
-      </span>
-    </div>
-
-    {% if cfg.google_client_id and cfg.google_client_secret %}
-    <div class="settings-campo">
-      <div class="settings-estado">
-        <span class="badge-estado badge-estado-ok">✓ OAuth configurado</span>
-      </div>
-    </div>
-    {% else %}
-    <div class="settings-campo">
-      <div class="settings-estado">
-        <span class="badge-estado badge-estado-pendiente">⚠ OAuth NO configurado — la app está sin protección</span>
-      </div>
-    </div>
-    {% endif %}
-  </div>
-
-  {# ── SECCIÓN: ESTADO DEL ENTORNO ───────────────────────────────────────── #}
-  <div class="tarjeta settings-seccion">
-    <h3 class="settings-titulo-seccion">Estado del entorno</h3>
-
-    <div class="settings-campo">
-      <label>Primer inicio</label>
-      <div class="settings-estado">
-        {% if cfg.first_run %}
-          <span class="badge-estado badge-estado-pendiente">⚠ Sí — pendiente de configuración</span>
-        {% else %}
-          <span class="badge-estado badge-estado-ok">✓ No — entorno configurado</span>
-        {% endif %}
-      </div>
-      <span class="settings-ayuda">
-        Mientras sea "primer inicio", la app solo escucha en localhost (127.0.0.1).
-      </span>
-    </div>
-
-    {% if cfg.first_run %}
-    <div class="settings-campo">
-      <button type="submit" name="accion" value="marcar_configurado"
-              class="btn btn-secundario">
-        Marcar como configurado
-      </button>
-      <span class="settings-ayuda">
-        Esto setea first_run = false. La app podrá servir en 0.0.0.0 al reiniciar.
-      </span>
-    </div>
-    {% endif %}
-  </div>
-
-  <div class="settings-acciones">
-    <button type="submit" class="btn btn-primario">Guardar configuración</button>
-    <a href="{{ url_for('index') }}" class="btn btn-secundario">Cancelar</a>
-  </div>
-
-</form>
-
-{# ── SECCIÓN: GASTOS FIJOS ───────────────────────────────────────────────── #}
-<div class="tarjeta settings-seccion" id="gastos-fijos">
-  <h3 class="settings-titulo-seccion">📌 Gastos Fijos</h3>
-  <p class="settings-info">
-    Definí los gastos que se repiten todos los meses. Al cargar un movimiento con
-    categoría <strong>Fijo</strong>, la descripción se selecciona desde esta lista.
-    En la página de inicio verás cuáles ya están cargados en el mes seleccionado.
-  </p>
-
-  {# Agregar nuevo #}
-  <form action="{{ url_for('settings') }}" method="POST" class="form-fijo-nuevo">
-    <input type="hidden" name="accion" value="agregar_fijo">
-    <div class="fijo-nuevo-campos">
-      <input type="text" name="descripcion_fijo"
-             placeholder="Ej: Alquiler, EPEC, Netflix..." maxlength="200" required
-             class="fijo-input-desc">
-      <button type="submit" class="btn btn-primario btn-sm">Agregar</button>
-    </div>
-  </form>
-
-  {# Lista de gastos fijos existentes #}
-  {% if fijos %}
-  <ul class="lista-fijos-settings">
-    {% for fijo in fijos %}
-    <li class="fijo-settings-item {{ '' if fijo['activo'] else 'fijo-inactivo' }}">
-      <form action="{{ url_for('settings') }}" method="POST" class="form-fijo-editar">
-        <input type="hidden" name="accion" value="editar_fijo">
-        <input type="hidden" name="fijo_id" value="{{ fijo['id'] }}">
-        <input type="text" name="descripcion_fijo" value="{{ fijo['descripcion'] }}"
-               maxlength="200" required class="fijo-input-desc">
-        <label class="fijo-activo-label">
-          <input type="checkbox" name="activo" {{ 'checked' if fijo['activo'] }}> Activo
-        </label>
-        <button type="submit" class="btn btn-secundario btn-sm">Guardar</button>
-      </form>
-      <form action="{{ url_for('settings') }}" method="POST" class="form-fijo-eliminar">
-        <input type="hidden" name="accion" value="eliminar_fijo">
-        <input type="hidden" name="fijo_id" value="{{ fijo['id'] }}">
-        <button type="button" class="btn btn-borrar btn-sm"
-                onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
-      </form>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="sin-datos-inline">No hay gastos fijos definidos todavía.</p>
-  {% endif %}
-</div>
-
-{# ── SECCIÓN: BACKUPS DE LA BASE DE DATOS ────────────────────────────────── #}
-<div class="tarjeta settings-seccion" id="backup-db">
-  <h3 class="settings-titulo-seccion">💾 Backups de la base de datos</h3>
-
-  {# 1) Crear backup — descripción opcional + botón #}
-  <div class="settings-campo">
-    <div class="input-con-boton">
-      <input type="text" id="backup-desc" maxlength="40"
-             placeholder="Descripción (opcional, ej: antes de borrar cuotas)">
-      <button type="button" class="btn btn-acento"
-              id="btn-crear-backup" onclick="crearBackup()">Crear backup</button>
-    </div>
-    <div id="backup-resultado" class="git-resultado" style="display:none;"></div>
-  </div>
-
-  {# 2) Seleccionar backup + Restaurar #}
-  <div class="settings-campo">
-    <div class="git-select-row">
-      <select id="backup-select" class="git-select">
-        <option value="">Cargando backups...</option>
-      </select>
-      <button type="button" class="btn btn-peligro" id="btn-restaurar-backup"
-              onclick="confirmarRestore()" disabled>Restaurar backup</button>
-    </div>
-    <div id="restore-resultado" class="git-resultado" style="display:none;"></div>
-  </div>
-
-  {# 3) Ruta de backups + Guardar carpeta #}
-  <form action="{{ url_for('settings') }}" method="POST" class="settings-campo">
-    <input type="hidden" name="accion" value="guardar_backup_dir">
-    <div class="input-con-boton">
-      <input type="text" id="backup_dir" name="backup_dir"
-             value="{{ cfg.backup_dir | default('backups') }}" maxlength="500"
-             placeholder="Carpeta de backups (ej: backups)">
-      <button type="submit" class="btn btn-secundario">Guardar carpeta</button>
-    </div>
-  </form>
-
-</div>
-
-{# ── SECCIÓN: MONITOR DE RECURSOS ───────────────────────────────────────── #}
-<div class="tarjeta settings-seccion monitor-recursos" id="monitor-recursos">
-  <div class="monitor-header">
-    <h3 class="settings-titulo-seccion">Monitor de recursos</h3>
-    <span class="monitor-badge" id="monitor-estado">Cargando...</span>
-  </div>
-
-  <div class="monitor-grilla">
-
-    {# Tarjeta: Proceso #}
-    <div class="monitor-tarjeta">
-      <h4 class="monitor-tarjeta-titulo">Proceso (esta app)</h4>
-
-      <div class="monitor-metrica">
-        <div class="monitor-metrica-header">
-          <span class="monitor-label">CPU</span>
-          <span class="monitor-valor" id="proc-cpu">—</span>
+      <div class="gauges-grid">
+        {% for gid, label in [
+          ('proc-cpu', 'CPU app'), ('proc-mem', 'RAM app'),
+          ('host-cpu', 'CPU sistema'), ('host-mem', 'RAM sistema')] %}
+        <div class="gauge-card">
+          <div class="gauge" id="g-{{ gid }}">
+            <svg viewBox="0 0 100 100" class="gauge-svg" aria-hidden="true">
+              <circle class="gauge-bg"  cx="50" cy="50" r="42"></circle>
+              <circle class="gauge-arc g-verde" cx="50" cy="50" r="42"></circle>
+            </svg>
+            <div class="gauge-centro">
+              <span class="gauge-valor">—</span>
+            </div>
+          </div>
+          <span class="gauge-label">{{ label }}</span>
+          <span class="gauge-detalle" id="d-{{ gid }}"></span>
         </div>
-        <div class="monitor-barra-fondo">
-          <div class="monitor-barra" id="proc-cpu-barra"></div>
-        </div>
-      </div>
-
-      <div class="monitor-metrica">
-        <div class="monitor-metrica-header">
-          <span class="monitor-label">Memoria</span>
-          <span class="monitor-valor" id="proc-mem">—</span>
-        </div>
-        <div class="monitor-barra-fondo">
-          <div class="monitor-barra" id="proc-mem-barra"></div>
-        </div>
-      </div>
-
-      <div class="monitor-pid">
-        PID: <span id="proc-pid">—</span>
-      </div>
-    </div>
-
-    {# Tarjeta: Host #}
-    <div class="monitor-tarjeta">
-      <h4 class="monitor-tarjeta-titulo">Host (PC)</h4>
-
-      <div class="monitor-metrica">
-        <div class="monitor-metrica-header">
-          <span class="monitor-label">CPU total</span>
-          <span class="monitor-valor" id="host-cpu">—</span>
-        </div>
-        <div class="monitor-barra-fondo">
-          <div class="monitor-barra" id="host-cpu-barra"></div>
-        </div>
-      </div>
-
-      <div class="monitor-metrica">
-        <div class="monitor-metrica-header">
-          <span class="monitor-label">Memoria</span>
-          <span class="monitor-valor" id="host-mem">—</span>
-        </div>
-        <div class="monitor-barra-fondo">
-          <div class="monitor-barra" id="host-mem-barra"></div>
-        </div>
-      </div>
-    </div>
-
-  </div>{# fin grilla #}
-</div>
-
-{# ── SECCIÓN: PALETA DE COLORES ───────────────────────────────────────────── #}
-<div class="tarjeta settings-seccion" id="paleta-colores">
-  <h3 class="settings-titulo-seccion">Paleta de colores</h3>
-  <p class="settings-info">
-    Los 21 colores base de la app, editables por tema. Se guardan en
-    <code>config.json</code> y se aplican al recargar.
-  </p>
-
-  {% for tema, titulo, paleta in [('light', 'Light Mode', cfg.paleta_light),
-                                  ('dark',  'Dark Mode',  cfg.paleta_dark)] %}
-  <h4 class="paleta-tabla-titulo">{{ titulo }}</h4>
-  <div class="paleta-tabla-wrap">
-    <table class="paleta-tabla" data-tema="{{ tema }}">
-      <thead>
-        <tr>
-          <th class="col-muestra"></th>
-          <th>Nombre</th>
-          <th>Variable</th>
-          <th>Uso</th>
-          <th class="col-input">Color</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for key, nombre, uso in paleta_meta %}
-        <tr>
-          <td class="col-muestra">
-            <span class="paleta-muestra" style="background: {{ paleta[key] }};"></span>
-          </td>
-          <td class="paleta-nombre">{{ nombre }}</td>
-          <td><code class="paleta-var">--color-{{ key }}</code></td>
-          <td class="paleta-uso">{{ uso }}</td>
-          <td class="col-input">
-            <input type="color"
-                   class="paleta-input"
-                   data-tema="{{ tema }}"
-                   data-key="{{ key }}"
-                   value="{{ paleta[key] }}">
-          </td>
-        </tr>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endfor %}
+      </div>
 
-  <div class="paleta-acciones">
-    <button type="button" class="btn btn-primario" id="btn-guardar-paleta">
-      Guardar paleta
-    </button>
-    <button type="button" class="btn btn-secundario" id="btn-reset-paleta">
-      Descartar cambios
-    </button>
-    <span id="paleta-msg" class="settings-cotizacion-msg" role="status"></span>
-  </div>
-</div>{# fin paleta-colores #}
+      <div class="monitor-pie">
+        <div class="monitor-pie-row">
+          <span><span class="estado-dot"></span>En ejecución</span>
+          <span class="monitor-pie-dato">PID <span id="proc-pid">—</span></span>
+        </div>
+        <div class="monitor-pie-row">
+          <span>Cotización</span>
+          {% if _cot_ok %}
+            <span class="monitor-pie-dato monitor-pie-ok">OK</span>
+          {% else %}
+            <span class="monitor-pie-dato monitor-pie-error">Falló</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </aside>
+
+</div>{# fin settings-layout #}
 
 {% endblock %}
 
@@ -540,7 +335,7 @@ async function crearBackup() {
     _pintarResultado(resultado, false, 'Error inesperado. Revisá la consola.');
   } finally {
     btn.disabled    = false;
-    btn.textContent = 'Crear backup';
+    btn.textContent = '+ Crear backup';
   }
 }
 
@@ -583,44 +378,40 @@ async function hacerRestore(archivo) {
     _pintarResultado(resultado, false, 'Error inesperado. Revisá la consola.');
   } finally {
     btn.disabled    = false;
-    btn.textContent = 'Restaurar a este backup';
+    btn.textContent = '↺ Restaurar';
   }
 }
 
 // Cargar la lista de backups al abrir la página
 cargarBackups();
 
-function togglePass(inputId, btn) {
-  const input = document.getElementById(inputId);
-  if (input.type === 'password') {
-    input.type = 'text';
-    btn.textContent = 'Ocultar';
-  } else {
-    input.type = 'password';
-    btn.textContent = 'Mostrar';
-  }
+
+// ── Monitor de recursos (relojitos / gauges) ────────────────────────────────
+
+const GAUGE_CIRC = 2 * Math.PI * 42;  // circunferencia del arco (r=42)
+
+function _claseEstado(valor, amarillo, rojo) {
+  if (valor >= rojo)     return 'g-rojo';
+  if (valor >= amarillo) return 'g-amarillo';
+  return 'g-verde';
 }
 
-// ── Monitor de recursos ─────────────────────────────────────────────────────
+function setGauge(gid, pct, valorTexto, detalleTexto, amarillo, rojo) {
+  const g = document.getElementById('g-' + gid);
+  if (!g) return;
+  const arc = g.querySelector('.gauge-arc');
+  const val = g.querySelector('.gauge-valor');
+  const p   = Math.max(0, Math.min(pct, 100));
+  const cls = _claseEstado(p, amarillo, rojo);
 
-function colorClase(valor, umbraAmarillo, umbraRojo) {
-  if (valor >= umbraRojo)    return 'barra-rojo';
-  if (valor >= umbraAmarillo) return 'barra-amarillo';
-  return 'barra-verde';
-}
+  arc.style.strokeDasharray  = GAUGE_CIRC;
+  arc.style.strokeDashoffset = GAUGE_CIRC * (1 - p / 100);
+  arc.setAttribute('class', 'gauge-arc ' + cls);
+  val.textContent = valorTexto;
+  val.setAttribute('class', 'gauge-valor ' + cls);
 
-function actualizarBarra(barraId, porcentaje, umbraAmarillo, umbraRojo) {
-  const barra = document.getElementById(barraId);
-  if (!barra) return;
-  barra.style.width = Math.min(porcentaje, 100) + '%';
-  barra.className = 'monitor-barra ' + colorClase(porcentaje, umbraAmarillo, umbraRojo);
-}
-
-function actualizarValor(elemId, texto, porcentaje, umbraAmarillo, umbraRojo) {
-  const el = document.getElementById(elemId);
-  if (!el) return;
-  el.textContent = texto;
-  el.className = 'monitor-valor ' + colorClase(porcentaje, umbraAmarillo, umbraRojo);
+  const det = document.getElementById('d-' + gid);
+  if (det) det.textContent = detalleTexto || '';
 }
 
 async function fetchMetrics() {
@@ -629,36 +420,26 @@ async function fetchMetrics() {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const d = await resp.json();
 
-    // Proceso
-    actualizarValor('proc-cpu',  d.proceso.cpu_percent + '%',
-                    d.proceso.cpu_percent, 50, 80);
-    actualizarBarra('proc-cpu-barra', d.proceso.cpu_percent, 50, 80);
+    setGauge('proc-cpu', d.proceso.cpu_percent,
+             d.proceso.cpu_percent + '%', '', 50, 80);
+    setGauge('proc-mem', d.proceso.memoria_percent,
+             d.proceso.memoria_percent + '%', d.proceso.memoria_mb + ' MB', 70, 90);
+    setGauge('host-cpu', d.host.cpu_percent,
+             d.host.cpu_percent + '%', '', 50, 80);
 
-    actualizarValor('proc-mem',
-                    d.proceso.memoria_mb + ' MB (' + d.proceso.memoria_percent + '%)',
-                    d.proceso.memoria_percent, 70, 90);
-    actualizarBarra('proc-mem-barra', d.proceso.memoria_percent, 70, 90);
+    const usadoGb = (d.host.memoria_usada_mb / 1024).toFixed(1);
+    const totalGb = (d.host.memoria_total_mb / 1024).toFixed(1);
+    setGauge('host-mem', d.host.memoria_percent,
+             d.host.memoria_percent + '%', usadoGb + '/' + totalGb + ' GB', 70, 90);
 
     document.getElementById('proc-pid').textContent = d.proceso.pid;
 
-    // Host
-    actualizarValor('host-cpu', d.host.cpu_percent + '%',
-                    d.host.cpu_percent, 50, 80);
-    actualizarBarra('host-cpu-barra', d.host.cpu_percent, 50, 80);
-
-    const hostMemTexto = d.host.memoria_usada_mb + ' MB de '
-                       + d.host.memoria_total_mb + ' MB ('
-                       + d.host.memoria_percent + '%)';
-    actualizarValor('host-mem', hostMemTexto, d.host.memoria_percent, 70, 90);
-    actualizarBarra('host-mem-barra', d.host.memoria_percent, 70, 90);
-
     const badge = document.getElementById('monitor-estado');
-    badge.textContent = 'Actualizado ' + new Date().toLocaleTimeString();
+    badge.textContent = new Date().toLocaleTimeString();
     badge.className = 'monitor-badge monitor-badge-ok';
-
   } catch (e) {
     const badge = document.getElementById('monitor-estado');
-    badge.textContent = 'Error al obtener métricas';
+    badge.textContent = 'Sin datos';
     badge.className = 'monitor-badge monitor-badge-error';
   }
 }
@@ -668,11 +449,6 @@ setInterval(fetchMetrics, 3000);
 
 
 // ── Refrescar cotización USD → ARS ──────────────────────────────────────────
-//
-// Se conecta al endpoint POST /api/cotizacion/refresh, que fuerza una
-// actualización contra dolarapi.com. Si sale OK, recarga la página para que se
-// vea el nuevo valor y el badge en verde. Si falla, muestra el mensaje de
-// error sin recargar.
 (function () {
   var btn = document.getElementById('btn-refresh-cotizacion');
   var msg = document.getElementById('cot-refresh-msg');
@@ -692,7 +468,6 @@ setInterval(fetchMetrics, 3000);
       const data = await resp.json().catch(function () { return { ok: false, mensaje: 'Respuesta no válida del servidor.' }; });
 
       if (data.ok) {
-        // Recargar para que el render de Jinja muestre los valores nuevos.
         window.location.reload();
         return;
       }
@@ -721,19 +496,10 @@ setInterval(fetchMetrics, 3000);
   var msg      = document.getElementById('paleta-msg');
   if (!btn) return;
 
-  // Snapshot inicial para "Descartar cambios" y para detectar muestra a actualizar.
   var inputs = document.querySelectorAll('.paleta-input');
   var iniciales = {};
   inputs.forEach(function (inp) {
     iniciales[inp.dataset.tema + ':' + inp.dataset.key] = inp.value;
-  });
-
-  // Actualiza la muestra al lado del input al cambiar el color (preview local).
-  inputs.forEach(function (inp) {
-    inp.addEventListener('input', function () {
-      var muestra = inp.closest('tr').querySelector('.paleta-muestra');
-      if (muestra) muestra.style.background = inp.value;
-    });
   });
 
   function _msg(texto, esError) {
@@ -743,10 +509,7 @@ setInterval(fetchMetrics, 3000);
 
   btnReset.addEventListener('click', function () {
     inputs.forEach(function (inp) {
-      var ini = iniciales[inp.dataset.tema + ':' + inp.dataset.key];
-      inp.value = ini;
-      var muestra = inp.closest('tr').querySelector('.paleta-muestra');
-      if (muestra) muestra.style.background = ini;
+      inp.value = iniciales[inp.dataset.tema + ':' + inp.dataset.key];
     });
     _msg('Cambios descartados.', false);
   });

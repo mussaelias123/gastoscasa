@@ -3366,3 +3366,424 @@ a.btn-filtro {
   color: var(--color-peligro);
   font-weight: 600;
 }
+
+
+/* ============================================================================
+   SETTINGS v2 — Layout dos columnas (config + monitor sticky)
+   Izquierda: tarjetas de configuración (scrollean con la página).
+   Derecha: panel "Monitor" fijo (sticky) con relojitos en tiempo real.
+   ============================================================================ */
+
+.settings-layout {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.settings-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.settings-aside {
+  flex: 0 0 300px;
+  position: sticky;
+  top: 6rem;            /* queda por debajo de la topbar fija (~header+nav) */
+}
+
+body.has-dev-banner .settings-aside {
+  top: calc(6rem + 24px);   /* el banner DEV ocupa 24px arriba */
+}
+
+@media (max-width: 900px) {
+  .settings-layout { flex-direction: column; }
+  .settings-aside {
+    position: static;
+    flex-basis: auto;
+    width: 100%;
+  }
+}
+
+/* ── Tarjeta de sección ──────────────────────────────────────────────────── */
+.settings-card {
+  padding: 1.35rem 1.5rem;
+  border: 1px solid var(--color-borde);
+}
+
+.settings-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.settings-card-header .settings-titulo-seccion {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.settings-card-meta {
+  font-size: 0.78rem;
+  color: var(--color-texto-muted);
+  white-space: nowrap;
+}
+
+.settings-campo input.input-corto { width: 120px; }
+.settings-campo-ultimo { margin-bottom: 0.9rem; }
+
+/* ── Cotización compacta (dentro de General) ─────────────────────────────── */
+.cot-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  padding: 0.7rem 0.9rem;
+}
+
+.cot-box-info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.cot-valor {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+
+/* ============================================================================
+   SETTINGS v2 — Paleta en tabla única (Nombre · Uso · Light · Dark)
+   ============================================================================ */
+
+.paleta-grupo td {
+  background: var(--color-fondo);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-texto-muted);
+  padding: 0.4rem 0.75rem;
+}
+
+.paleta-col-nombre { white-space: nowrap; }
+
+.paleta-col-nombre .paleta-nombre {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.paleta-col-nombre .paleta-var {
+  display: block;
+  font-family: monospace;
+  font-size: 0.7rem;
+  color: var(--color-texto-muted);
+  margin-top: 1px;
+}
+
+.paleta-tabla .col-pick {
+  width: 56px;
+  text-align: center;
+}
+
+.paleta-tabla .col-pick .paleta-input {
+  width: 40px;
+  height: 28px;
+}
+
+
+/* ============================================================================
+   SETTINGS v2 — Backups (crear / restaurar)
+   ============================================================================ */
+
+.backup-crear,
+.backup-restaurar {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.backup-restaurar { margin-top: 0.75rem; }
+
+.backup-input,
+.backup-select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-size: 0.92rem;
+}
+
+.backup-select { cursor: pointer; }
+
+.backup-input:focus,
+.backup-select:focus {
+  outline: 2px solid var(--color-acento);
+  outline-offset: 1px;
+}
+
+
+/* ============================================================================
+   SETTINGS v2 — Gastos fijos (chips editables con switch activo/inactivo)
+   ============================================================================ */
+
+.fijo-crear {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.fijo-crear .fijo-input-desc { flex: 1; min-width: 0; }
+
+.fijos-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 0.6rem;
+}
+
+.fijo-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: 999px;
+  padding: 0.3rem 0.45rem 0.3rem 0.7rem;
+}
+
+.fijo-chip-inactivo { opacity: 0.55; }
+
+.fijo-chip-form {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.fijo-chip-icono { font-size: 0.85rem; flex-shrink: 0; }
+
+.fijo-chip-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-texto);
+  font-size: 0.9rem;
+  font-family: var(--fuente-principal);
+  padding: 0.15rem 0.25rem;
+  border-radius: 4px;
+}
+
+.fijo-chip-input:focus {
+  outline: none;
+  background: var(--color-superficie);
+  box-shadow: 0 0 0 1px var(--color-borde);
+}
+
+/* Switch activo/inactivo */
+.fijo-chip-toggle {
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.fijo-chip-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.fijo-chip-toggle-track {
+  width: 30px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--color-deco-4);
+  position: relative;
+  transition: background 0.2s;
+}
+
+.fijo-chip-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  transition: transform 0.2s;
+}
+
+.fijo-chip-toggle input:checked + .fijo-chip-toggle-track {
+  background: var(--color-exito);
+}
+
+.fijo-chip-toggle input:checked + .fijo-chip-toggle-track::after {
+  transform: translateX(14px);
+}
+
+.fijo-chip-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-texto-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.fijo-chip-btn:hover {
+  background: var(--color-exito-suave);
+  color: var(--color-exito);
+}
+
+.fijo-chip-btn-del:hover {
+  background: var(--color-peligro-suave);
+  color: var(--color-peligro);
+}
+
+.fijo-chip-del { display: flex; flex-shrink: 0; }
+
+
+/* ============================================================================
+   SETTINGS v2 — Monitor con relojitos (gauges SVG en tiempo real)
+   ============================================================================ */
+
+.monitor-panel { margin-top: 0; }
+
+.gauges-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem 0.5rem;
+}
+
+.gauge-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  text-align: center;
+}
+
+.gauge {
+  position: relative;
+  width: 100%;
+  max-width: 96px;
+  aspect-ratio: 1 / 1;
+}
+
+.gauge-svg { width: 100%; height: 100%; display: block; }
+
+.gauge-bg {
+  fill: none;
+  stroke: var(--color-borde);
+  stroke-width: 8;
+}
+
+.gauge-arc {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  stroke-dasharray: 264;
+  stroke-dashoffset: 264;
+  transition: stroke-dashoffset 0.6s ease, stroke 0.4s ease;
+}
+
+.gauge-arc.g-verde    { stroke: var(--color-exito); }
+.gauge-arc.g-amarillo { stroke: var(--color-alerta); }
+.gauge-arc.g-rojo     { stroke: var(--color-peligro); }
+
+.gauge-centro {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gauge-valor {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-texto);
+  transition: color 0.4s;
+}
+
+.gauge-valor.g-amarillo { color: var(--color-alerta); }
+.gauge-valor.g-rojo     { color: var(--color-peligro); }
+
+.gauge-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--color-texto);
+}
+
+.gauge-detalle {
+  font-size: 0.7rem;
+  color: var(--color-texto-muted);
+  min-height: 0.85rem;
+}
+
+.monitor-pie {
+  margin-top: 1.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--color-borde);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.monitor-pie-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
+.monitor-pie-dato { font-weight: 600; color: var(--color-texto); }
+.monitor-pie-ok    { color: var(--color-exito); }
+.monitor-pie-error { color: var(--color-peligro); }
+
+.estado-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-exito);
+  margin-right: 0.4rem;
+}
