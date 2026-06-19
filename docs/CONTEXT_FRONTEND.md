@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Para cambios visuales y de interactividad.
 
 ## Archivos del dominio
-- `static/style.css` (3227 líneas): estilos globales + variables.
+- `static/style.css` (3789 líneas): estilos globales + variables.
 - `static/app.js` (1164 líneas): interactividad cliente, AJAX, edición inline.
 - `templates/`:
   - `base.html` — layout. Header + nav van en `.site-topbar` (sticky, siempre visible al scrollear; `top:24px` si hay dev-banner). Todas extienden esto.
@@ -12,7 +12,7 @@
   - `editar.html` — edición completa de movimiento.
   - `resumen.html` — dashboard mensual (Chart.js), 5 secciones: saldos, sueldos (Elías vs Mari, evolución 6 meses), análisis de gastos, envíos, fijos.
   - `gastos_fijos.html` — gestión de fijos recurrentes y cuotas.
-  - `settings.html` — configuración + paleta + backups de la base de datos.
+  - `settings.html` — ajustes. Layout 2 columnas (`.settings-layout`): izquierda scrollea (General, Paleta, Backups, Gastos fijos); derecha `.settings-aside` sticky con el Monitor de recursos (relojitos). Responsive: apila en 1 columna < 900px. **No incluye** ngrok/OAuth/estado-entorno (se manejan en `config.json`, fuera de la UI).
   - `login.html` — pantalla pre-OAuth.
   - `404.html`, `405.html` — errores.
 
@@ -35,7 +35,9 @@ html[data-theme="dark"] { --color-acento: #6366f1; ... }  /* desde cfg.paleta_da
 
 **Toggle Light/Dark:** botón `#theme-toggle` en `.site-header` (absoluto a la izquierda), visible en todas las páginas. Icono `#theme-icon` = `🌙` en light, `☀` en dark. JS: `inicializarToggleTema()` (en `app.js`) lee `dataset.theme`, pinta el icono inicial, y al click alterna `dataset.theme`, guarda `localStorage.setItem('tema', ...)`, repinta el icono, y llama `window._refrescarColoresSelects()` para actualizar los fondos/textos de los selects de persona y moneda con los colores del nuevo tema. El modo activo es por dispositivo (localStorage); los valores de color son compartidos (config.json).
 
-**UI de edición:** en `settings.html → sección "Paleta de colores"` hay dos `<table>` (Light Mode y Dark Mode) generadas por Jinja iterando `cfg.paleta_light` / `cfg.paleta_dark` con `paleta_meta` (lista pasada desde `app.py`). Cada fila: muestra | nombre | `--variable` | uso | `<input type="color">`. Botón "Guardar paleta" → `POST /api/paleta` (JSON con ambas paletas, valida hex, escribe `config.json`). Al recargar, `base.html` re-inyecta los valores. Cero hex hardcodeado en el HTML.
+**UI de edición:** en `settings.html → sección "Paleta de colores"` hay **una sola** `<table>` con columnas Nombre · Uso · Light · Dark. Jinja itera `paleta_meta` (de `app.py`) y agrupa las filas con encabezados por categoría (Marca, Superficies, Estados, Personas, Monedas, Decorativos) vía un dict `grupos` + `namespace` en la plantilla. Cada fila tiene dos `<input type="color">` (`data-tema="light"` y `data-tema="dark"`, `data-key`), tomando valor de `cfg.paleta_light[key]` / `cfg.paleta_dark[key]`. El hex **no** se muestra como texto: se ve solo en el picker. Botón "Guardar paleta" → `POST /api/paleta` (JSON con ambas paletas, valida hex, escribe `config.json`). Al recargar, `base.html` re-inyecta los valores. Cero hex hardcodeado en el HTML.
+
+**Monitor de recursos (relojitos):** panel sticky en `.settings-aside`. 4 gauges SVG (CPU app, RAM app, CPU sistema, RAM sistema) dibujados con dos `<circle>` (`.gauge-bg` + `.gauge-arc` con `stroke-dasharray`/`stroke-dashoffset`). JS `fetchMetrics()` (en `settings.html`) hace `GET /api/metrics` cada 3s y `setGauge()` ajusta arco + valor + color por umbral (verde/amarillo/rojo). Sin historización: solo el valor actual. Pie con PID, estado "En ejecución" y cotización OK/Falló.
 
 Variables actuales (al modificar, actualizar también `config.py DEFAULTS`, `app.py PALETA_META` y la página Settings → Paleta):
 
@@ -64,7 +66,7 @@ No-color (también en `:root`): `--fuente-principal`, `--radio-borde`, `--espaci
 
 ## Mapa de secciones de `style.css` (línea inicial)
 
-57 banner DEV · 79 variables · 147 reset · 193 layout · 211 header · 283 nav · 326 footer · 347 page-header · 364 botones · 442 tabla gastos · 529 badges categoría · 557 sin-datos · 575 forms · 630 resumen · 735 tarjeta saldo · 761 carga rápida · 852 grilla saldos · 907 filtros · 986 badges tipo · 1010 badges persona · 1026 badges moneda · 1055 dashboard · 1528 edición inline · 1619 envío · 1690 badge envío · 1736 toasts · 1802 banner primer inicio · 1822 banner éxito · 1836 settings · 1969 monitor recursos · 2091 paginación · 2147 form rápido · 2163 responsive mobile · 2299 tabla saldos · 2364 nav mes · 2417 checklist fijos · 2531 gastos_fijos · 2606 git backup · 2691 fijos en settings · 2758 layout desktop · 2796 tarjeta saldos · 2860 movimientos card · 2968 select filtro · 2992 gauges · 3096 paleta settings · 3162 cotización settings.
+57 banner DEV · 79 variables · 147 reset · 193 layout · 211 header · 283 nav · 326 footer · 347 page-header · 364 botones · 442 tabla gastos · 529 badges categoría · 557 sin-datos · 575 forms · 630 resumen · 735 tarjeta saldo · 761 carga rápida · 852 grilla saldos · 907 filtros · 986 badges tipo · 1010 badges persona · 1026 badges moneda · 1055 dashboard · 1528 edición inline · 1619 envío · 1690 badge envío · 1736 toasts · 1802 banner primer inicio · 1822 banner éxito · 1836 settings · 1969 monitor recursos · 2091 paginación · 2147 form rápido · 2163 responsive mobile · 2299 tabla saldos · 2364 nav mes · 2417 checklist fijos · 2531 gastos_fijos · 2606 git backup · 2691 fijos en settings · 2758 layout desktop · 2796 tarjeta saldos · 2860 movimientos card · 2968 select filtro · 2992 gauges · 3096 paleta settings · 3162 cotización settings · 3372 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor).
 
 ## Funciones JS principales (`static/app.js`)
 

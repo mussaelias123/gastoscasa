@@ -24,7 +24,7 @@
 | POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD.               |
 | GET    | `/api/metrics`            | `metrics`             | JSON con métricas (CPU, RAM, etc.).              |
 | GET    | `/api/saldos`             | `api_saldos`          | JSON `{saldos, gauges, historico, fecha}`. `?hasta=YYYY-MM-DD` = saldos a esa fecha; sin `hasta` = toda la DB. |
-| GET/POST | `/settings`             | `settings`            | Página de configuración (cfg.json + paleta).     |
+| GET/POST | `/settings`             | `settings`            | Ajustes. POST general guarda **solo** `app_name` y `factor_sueldo` (merge parcial; NO toca ngrok/OAuth/puerto). Otras acciones (form `accion`): `agregar_fijo`, `editar_fijo`, `eliminar_fijo`, `guardar_backup_dir`, `marcar_configurado`. |
 | POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
 | GET    | `/api/backups`            | `api_backups`         | JSON `{backups:[{archivo,etiqueta,size_mb}], carpeta}`. Lista backups `.db`. |
 | POST   | `/api/backups/crear`      | `api_backups_crear`   | Crea backup manual de `gastos.db`. Form `descripcion` (opcional) → sufijo en el nombre. Devuelve `{ok,mensaje,backups}`. |
