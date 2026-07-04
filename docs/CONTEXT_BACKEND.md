@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Este doc es para tareas que tocan `app.py`.
 
 ## Archivos del dominio
-- `app.py` (~1170 líneas): rutas, schedulers, formatters Jinja, ngrok, backups.
+- `app.py` (~1600 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulo Calendario.
 - Imports clave: `database`, `auth`, `cotizacion`, `config`.
 
 ## Patrón general de ruta
@@ -30,6 +30,13 @@
 | POST   | `/api/backups/crear`      | `api_backups_crear`   | Crea backup manual de `gastos.db`. Form `descripcion` (opcional) → sufijo en el nombre. Devuelve `{ok,mensaje,backups}`. |
 | POST   | `/api/backups/restaurar`  | `api_backups_restaurar` | Restaura `gastos.db` desde `archivo` (form). Hace copia `..._pre-restore.db` antes. |
 | GET    | `/login`, `/auth/google`, `/auth/google/callback`, `/logout` | (blueprint `auth`) | OAuth Google. Ver `CONTEXT_AUTH.md`. |
+| GET    | `/calendario`             | `calendario`          | Página del módulo Calendario (tareas del hogar). Context: `datos=_act_payload()`, `cal_areas=CAL_AREAS`, `cal_responsables=CAL_RESPONSABLES`. |
+| GET    | `/api/actividades`        | `api_actividades`     | JSON `{'ok': True, **_act_payload()}`. |
+| POST   | `/api/actividades/crear`  | `api_actividades_crear` | Alta. Valida con `_act_leer_form_comun`. |
+| POST   | `/api/actividades/<id>/editar` | `api_actividades_editar` | Edición completa. Mismo validador que crear. |
+| POST   | `/api/actividades/<id>/completar` | `api_actividades_completar` | Marca hecha (`fecha_hecha`); `repetir` decide si se archiva o repite. |
+| POST   | `/api/actividades/<id>/reactivar` | `api_actividades_reactivar` | Reactiva una archivada. |
+| POST   | `/api/actividades/<id>/eliminar` | `api_actividades_eliminar` | Borra la actividad y su historial. |
 
 > **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
@@ -38,8 +45,22 @@
 - `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `index` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
-- `PALETA_META`: lista `(key, nombre, uso)` con las 21 variables de paleta. Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
+- `PALETA_META`: lista `(key, nombre, uso)` con las 22 variables de paleta (incluye `texto-invertido`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
 - `_HEX_RE`: regex `^#[0-9a-fA-F]{6}$` para validar hex de la paleta.
+
+## Módulo Calendario — constantes y helpers
+Convención de datos: `intervalo_u` ∈ `dias|semanas|meses|anios`. Fechas TEXT `YYYY-MM-DD`. Cálculo de próxima fecha/estado vive acá a propósito, NO en `database.py` (capa de datos pura).
+- `CAL_AREAS`: dict `{clave: (nombre, emoji)}` — `auto`, `casa`, `salud`, `documentos`, `mascotas`, `finanzas`, `hogar`.
+- `CAL_RESPONSABLES`: dict `{clave: nombre}` — `familia`, `elias`, `mari`.
+- `CAL_UNIDADES`: tupla `('dias', 'semanas', 'meses', 'anios')`.
+- `_act_sumar_intervalo(fecha, n, unidad)` → `date`. Suma n unidades. Meses/años: clampea al último día del mes destino si el día no existe (31-ene +1 mes → 28/29-feb).
+- `_act_proxima_fecha(act)` → `date | None`. Prioridad: `proxima_manual` > (`recurrente` y `ultima` → `ultima+intervalo`) > `ultima` > `None`.
+- `_act_estado(act)` → `str`. `terminada` > sin próxima → `aldia` > `dias<0` → `vencida` > (`avisar` y `dias<=lead_dias`) → `proxima` > `aldia`.
+- `_act_enriquecer(row)` → dict JSON-serializable: todos los campos de la fila + `proxima_fecha` (ISO/None) + `estado` + `dias_restantes` (int/None).
+- `_act_payload()` → `{'actividades': [...enriquecidas], 'historial': [{'actividad_id','fecha_hecha'}...]}`. Fuente de TODAS las respuestas AJAX del módulo (fresco tras cada mutación).
+- `_act_leer_form_comun(form)`: valida y arma kwargs para `database.agregar_actividad` / `editar_actividad`. Compartido por crear/editar.
+- `_act_parsear_fecha_opcional(valor, campo)`: valida `''` o `YYYY-MM-DD`; lanza `ValueError` si es inválida.
+- `_es_ajax()`: `request.headers.get('X-Requested-With') == 'XMLHttpRequest'`.
 
 ## Schedulers en hilo
 - `iniciar_scheduler_backup()`: chequea cada hora; backup de `gastos.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.

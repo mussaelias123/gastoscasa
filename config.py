@@ -41,7 +41,7 @@ DEFAULTS = {
     # Ruta relativa a la carpeta del proyecto, o absoluta. Default: "backups".
     "backup_dir": "backups",
     # ── Paletas de colores — editables desde Settings ──────────────────────────
-    # 21 variables base. Los aliases (--color-primario, etc.) siguen en style.css
+    # 22 variables base. Los aliases (--color-primario, etc.) siguen en style.css
     # como var() y NO se mueven aquí.
     "paleta_light": {
         "acento":         "#4f46e5",
@@ -50,6 +50,7 @@ DEFAULTS = {
         "superficie":     "#ffffff",
         "texto":          "#111827",
         "texto-muted":    "#6b7280",
+        "texto-invertido": "#ffffff",
         "borde":          "#e5e7eb",
         "exito":          "#10b981",
         "alerta":         "#f59e0b",
@@ -73,6 +74,7 @@ DEFAULTS = {
         "superficie":     "#1e293b",
         "texto":          "#e5e7eb",
         "texto-muted":    "#94a3b8",
+        "texto-invertido": "#ffffff",
         "borde":          "#334155",
         "exito":          "#34d399",
         "alerta":         "#fbbf24",
@@ -102,6 +104,13 @@ def cargar_config(ruta=None):
             with open(ruta, 'r', encoding='utf-8') as f:
                 datos = json.load(f)
             cfg.update(datos)
+            # Paletas: merge por clave. Si config.json trae una paleta guardada
+            # vieja (menos claves que DEFAULTS), las claves nuevas de DEFAULTS
+            # sobreviven (ej. texto-invertido agregado en 2026-07).
+            for paleta in ('paleta_light', 'paleta_dark'):
+                base = dict(DEFAULTS.get(paleta, {}))
+                base.update(datos.get(paleta) or {})
+                cfg[paleta] = base
         except (json.JSONDecodeError, OSError):
             pass
     return cfg

@@ -15,12 +15,11 @@
 - **Dev**: `E:\FondoDev` → `python app.py` a mano (puerto propio, login bypasseado,
   no se expone a la red).
 
-## URL pública (verificación)
-```
-https://miller-unventured-courtly.ngrok-free.dev/
-```
+## URLs de verificación (regla 2026-07)
+- **DEV** (cambios en `E:\FondoDev`): `http://localhost:5050/` (puerto = `port` en `config.json` de dev). El túnel ngrok NO sirve dev.
+- **PROD**: `https://miller-unventured-courtly.ngrok-free.dev/` — SOLO para verificar producción. No probar cambios de dev acá.
 
-**Cómo verificar**: usar conector `Claude in Chrome` → `tabs_create_mcp` → `navigate` a la URL → tomar screenshot → confirmar que la app no está rota y que el cambio aplicado es visible.
+**Cómo verificar**: usar conector `Claude in Chrome` → `tabs_create_mcp` → `navigate` a la URL del entorno correcto → tomar screenshot → confirmar que la app no está rota y que el cambio aplicado es visible. Si dev no responde, pedir al usuario que arranque `python app.py` (los cambios de rutas requieren reinicio del proceso).
 
 Si la página pide login: **detenerse y avisar al usuario**. La sesión está iniciada normalmente.
 
@@ -68,7 +67,7 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - Decisión 2026-06: se evaluó migrar a Event Viewer de Windows y se descartó — los archivos de texto en `logs/` son directamente grepeables por agentes IA.
 
 ## Reglas específicas
-1. **Verificación obligatoria** post-cambio en ngrok URL (no localhost), salvo que el usuario diga lo contrario.
+1. **Verificación obligatoria** post-cambio en la URL del entorno correcto (ver "URLs de verificación": dev → `http://localhost:5050/`, prod → ngrok), salvo que el usuario diga lo contrario.
 2. **Restart del servicio** es operación con permisos elevados. Confirmar con usuario antes.
 3. **Backups antes de migrar datos** (manual desde Settings con descripción, no confiar solo en el automático diario).
 4. **No commitear** `build/dist/`, `*.exe`, `gastos.db`, `backups/`.

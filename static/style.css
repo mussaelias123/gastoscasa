@@ -81,7 +81,7 @@ body.has-dev-banner {
    acá son accesibles en todo el CSS.
    ============================================================================ */
 :root {
-  /* ── Paleta de colores — 15 variables semánticas ──────────────────────────
+  /* ── Paleta de colores — 22 variables semánticas ──────────────────────────
      Para cambiar el tema de la app, solo modificar los valores de acá.
      Cada variable tiene un propósito específico definido en Settings → Paleta.
      ──────────────────────────────────────────────────────────────────────── */
@@ -97,6 +97,7 @@ body.has-dev-banner {
   /* Texto */
   --color-texto:          #111827;   /* Texto principal */
   --color-texto-muted:    #6b7280;   /* Texto secundario, ayuda, labels */
+  --color-texto-invertido:#ffffff;   /* Texto sobre botones de color (acento, peligro, éxito) */
 
   /* Estructura */
   --color-borde:          #e5e7eb;   /* Bordes de tarjetas, inputs, separadores */
@@ -131,6 +132,8 @@ body.has-dev-banner {
   --espaciado-base:    1rem;
   --sombra-card:       0 2px 8px rgba(31, 41, 55, 0.10);
   --sombra-focus:      0 0 0 3px rgba(55, 65, 81, 0.25);
+  --sombra-modal:      0 12px 40px rgba(0, 0, 0, 0.30);
+  --overlay-modal:     rgba(0, 0, 0, 0.5);
 }
 
 
@@ -3786,4 +3789,857 @@ body.has-dev-banner .settings-aside {
   border-radius: 50%;
   background: var(--color-exito);
   margin-right: 0.4rem;
+}
+
+
+/* ============================================================================
+   CALENDARIO — módulo de tareas del hogar (templates/calendario.html)
+   Portado del handoff de diseño. Todas las clases nuevas con prefijo cal-.
+   Base = apilado (mobile / tablet). Desktop >= 900px = 2 columnas sin scroll
+   de página (alto = viewport; scroll interno en agenda, detalle y tabla).
+   ============================================================================ */
+
+/* ── Layout base: apilado, scroll de página normal ────────────────────────── */
+.cal-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cal-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Panel base (mismo lenguaje que .tarjeta) ─────────────────────────────── */
+.cal-panel {
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  border: 1px solid var(--color-borde);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cal-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-borde);
+  flex-shrink: 0;
+}
+
+.cal-panel-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+.cal-panel-title .cal-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+}
+
+/* Botón "fantasma" para acciones secundarias en headers */
+.cal-btn-ghost {
+  background: transparent;
+  border: 1px solid var(--color-borde);
+  color: var(--color-texto-muted);
+  border-radius: var(--radio-borde);
+  padding: 0.32rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.cal-btn-ghost:hover {
+  border-color: var(--color-acento);
+  color: var(--color-acento);
+}
+
+/* ── Agenda de pendientes (columna izquierda) ─────────────────────────────── */
+.cal-agenda-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0.4rem 0.65rem 0.7rem;
+}
+
+.cal-agenda-group { margin-top: 0.65rem; }
+.cal-agenda-group:first-child { margin-top: 0.25rem; }
+
+.cal-agenda-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cal-agenda-group-title .cal-grp-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.cal-agenda-group-title .cal-grp-n {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+  letter-spacing: 0;
+}
+
+.cal-grp-vencida { color: var(--color-peligro); }
+.cal-grp-vencida .cal-grp-dot { background: var(--color-peligro); }
+.cal-grp-proxima { color: var(--color-alerta); }
+.cal-grp-proxima .cal-grp-dot { background: var(--color-alerta); }
+
+/* Ítem de agenda */
+.cal-agenda-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.42rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  margin-bottom: 0.4rem;
+  transition: box-shadow 0.15s, transform 0.05s;
+}
+
+.cal-agenda-item:hover { box-shadow: var(--sombra-card); }
+.cal-agenda-item.is-vencida { background: var(--color-peligro-suave); border-color: transparent; }
+.cal-agenda-item.is-proxima { background: var(--color-alerta-suave); border-color: transparent; }
+
+.cal-agenda-ico {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.cal-agenda-body { min-width: 0; }
+
+.cal-agenda-name {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-texto);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-agenda-name .cal-campana { font-size: 0.78rem; opacity: 0.65; }
+
+.cal-agenda-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.12rem;
+  font-size: 0.76rem;
+  color: var(--color-texto-muted);
+}
+
+.cal-agenda-meta .cal-sep { opacity: 0.5; }
+
+.cal-agenda-meta .cal-uso {
+  font-size: 0.72rem;
+  background: var(--color-deco-4);
+  color: var(--color-texto);
+  padding: 0.02rem 0.4rem;
+  border-radius: 4px;
+}
+
+.cal-estado-txt { font-weight: 700; }
+.cal-estado-txt.t-vencida { color: var(--color-peligro); }
+.cal-estado-txt.t-proxima { color: var(--color-alerta); }
+
+.cal-agenda-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.cal-btn-completar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-exito);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.cal-btn-completar:hover { filter: brightness(1.08); transform: translateY(-1px); }
+
+.cal-btn-icono {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--color-borde);
+  color: var(--color-texto-muted);
+  border-radius: var(--radio-borde);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+
+.cal-btn-icono:hover { border-color: var(--color-acento); color: var(--color-acento); }
+
+/* Badge responsable (mismo lenguaje que .badge-persona) */
+.cal-badge-resp {
+  display: inline-block;
+  padding: 0.08rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-texto-invertido);
+}
+
+.cal-resp-elias { background: var(--color-persona-elias); }
+.cal-resp-mari { background: var(--color-persona-mari); }
+.cal-resp-familia { background: var(--color-deco-3); }
+
+/* Estado vacío de la agenda */
+.cal-agenda-vacia {
+  height: 100%;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--color-texto-muted);
+  padding: 2rem;
+  gap: 0.5rem;
+}
+
+.cal-agenda-vacia .cal-vacia-em { font-size: 2.6rem; }
+.cal-agenda-vacia .cal-vacia-t { font-size: 1.05rem; font-weight: 700; color: var(--color-texto); }
+
+/* ── Calendario mensual (columna derecha, arriba) ─────────────────────────── */
+.cal-month {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.85rem 0.7rem;
+}
+
+.cal-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.1rem 0.6rem;
+  flex-shrink: 0;
+}
+
+.cal-month-nav-der {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cal-month-label { font-size: 0.98rem; font-weight: 700; color: var(--color-texto); }
+
+.cal-navbtn {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--color-deco-2);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.cal-navbtn:hover { background: var(--color-deco-1); transform: scale(1.08); }
+
+.cal-hoy-link {
+  background: transparent;
+  border: none;
+  color: var(--color-acento);
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-family: var(--fuente-principal);
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.cal-dow {
+  text-align: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-texto-muted);
+  padding-bottom: 0.25rem;
+}
+
+.cal-day {
+  position: relative;
+  height: clamp(28px, 3.5vh, 36px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  color: var(--color-texto);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.cal-day.is-otro-mes { color: var(--color-texto-muted); opacity: 0.4; }
+.cal-day:hover { background: var(--color-deco-4); }
+.cal-day.is-hoy { border-color: var(--color-acento); font-weight: 800; color: var(--color-acento); }
+.cal-day.is-sel { background: var(--color-acento); color: var(--color-texto-invertido); }
+.cal-day.is-sel:hover { background: var(--color-acento-oscuro); }
+
+.cal-dots {
+  position: absolute;
+  bottom: 3px;
+  display: flex;
+  gap: 2px;
+}
+
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; }
+.cal-dot.cal-d-vencida, .cal-lg-dot.cal-d-vencida { background: var(--color-peligro); }
+.cal-dot.cal-d-proxima, .cal-lg-dot.cal-d-proxima { background: var(--color-alerta); }
+.cal-dot.cal-d-hecha, .cal-lg-dot.cal-d-hecha { background: var(--color-exito); }
+.cal-dot.cal-d-aldia, .cal-lg-dot.cal-d-aldia { background: var(--color-deco-3); }
+.cal-day.is-sel .cal-dot { outline: 1px solid var(--color-texto-invertido); }
+
+/* Leyenda */
+.cal-legend {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 0.1rem 0.1rem;
+  font-size: 0.72rem;
+  color: var(--color-texto-muted);
+  flex-shrink: 0;
+}
+
+.cal-legend .cal-lg { display: inline-flex; align-items: center; gap: 0.3rem; }
+.cal-legend .cal-lg-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* Detalle del día: vive DENTRO del panel; scrollea solo (no desborda) */
+.cal-day-detail {
+  border-top: 1px dashed var(--color-borde);
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cal-day-detail .cal-dd-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-texto);
+  margin-bottom: 0.35rem;
+  flex-shrink: 0;
+}
+
+.cal-day-detail .cal-dd-hoy {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-acento);
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: 999px;
+  padding: 0.02rem 0.4rem;
+}
+
+.cal-day-detail-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  max-height: 240px; /* apilado: tope natural; desktop lo libera */
+}
+
+.cal-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--color-texto);
+  padding: 0.2rem 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cal-dd-item:hover { background: var(--color-fondo); }
+.cal-dd-ico { flex-shrink: 0; }
+.cal-dd-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-dd-empty { font-size: 0.78rem; color: var(--color-texto-muted); padding: 0.2rem 0; }
+
+.cal-dd-tag {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 0.04rem 0.4rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.cal-dd-tag-hecha { background: var(--color-exito-suave); color: var(--color-exito); }
+.cal-dd-tag-vencida { background: var(--color-peligro-suave); color: var(--color-peligro); }
+.cal-dd-tag-proxima { background: var(--color-alerta-suave); color: var(--color-alerta); }
+.cal-dd-tag-aldia { background: var(--color-deco-4); color: var(--color-texto-muted); }
+
+/* ── Alta rápida (columna derecha, abajo) ─────────────────────────────────── */
+.cal-quickadd { padding: 0.6rem 0.9rem 0.75rem; }
+.cal-panel--add .cal-panel-header { padding: 0.6rem 0.9rem; }
+
+.cal-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem 0.7rem;
+}
+
+.cal-form-grid .cal-full { grid-column: 1 / -1; }
+
+.cal-campo { margin-bottom: 0; }
+
+.cal-campo label {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+  margin-bottom: 0.18rem;
+}
+
+.cal-campo input[type="text"],
+.cal-campo input[type="number"],
+.cal-campo select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.86rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background: var(--color-superficie);
+}
+
+.cal-campo input:focus,
+.cal-campo select:focus {
+  outline: none;
+  border-color: var(--color-acento);
+  box-shadow: var(--sombra-focus);
+}
+
+.cal-intervalo-row { display: flex; gap: 0.5rem; }
+.cal-intervalo-row input { flex: 0 0 72px; }
+.cal-intervalo-row select { flex: 1 1 auto; }
+
+/* Input chico para "N días antes" dentro del switch-row */
+.cal-lead-mini {
+  width: 58px;
+  box-sizing: border-box;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.85rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background: var(--color-superficie);
+  text-align: center;
+}
+
+.cal-lead-mini:focus { outline: none; border-color: var(--color-acento); box-shadow: var(--sombra-focus); }
+
+/* Toggle de aviso (switch) */
+.cal-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  padding: 0.4rem 0.55rem;
+}
+
+.cal-switch-label { font-size: 0.82rem; font-weight: 600; color: var(--color-texto); }
+
+.cal-switch-label .cal-hint {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--color-texto-muted);
+  margin-top: 0.1rem;
+}
+
+.cal-switch-extra {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cal-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.cal-switch input { opacity: 0; width: 0; height: 0; }
+
+.cal-switch .cal-track {
+  position: absolute;
+  inset: 0;
+  background: var(--color-deco-4);
+  border-radius: 999px;
+  transition: background 0.18s;
+}
+
+.cal-switch .cal-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--color-texto-invertido);
+  border-radius: 50%;
+  transition: transform 0.18s;
+  box-shadow: var(--sombra-card);
+}
+
+.cal-switch input:checked + .cal-track { background: var(--color-acento); }
+.cal-switch input:checked + .cal-track + .cal-thumb { transform: translateX(18px); }
+
+.cal-btn-block {
+  display: block;
+  width: 100%;
+  margin-top: 0.55rem;
+  padding: 0.6rem;
+  background: var(--color-acento);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.cal-btn-block:hover { background: var(--color-acento-oscuro); transform: translateY(-1px); }
+
+/* Variante para footers de modal (no ocupa todo el ancho) */
+.cal-btn-block.cal-btn-auto { width: auto; margin-top: 0; }
+
+/* ── Modales (overlay + tarjeta) ──────────────────────────────────────────── */
+.cal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-modal);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem;
+  animation: cal-fade 0.16s ease;
+}
+
+.cal-overlay[hidden] { display: none; }
+
+@keyframes cal-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.cal-modal {
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-modal);
+  width: 100%;
+  max-width: 460px;
+  max-height: calc(100vh - 2.4rem);
+  display: flex;
+  flex-direction: column;
+  animation: cal-pop 0.18s cubic-bezier(.2, .9, .3, 1.2);
+}
+
+.cal-modal.cal-modal-ancho { max-width: 820px; }
+
+@keyframes cal-pop {
+  from { transform: translateY(8px) scale(0.98); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.cal-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 1.05rem 1.25rem 0.85rem;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.cal-modal-head h3 {
+  margin: 0;
+  font-size: 1.12rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cal-modal-head .cal-modal-sub { font-size: 0.8rem; color: var(--color-texto-muted); font-weight: 400; }
+
+.cal-x {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  color: var(--color-texto-muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+  border-radius: var(--radio-borde);
+}
+
+.cal-x:hover { background: var(--color-deco-4); color: var(--color-texto); }
+
+.cal-modal-body { padding: 1.1rem 1.25rem; overflow-y: auto; }
+
+.cal-modal-body .cal-campo { margin-bottom: 0.85rem; }
+.cal-modal-body .cal-campo:last-child { margin-bottom: 0; }
+.cal-modal-body .cal-form-grid { margin-bottom: 0.85rem; }
+.cal-modal-body .cal-form-grid .cal-campo { margin-bottom: 0; }
+
+.cal-modal-foot {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  padding: 0.85rem 1.25rem 1.1rem;
+  border-top: 1px solid var(--color-borde);
+}
+
+/* Selector segmentado (repetir / terminar · recurrente / única) */
+.cal-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.cal-seg button {
+  padding: 0.55rem 0.5rem;
+  border: 1.5px solid var(--color-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  border-radius: var(--radio-borde);
+  font-size: 0.84rem;
+  font-weight: 600;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cal-seg button:hover { border-color: var(--color-acento); }
+
+.cal-seg button.is-on {
+  border-color: var(--color-acento);
+  background: var(--color-acento);
+  color: var(--color-texto-invertido);
+}
+
+.cal-proxima-preview {
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.86rem;
+  color: var(--color-texto);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cal-proxima-preview strong { color: var(--color-acento); }
+.cal-proxima-preview.is-terminar { color: var(--color-texto-muted); }
+
+.cal-help {
+  font-size: 0.74rem;
+  color: var(--color-texto-muted);
+  margin-top: 0.3rem;
+  line-height: 1.4;
+}
+
+.cal-confirm-msg { margin: 0; color: var(--color-texto-muted); line-height: 1.5; }
+
+/* ── Tabla "Todas las actividades" ────────────────────────────────────────── */
+.cal-tabla-wrap { overflow-y: auto; max-height: 60vh; }
+
+.cal-tabla { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+
+.cal-tabla thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-deco-2);
+  color: var(--color-texto-invertido);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.5rem 0.6rem;
+  z-index: 1;
+}
+
+.cal-tabla tbody td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-borde);
+  color: var(--color-texto);
+  vertical-align: middle;
+}
+
+.cal-tabla tbody tr:hover { background: var(--color-fondo); }
+.cal-tabla tbody tr.cal-fila-terminada { opacity: 0.55; }
+.cal-tabla .cal-td-nombre { font-weight: 600; }
+.cal-tabla .cal-td-nombre .cal-td-ico { margin-right: 0.4rem; }
+.cal-tabla .cal-td-acciones { text-align: right; white-space: nowrap; }
+.cal-tabla .cal-td-acciones .cal-btn-icono { display: inline-grid; margin-left: 0.25rem; }
+
+.cal-pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.cal-pill-vencida { background: var(--color-peligro-suave); color: var(--color-peligro); }
+.cal-pill-proxima { background: var(--color-alerta-suave); color: var(--color-alerta); }
+.cal-pill-aldia { background: var(--color-deco-4); color: var(--color-texto); }
+.cal-pill-terminada { background: transparent; color: var(--color-texto-muted); border: 1px solid var(--color-borde); }
+
+/* ── Botones extra de modales ─────────────────────────────────────────────── */
+.cal-btn-peligro-ghost {
+  background: transparent;
+  color: var(--color-peligro);
+  border: 1px solid var(--color-peligro);
+  border-radius: var(--radio-borde);
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  margin-right: auto;
+  transition: all 0.15s;
+}
+
+.cal-btn-peligro-ghost:hover { background: var(--color-peligro); color: var(--color-texto-invertido); }
+
+/* Toasts del módulo (reusan .toast base; solo cambia el fondo) */
+.cal-toast-error { background-color: var(--color-peligro); }
+.cal-toast-ok    { background-color: var(--color-exito); }
+.cal-toast-info  { background-color: var(--color-deco-2); }
+
+/* ── Ajustes de integración ───────────────────────────────────────────────── */
+/* [hidden] pierde contra clases que definen display (grid/flex): guardas
+   explícitas para los bloques que calendario.js muestra/oculta. */
+.cal-form-grid[hidden],
+.cal-proxima-preview[hidden] { display: none; }
+
+/* ── Desktop >= 900px: 2 columnas, alto = viewport, sin scroll de página ──── */
+@media (min-width: 900px) {
+  /* La página del calendario fija su alto al viewport: el flex column del
+     body (topbar + main) reparte el resto y main absorbe el sobrante.
+     body.cal-body la agrega calendario.js; :has() cubre el primer paint. */
+  body.cal-body,
+  body:has(.cal-page) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.cal-body .contenido-principal,
+  body:has(.cal-page) .contenido-principal {
+    display: flex;
+    min-height: 0;
+  }
+
+  .cal-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 416px;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .cal-col { min-height: 0; }
+
+  /* Columna izquierda: la agenda llena el alto y scrollea adentro */
+  .cal-panel--agenda { flex: 1 1 auto; min-height: 0; }
+  .cal-agenda-scroll { overflow-y: auto; }
+
+  /* Columna derecha: el mes llena el alto, el alta queda fija abajo */
+  .cal-panel--mes { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .cal-panel--add { flex: 0 0 auto; }
+
+  /* El detalle del día usa el alto sobrante del panel (sin tope fijo) */
+  .cal-day-detail-scroll { max-height: none; }
+}
+
+@media (min-width: 900px) and (max-width: 1080px) {
+  .cal-page { grid-template-columns: minmax(0, 1fr) 360px; }
 }

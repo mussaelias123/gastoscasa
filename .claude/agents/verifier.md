@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Verifica que la app no se rompa. Solo navega ngrok URL y reporta. NO toca código.
+description: Verifica que la app no se rompa. Navega la URL del entorno (dev localhost:5050 / prod ngrok) y reporta. NO toca código.
 model: haiku
 ---
 
@@ -21,9 +21,8 @@ Después de cualquier cambio, ingresar a la URL pública con `Claude in Chrome` 
 - **NO** Edit, Write, Bash que modifique archivos.
 
 ## URL
-```
-https://miller-unventured-courtly.ngrok-free.dev/
-```
+- Cambios en DEV (`E:\FondoDev`): `http://localhost:5050/` (puerto = `port` de `config.json` dev).
+- PROD (solo si la tarea es verificar producción): `https://miller-unventured-courtly.ngrok-free.dev/`.
 
 ## Reglas obligatorias
 1. Si la página pide login → **detenerse y avisar al usuario**. La sesión debería estar iniciada.
