@@ -1,0 +1,327 @@
+{#
+================================================================================
+ARCHIVO: templates/calendario.html
+================================================================================
+Módulo Calendario — tareas del hogar que no hay que olvidarse (VTV, carnet,
+service, etc.). Una sola vista con dos columnas + modales.
+
+- Columna izquierda: agenda de Pendientes (Vencidas / Por vencer).
+- Columna derecha: calendario mensual + alta rápida.
+- Modales: Completar, Editor (alta/edición), Todas las actividades, Confirmar.
+
+Los contenedores marcados con id cal-* los llena static/calendario.js a partir
+de window.CAL_DATOS (payload inyectado abajo). Tras cada mutación AJAX el
+backend devuelve el payload completo y el JS re-renderiza todo.
+
+El form de alta rápida es un <form> real (POST /api/actividades/crear): sin JS
+sigue funcionando (el backend redirige a /calendario).
+================================================================================#}
+
+{% extends "base.html" %}
+
+{% block titulo %}Calendario{% endblock %}
+
+{% block contenido %}
+<div class="cal-page">
+
+  <!-- ── Columna izquierda: agenda de pendientes ─────────────────────────── -->
+  <div class="cal-col">
+    <section class="cal-panel cal-panel--agenda">
+      <div class="cal-panel-header">
+        <div class="cal-panel-title">📋 Pendientes <span class="cal-count" id="cal-pend-count"></span></div>
+        <button type="button" class="cal-btn-ghost" id="cal-btn-ver-todas">Ver todas</button>
+      </div>
+      <div class="cal-agenda-scroll" id="cal-agenda"></div>
+    </section>
+  </div>
+
+  <!-- ── Columna derecha: mes + alta rápida ──────────────────────────────── -->
+  <div class="cal-col">
+
+    <section class="cal-panel cal-panel--mes">
+      <div class="cal-month">
+        <div class="cal-month-nav">
+          <button type="button" class="cal-navbtn" id="cal-mes-prev" title="Mes anterior">‹</button>
+          <span class="cal-month-label" id="cal-mes-label"></span>
+          <div class="cal-month-nav-der">
+            <button type="button" class="cal-hoy-link" id="cal-mes-hoy">Hoy</button>
+            <button type="button" class="cal-navbtn" id="cal-mes-next" title="Mes siguiente">›</button>
+          </div>
+        </div>
+
+        <div class="cal-grid" id="cal-grid"></div>
+
+        <div class="cal-legend">
+          <span class="cal-lg"><span class="cal-lg-dot cal-d-vencida"></span>Vencida</span>
+          <span class="cal-lg"><span class="cal-lg-dot cal-d-proxima"></span>Por vencer</span>
+          <span class="cal-lg"><span class="cal-lg-dot cal-d-aldia"></span>Programada</span>
+          <span class="cal-lg"><span class="cal-lg-dot cal-d-hecha"></span>Completada</span>
+        </div>
+
+        <div class="cal-day-detail">
+          <div class="cal-dd-title" id="cal-dd-title"></div>
+          <div class="cal-day-detail-scroll" id="cal-dd-lista"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cal-panel cal-panel--add">
+      <div class="cal-panel-header">
+        <div class="cal-panel-title">➕ Nueva actividad</div>
+        <button type="button" class="cal-btn-ghost" id="cal-btn-mas-opciones">Más opciones</button>
+      </div>
+      <form class="cal-quickadd" id="cal-form-rapido" action="/api/actividades/crear" method="post">
+        <input type="hidden" name="recurrente" value="1">
+        <div class="cal-form-grid">
+          <div class="cal-campo cal-full">
+            <label for="cal-qa-nombre">¿Qué no hay que olvidarse?</label>
+            <input type="text" id="cal-qa-nombre" name="nombre" maxlength="80" required
+                   placeholder="Ej: Limpiar los aires acondicionados">
+          </div>
+          <div class="cal-campo">
+            <label for="cal-qa-area">Área</label>
+            <select id="cal-qa-area" name="area">
+              {% for clave, par in cal_areas.items() %}
+              <option value="{{ clave }}"{% if clave == 'casa' %} selected{% endif %}>{{ par[1] }} {{ par[0] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="cal-campo">
+            <label for="cal-qa-resp">Responsable</label>
+            <select id="cal-qa-resp" name="responsable">
+              {% for clave, nombre in cal_responsables.items() %}
+              <option value="{{ clave }}">{{ nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="cal-campo">
+            <label for="cal-qa-int-n">Repetir</label>
+            <div class="cal-intervalo-row">
+              <input type="number" id="cal-qa-int-n" name="intervalo_n" min="1" value="6">
+              <select id="cal-qa-int-u" name="intervalo_u">
+                <option value="dias">días</option>
+                <option value="semanas">semanas</option>
+                <option value="meses" selected>meses</option>
+                <option value="anios">años</option>
+              </select>
+            </div>
+          </div>
+          <div class="cal-campo">
+            <label for="cal-qa-ultima">Última vez</label>
+            <input type="text" id="cal-qa-ultima" name="ultima" placeholder="DD/MM/AAAA" autocomplete="off">
+          </div>
+          <div class="cal-campo cal-full">
+            <div class="cal-switch-row">
+              <div class="cal-switch-label">Avisar antes
+                <span class="cal-hint" id="cal-qa-avisar-hint">30 días antes de vencer</span>
+              </div>
+              <div class="cal-switch-extra">
+                <input type="number" id="cal-qa-lead" name="lead_dias" class="cal-lead-mini" min="0" value="30">
+                <label class="cal-switch">
+                  <input type="checkbox" id="cal-qa-avisar" name="avisar" value="1" checked>
+                  <span class="cal-track"></span><span class="cal-thumb"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="cal-btn-block" id="cal-qa-guardar">Guardar actividad</button>
+      </form>
+    </section>
+
+  </div>
+</div>
+
+<!-- ── Modal: Completar actividad ──────────────────────────────────────────── -->
+<div class="cal-overlay" id="cal-modal-completar" role="dialog" aria-modal="true" hidden>
+  <div class="cal-modal">
+    <div class="cal-modal-head">
+      <h3><span>✅</span><span>Completar actividad <span class="cal-modal-sub" id="cal-comp-sub"></span></span></h3>
+      <button type="button" class="cal-x" data-cal-cerrar aria-label="Cerrar">×</button>
+    </div>
+    <div class="cal-modal-body">
+      <div class="cal-campo">
+        <label for="cal-comp-fecha">¿Cuándo la hiciste?</label>
+        <input type="text" id="cal-comp-fecha" placeholder="DD/MM/AAAA" autocomplete="off">
+      </div>
+      <div class="cal-campo">
+        <label>¿Hay que volver a hacerla?</label>
+        <div class="cal-seg">
+          <button type="button" id="cal-comp-seg-repetir" class="is-on">🔁 Sí, repetir</button>
+          <button type="button" id="cal-comp-seg-terminar">✔ No, terminada</button>
+        </div>
+      </div>
+      <div id="cal-comp-bloque-repetir">
+        <div class="cal-campo">
+          <label for="cal-comp-int-n">Repetir cada</label>
+          <div class="cal-intervalo-row">
+            <input type="number" id="cal-comp-int-n" min="1" value="6">
+            <select id="cal-comp-int-u">
+              <option value="dias">días</option>
+              <option value="semanas">semanas</option>
+              <option value="meses" selected>meses</option>
+              <option value="anios">años</option>
+            </select>
+          </div>
+          <div class="cal-help">Por defecto queda el intervalo que ya tenía. Cambialo solo si esta vez es distinto.</div>
+        </div>
+        <div class="cal-proxima-preview">📅 Próxima vez: <strong id="cal-comp-preview"></strong></div>
+      </div>
+      <div class="cal-proxima-preview is-terminar" id="cal-comp-bloque-terminar" hidden>
+        ✔ Se archiva y no vuelve a aparecer en pendientes. La podés reactivar desde “Todas las actividades”.
+      </div>
+    </div>
+    <div class="cal-modal-foot">
+      <button type="button" class="btn btn-secundario" data-cal-cerrar>Cancelar</button>
+      <button type="button" class="cal-btn-block cal-btn-auto" id="cal-comp-guardar">Guardar y reprogramar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Editor (alta completa / edición) ─────────────────────────────── -->
+<div class="cal-overlay" id="cal-modal-editor" role="dialog" aria-modal="true" hidden>
+  <div class="cal-modal">
+    <div class="cal-modal-head">
+      <h3 id="cal-ed-titulo">➕ Nueva actividad</h3>
+      <button type="button" class="cal-x" data-cal-cerrar aria-label="Cerrar">×</button>
+    </div>
+    <div class="cal-modal-body">
+      <div class="cal-campo">
+        <label for="cal-ed-nombre">Nombre</label>
+        <input type="text" id="cal-ed-nombre" maxlength="80" placeholder="Ej: Pintar el techo">
+      </div>
+      <div class="cal-form-grid">
+        <div class="cal-campo">
+          <label for="cal-ed-area">Área</label>
+          <select id="cal-ed-area">
+            {% for clave, par in cal_areas.items() %}
+            <option value="{{ clave }}">{{ par[1] }} {{ par[0] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="cal-campo">
+          <label for="cal-ed-resp">Responsable</label>
+          <select id="cal-ed-resp">
+            {% for clave, nombre in cal_responsables.items() %}
+            <option value="{{ clave }}">{{ nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="cal-campo">
+        <label>Tipo</label>
+        <div class="cal-seg">
+          <button type="button" id="cal-ed-seg-rec" class="is-on">🔁 Se repite</button>
+          <button type="button" id="cal-ed-seg-unica">1️⃣ Una sola vez</button>
+        </div>
+      </div>
+      <div class="cal-form-grid" id="cal-ed-bloque-rec">
+        <div class="cal-campo">
+          <label for="cal-ed-int-n">Repetir cada</label>
+          <div class="cal-intervalo-row">
+            <input type="number" id="cal-ed-int-n" min="1" value="6">
+            <select id="cal-ed-int-u">
+              <option value="dias">días</option>
+              <option value="semanas">semanas</option>
+              <option value="meses" selected>meses</option>
+              <option value="anios">años</option>
+            </select>
+          </div>
+        </div>
+        <div class="cal-campo">
+          <label for="cal-ed-ultima">Última vez que se hizo</label>
+          <input type="text" id="cal-ed-ultima" placeholder="DD/MM/AAAA" autocomplete="off">
+        </div>
+      </div>
+      <div class="cal-campo" id="cal-ed-bloque-unica" hidden>
+        <label for="cal-ed-limite">Fecha límite</label>
+        <input type="text" id="cal-ed-limite" placeholder="DD/MM/AAAA" autocomplete="off">
+      </div>
+      <div class="cal-campo">
+        <label for="cal-ed-uso">Condición por uso (opcional)</label>
+        <input type="text" id="cal-ed-uso" maxlength="40" placeholder="Ej: o cada 50.000 km">
+        <div class="cal-help">Texto informativo que se muestra junto a la actividad (la fecha igual se calcula por tiempo).</div>
+      </div>
+      <div class="cal-campo">
+        <div class="cal-switch-row">
+          <div class="cal-switch-label">Avisar antes de tiempo
+            <span class="cal-hint" id="cal-ed-avisar-hint">Aparece en pendientes 30 días antes</span>
+          </div>
+          <div class="cal-switch-extra">
+            <input type="number" id="cal-ed-lead" class="cal-lead-mini" min="0" value="30">
+            <label class="cal-switch">
+              <input type="checkbox" id="cal-ed-avisar" checked>
+              <span class="cal-track"></span><span class="cal-thumb"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cal-modal-foot">
+      <button type="button" class="cal-btn-peligro-ghost" id="cal-ed-eliminar" hidden>Cancelar actividad</button>
+      <button type="button" class="btn btn-secundario" data-cal-cerrar>Descartar</button>
+      <button type="button" class="cal-btn-block cal-btn-auto" id="cal-ed-guardar">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Todas las actividades ────────────────────────────────────────── -->
+<div class="cal-overlay" id="cal-modal-todas" role="dialog" aria-modal="true" hidden>
+  <div class="cal-modal cal-modal-ancho">
+    <div class="cal-modal-head">
+      <h3><span>🗂️</span><span>Todas las actividades <span class="cal-modal-sub" id="cal-todas-sub"></span></span></h3>
+      <button type="button" class="cal-x" data-cal-cerrar aria-label="Cerrar">×</button>
+    </div>
+    <div class="cal-modal-body">
+      <div class="cal-tabla-wrap">
+        <table class="cal-tabla">
+          <thead>
+            <tr>
+              <th>Actividad</th>
+              <th>Frecuencia</th>
+              <th>Próxima</th>
+              <th>Estado</th>
+              <th>Responsable</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cal-todas-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="cal-modal-foot">
+      <button type="button" class="btn btn-secundario" data-cal-cerrar>Cerrar</button>
+      <button type="button" class="cal-btn-block cal-btn-auto" id="cal-todas-nueva">➕ Nueva actividad</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Confirmar eliminación ────────────────────────────────────────── -->
+<div class="cal-overlay" id="cal-modal-confirm" role="dialog" aria-modal="true" hidden>
+  <div class="cal-modal">
+    <div class="cal-modal-head">
+      <h3><span>⚠️</span><span>Cancelar actividad</span></h3>
+      <button type="button" class="cal-x" data-cal-cerrar aria-label="Cerrar">×</button>
+    </div>
+    <div class="cal-modal-body">
+      <p class="cal-confirm-msg" id="cal-confirm-msg"></p>
+    </div>
+    <div class="cal-modal-foot">
+      <button type="button" class="btn btn-secundario" data-cal-cerrar>Volver</button>
+      <button type="button" class="btn-peligro" id="cal-confirm-si">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts del módulo (contenedor propio; app.js usa #toast-container en index) -->
+<div class="toast-container" id="cal-toast-container"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.CAL_DATOS = {{ datos|tojson }};
+  window.CAL_AREAS = {{ cal_areas|tojson }};
+  window.CAL_RESPONSABLES = {{ cal_responsables|tojson }};
+</script>
+<script src="{{ url_for('static', filename='calendario.js') }}?v={{ static_version }}"></script>
+{% endblock %}

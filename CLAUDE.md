@@ -26,7 +26,7 @@
 | Cotización    | `cotizacion.py`, `tests/test_cotizacion.py`            | `docs/CONTEXT_COTIZACION.md`     |
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
-| Frontend      | `static/style.css`, `static/app.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
+| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
 | Deploy/serv   | NSSM (`E:\Fondo\nssm.exe`, fuera de git), ngrok, `logs/`, `logutil.py` | `docs/CONTEXT_DEPLOY.md` |
 | Scripts ad-hoc| `TempScripts/`                                         | (one-shot, no producción)        |
 
@@ -56,11 +56,11 @@
 ## 4. Reglas globales (NO negociables)
 
 1. **Paleta de colores**: todos los colores se referencian con `var(--color-...)`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres de color). Arquitectura:
-   - **Valores runtime**: `config.json → paleta_light / paleta_dark` (21 vars c/u). `base.html` los inyecta en `<style>` en el `<head>` como `:root { ... }` y `html[data-theme="dark"] { ... }`.
+   - **Valores runtime**: `config.json → paleta_light / paleta_dark` (22 vars c/u). `base.html` los inyecta en `<style>` en el `<head>` como `:root { ... }` y `html[data-theme="dark"] { ... }`.
    - **Fallbacks**: `static/style.css → :root` define los mismos valores por si `config.json` no carga.
    - **Excepciones documentadas** (hardcode intencional): `login.html` (página standalone sin acceso a config); `.dash-toggle-btn.activo { color: #ffffff }` (blanco intencional: mejor contraste que `var(--color-superficie)` en dark mode, 4.47:1 vs 3.27:1).
    - Definición y leyenda en página Settings → Paleta.
-2. **Verificación**: tras cualquier cambio, ingresar a `https://miller-unventured-courtly.ngrok-free.dev/` con conector `Claude in Chrome` y confirmar que la app no se rompe.
+2. **Verificación**: tras cualquier cambio en dev, ingresar a `http://localhost:5050/` con conector `Claude in Chrome` y confirmar que la app no se rompe. El dominio ngrok (`https://miller-unventured-courtly.ngrok-free.dev/`) es SOLO producción — no probar cambios de dev ahí. Cambios de rutas requieren reiniciar `python app.py`. Detalle en `docs/CONTEXT_DEPLOY.md`.
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.
 5. **Sesión iniciada**: la cuenta del usuario ya está logueada en ngrok. Si la página pide login, **detenerse y avisar**.

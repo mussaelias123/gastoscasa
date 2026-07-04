@@ -63,6 +63,7 @@ PALETA_META = [
     ("superficie",     "Superficie",        "Tarjetas, inputs, modales"),
     ("texto",          "Texto",             "Texto principal"),
     ("texto-muted",    "Texto muted",       "Texto secundario"),
+    ("texto-invertido","Texto invertido",   "Texto sobre botones de color (acento, peligro, éxito)"),
     ("borde",          "Borde",             "Bordes, separadores"),
     ("exito",          "Éxito",             "Ingresos, OK, semáforo verde"),
     ("alerta",         "Alerta",            "Pendiente, advertencia"),
@@ -81,6 +82,129 @@ PALETA_META = [
 ]
 
 _HEX_RE = _re.compile(r'^#[0-9a-fA-F]{6}$')
+
+
+# =============================================================================
+# MÓDULO CALENDARIO — constantes y helpers de fecha/estado
+# Propósito: tareas del hogar recurrentes (actividades). La capa de datos pura
+# vive en database.py (tablas actividades / actividades_historial); acá vive
+# el cálculo de próxima fecha y estado (vencida/próxima/al día), a propósito
+# fuera de database.py (ver docs/CONTEXT_DB.md).
+# =============================================================================
+
+CAL_AREAS = {
+    'auto':       ('Auto',       '🚗'),
+    'casa':       ('Casa',       '🏠'),
+    'salud':      ('Salud',      '🩺'),
+    'documentos': ('Documentos', '📄'),
+    'mascotas':   ('Mascotas',   '🐾'),
+    'finanzas':   ('Finanzas',   '💳'),
+    'hogar':      ('Hogar',      '🔧'),
+}
+CAL_RESPONSABLES = {'familia': 'Familia', 'elias': 'Elías', 'mari': 'Mari'}
+CAL_UNIDADES = ('dias', 'semanas', 'meses', 'anios')
+
+
+def _act_sumar_intervalo(fecha, n, unidad):
+    """Suma n unidades (dias|semanas|meses|anios) a una fecha `date`.
+
+    Para meses/años: si el día no existe en el mes destino, clampea al
+    último día de ese mes (ej. 31-ene +1 mes → 28/29-feb)."""
+    import calendar
+
+    if unidad == 'dias':
+        return fecha + timedelta(days=n)
+    if unidad == 'semanas':
+        return fecha + timedelta(weeks=n)
+
+    if unidad == 'meses':
+        total_meses = (fecha.month - 1) + n
+        anio  = fecha.year + total_meses // 12
+        mes   = total_meses % 12 + 1
+    elif unidad == 'anios':
+        anio = fecha.year + n
+        mes  = fecha.month
+    else:
+        raise ValueError(f"Unidad de intervalo inválida: {unidad}")
+
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    dia = min(fecha.day, ultimo_dia)
+    return fecha.replace(year=anio, month=mes, day=dia)
+
+
+def _act_proxima_fecha(act):
+    """Calcula la próxima fecha (date) de una actividad, o None si no aplica.
+
+    Prioridad:
+      1. proxima_manual → esa fecha (fija, para únicas o override manual).
+      2. recurrente y ultima → ultima + intervalo.
+      3. ultima (no recurrente, sin próxima manual) → esa fecha.
+      4. Ninguno de los anteriores → None.
+    """
+    proxima_manual = act.get('proxima_manual')
+    if proxima_manual:
+        return datetime.strptime(str(proxima_manual), '%Y-%m-%d').date()
+
+    ultima = act.get('ultima')
+    if act.get('recurrente') and ultima:
+        fecha_ultima = datetime.strptime(str(ultima), '%Y-%m-%d').date()
+        n = act.get('intervalo_n')
+        u = act.get('intervalo_u')
+        if n and u:
+            return _act_sumar_intervalo(fecha_ultima, int(n), u)
+        return fecha_ultima
+
+    if ultima:
+        return datetime.strptime(str(ultima), '%Y-%m-%d').date()
+
+    return None
+
+
+def _act_estado(act):
+    """Estado de una actividad: 'terminada' | 'vencida' | 'proxima' | 'aldia'."""
+    from datetime import date
+
+    if act.get('terminada'):
+        return 'terminada'
+
+    proxima = _act_proxima_fecha(act)
+    if proxima is None:
+        return 'aldia'
+
+    dias = (proxima - date.today()).days
+    if dias < 0:
+        return 'vencida'
+    if act.get('avisar') and dias <= int(act.get('lead_dias') or 0):
+        return 'proxima'
+    return 'aldia'
+
+
+def _act_enriquecer(row):
+    """Convierte una fila de `actividades` en dict serializable JSON,
+    agregando proxima_fecha (ISO|None), estado y dias_restantes (int|None)."""
+    from datetime import date
+
+    act = dict(row)
+    proxima = _act_proxima_fecha(act)
+    dias_restantes = (proxima - date.today()).days if proxima is not None else None
+
+    act['proxima_fecha']  = proxima.isoformat() if proxima is not None else None
+    act['estado']         = _act_estado(act)
+    act['dias_restantes'] = dias_restantes
+    return act
+
+
+def _act_payload():
+    """Payload completo del módulo Calendario: actividades enriquecidas + historial.
+
+    Usado por GET /api/actividades y por TODAS las mutaciones (el cliente
+    re-renderiza todo con la respuesta fresca)."""
+    actividades = [_act_enriquecer(a) for a in database.obtener_actividades()]
+    historial = [
+        {'actividad_id': h['actividad_id'], 'fecha_hecha': h['fecha_hecha']}
+        for h in database.obtener_historial()
+    ]
+    return {'actividades': actividades, 'historial': historial}
 
 
 # =============================================================================
@@ -146,6 +270,7 @@ def _static_version():
         paths = [
             os.path.join(app.static_folder, 'style.css'),
             os.path.join(app.static_folder, 'app.js'),
+            os.path.join(app.static_folder, 'calendario.js'),
         ]
         return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))
     except Exception:
@@ -625,6 +750,230 @@ def resumen():
                            movimientos_json=movimientos_json,
                            gastos_fijos_json=gastos_fijos_json,
                            cotizacion_valor=cotizacion_valor)
+
+
+# =============================================================================
+# MÓDULO CALENDARIO — rutas (tareas del hogar)
+# =============================================================================
+#
+# GET  /calendario                          → página completa (template la hace frontend-dev)
+# GET  /api/actividades                     → payload fresco (JSON)
+# POST /api/actividades/crear               → alta
+# POST /api/actividades/<id>/editar         → edición completa
+# POST /api/actividades/<id>/completar      → marcar hecha (repetir o archivar)
+# POST /api/actividades/<id>/reactivar      → reactivar archivada
+# POST /api/actividades/<id>/eliminar       → borrado (con su historial)
+#
+# Todas las mutaciones responden AJAX con {'ok': True, **_act_payload()} —
+# el cliente re-renderiza todo con datos frescos. Errores: {'ok': False,
+# 'error': str(e)}, 400 (validación) / 500 (excepción). No-AJAX: redirect.
+
+def _es_ajax():
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+
+def _act_parsear_fecha_opcional(valor, nombre_campo):
+    """Valida que `valor` sea '' o 'YYYY-MM-DD'. Lanza ValueError si es inválida."""
+    valor = (valor or '').strip()
+    if not valor:
+        return None
+    try:
+        datetime.strptime(valor, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError(f"Fecha inválida en '{nombre_campo}': {valor}")
+    return valor
+
+
+def _act_leer_form_comun(form):
+    """Lee y valida los campos comunes a crear/editar. Devuelve dict listo
+    para pasar a database.agregar_actividad / editar_actividad (mismo orden
+    de parámetros salvo el id)."""
+    nombre = (form.get('nombre') or '').strip()
+    if not nombre:
+        raise ValueError("El nombre es obligatorio.")
+
+    area = form.get('area', '')
+    if area not in CAL_AREAS:
+        raise ValueError(f"Área inválida: {area}")
+
+    responsable = form.get('responsable', '')
+    if responsable not in CAL_RESPONSABLES:
+        raise ValueError(f"Responsable inválido: {responsable}")
+
+    recurrente = 1 if form.get('recurrente') == '1' else 0
+
+    intervalo_n = None
+    intervalo_u = form.get('intervalo_u') or None
+    if recurrente:
+        if intervalo_u not in CAL_UNIDADES:
+            raise ValueError(f"Unidad de intervalo inválida: {intervalo_u}")
+        intervalo_n_str = (form.get('intervalo_n') or '').strip()
+        try:
+            intervalo_n = int(intervalo_n_str)
+        except ValueError:
+            raise ValueError("El intervalo debe ser un número entero.")
+        if intervalo_n <= 0:
+            raise ValueError("El intervalo debe ser mayor a 0.")
+    elif intervalo_u is not None and intervalo_u not in CAL_UNIDADES:
+        raise ValueError(f"Unidad de intervalo inválida: {intervalo_u}")
+
+    ultima = _act_parsear_fecha_opcional(form.get('ultima'), 'ultima')
+    proxima_manual = _act_parsear_fecha_opcional(form.get('proxima_manual'), 'proxima_manual')
+
+    avisar = 1 if form.get('avisar') == '1' else 0
+
+    lead_dias_str = (form.get('lead_dias') or '').strip()
+    try:
+        lead_dias = int(lead_dias_str) if lead_dias_str else 0
+    except ValueError:
+        raise ValueError("lead_dias debe ser un número entero.")
+    if lead_dias < 0:
+        raise ValueError("lead_dias no puede ser negativo.")
+
+    uso_nota = (form.get('uso_nota') or '').strip() or None
+
+    return dict(
+        nombre=nombre, area=area, responsable=responsable,
+        recurrente=recurrente, intervalo_n=intervalo_n, intervalo_u=intervalo_u,
+        ultima=ultima, proxima_manual=proxima_manual,
+        avisar=avisar, lead_dias=lead_dias, uso_nota=uso_nota,
+    )
+
+
+@app.route('/calendario')
+def calendario():
+    return render_template('calendario.html',
+        datos=_act_payload(),
+        cal_areas=CAL_AREAS,
+        cal_responsables=CAL_RESPONSABLES,
+    )
+
+
+@app.route('/api/actividades')
+def api_actividades():
+    return jsonify({'ok': True, **_act_payload()})
+
+
+@app.route('/api/actividades/crear', methods=['POST'])
+def api_actividades_crear():
+    try:
+        datos = _act_leer_form_comun(request.form)
+        database.agregar_actividad(**datos)
+        if _es_ajax():
+            return jsonify({'ok': True, **_act_payload()})
+        return redirect(url_for('calendario'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('calendario'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('calendario'))
+
+
+@app.route('/api/actividades/<int:id>/editar', methods=['POST'])
+def api_actividades_editar(id):
+    try:
+        if database.obtener_actividad(id) is None:
+            raise ValueError(f"No existe la actividad {id}.")
+        datos = _act_leer_form_comun(request.form)
+        database.editar_actividad(id, **datos)
+        if _es_ajax():
+            return jsonify({'ok': True, **_act_payload()})
+        return redirect(url_for('calendario'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('calendario'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('calendario'))
+
+
+@app.route('/api/actividades/<int:id>/completar', methods=['POST'])
+def api_actividades_completar(id):
+    from datetime import date
+    try:
+        if database.obtener_actividad(id) is None:
+            raise ValueError(f"No existe la actividad {id}.")
+
+        fecha_hecha = (request.form.get('fecha_hecha') or '').strip()
+        if not fecha_hecha:
+            raise ValueError("fecha_hecha es obligatoria.")
+        try:
+            fecha_hecha_dt = datetime.strptime(fecha_hecha, '%Y-%m-%d').date()
+        except ValueError:
+            raise ValueError(f"Fecha inválida en 'fecha_hecha': {fecha_hecha}")
+        if fecha_hecha_dt > date.today():
+            raise ValueError("fecha_hecha no puede ser futura.")
+
+        repetir = request.form.get('repetir') == '1'
+
+        intervalo_n = None
+        intervalo_u = request.form.get('intervalo_u') or None
+        if intervalo_u is not None or (request.form.get('intervalo_n') or '').strip():
+            if intervalo_u not in CAL_UNIDADES:
+                raise ValueError(f"Unidad de intervalo inválida: {intervalo_u}")
+            intervalo_n_str = (request.form.get('intervalo_n') or '').strip()
+            try:
+                intervalo_n = int(intervalo_n_str)
+            except ValueError:
+                raise ValueError("El intervalo debe ser un número entero.")
+            if intervalo_n <= 0:
+                raise ValueError("El intervalo debe ser mayor a 0.")
+
+        database.completar_actividad(id, fecha_hecha, repetir, intervalo_n, intervalo_u)
+        if _es_ajax():
+            return jsonify({'ok': True, **_act_payload()})
+        return redirect(url_for('calendario'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('calendario'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('calendario'))
+
+
+@app.route('/api/actividades/<int:id>/reactivar', methods=['POST'])
+def api_actividades_reactivar(id):
+    try:
+        if database.obtener_actividad(id) is None:
+            raise ValueError(f"No existe la actividad {id}.")
+        database.reactivar_actividad(id)
+        if _es_ajax():
+            return jsonify({'ok': True, **_act_payload()})
+        return redirect(url_for('calendario'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('calendario'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('calendario'))
+
+
+@app.route('/api/actividades/<int:id>/eliminar', methods=['POST'])
+def api_actividades_eliminar(id):
+    try:
+        if database.obtener_actividad(id) is None:
+            raise ValueError(f"No existe la actividad {id}.")
+        database.eliminar_actividad(id)
+        if _es_ajax():
+            return jsonify({'ok': True, **_act_payload()})
+        return redirect(url_for('calendario'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('calendario'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('calendario'))
 
 
 # =============================================================================

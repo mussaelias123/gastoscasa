@@ -37,6 +37,7 @@
 import sqlite3    # Librería estándar de Python para SQLite (ya viene incluida)
 import os         # Para trabajar con rutas de archivos
 import re         # Para validar el formato de fecha en calcular_saldos(hasta)
+import datetime   # Para timestamps ISO en actividades (creado/actualizado/registrado)
 
 
 # =============================================================================
@@ -145,6 +146,41 @@ def inicializar_db():
             cursor.execute(f'ALTER TABLE gastos_fijos ADD COLUMN {columna} {definicion}')
         except Exception:
             pass  # La columna ya existe, ignorar el error
+
+    # -------------------------------------------------------------------
+    # Tabla actividades: tareas del hogar recurrentes (módulo Calendario).
+    # Capa de datos pura: acá NO se calculan próximas fechas ni estados,
+    # eso vive en app.py. Esta tabla solo guarda la definición de la tarea.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS actividades (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre          TEXT    NOT NULL,
+            area            TEXT    NOT NULL DEFAULT 'hogar',
+            responsable     TEXT    NOT NULL DEFAULT 'familia',
+            recurrente      INTEGER NOT NULL DEFAULT 1,
+            intervalo_n     INTEGER,
+            intervalo_u     TEXT,
+            ultima          TEXT,
+            proxima_manual  TEXT,
+            avisar          INTEGER NOT NULL DEFAULT 1,
+            lead_dias       INTEGER NOT NULL DEFAULT 14,
+            uso_nota        TEXT    DEFAULT '',
+            terminada       INTEGER NOT NULL DEFAULT 0,
+            creado          TEXT,
+            actualizado     TEXT
+        )
+    ''')
+
+    # Tabla actividades_historial: registro de cada vez que se completó una actividad.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS actividades_historial (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            actividad_id    INTEGER NOT NULL,
+            fecha_hecha     TEXT    NOT NULL,
+            registrado      TEXT
+        )
+    ''')
 
     conn.commit()   # Confirma los cambios (como un "guardar")
     conn.close()    # Cierra la conexión
@@ -563,3 +599,166 @@ def verificar_gastos_fijos(mes):
 
     conn.close()
     return resultado
+
+
+# =============================================================================
+# FUNCIONES: Actividades (tareas del hogar recurrentes, módulo Calendario)
+# =============================================================================
+#
+# Capa de datos PURA: estas funciones no calculan próximas fechas ni estados
+# (vencida, próxima, al día). Eso vive en app.py. Acá solo se guarda/lee/
+# actualiza la definición de la actividad y su historial de completadas.
+#
+
+def _ahora_iso():
+    """Timestamp ISO 8601 (sin microsegundos) para creado/actualizado/registrado."""
+    return datetime.datetime.now().isoformat(timespec='seconds')
+
+
+def obtener_actividades(incluir_terminadas=True):
+    """Devuelve todas las actividades ordenadas por nombre."""
+    conn = conectar()
+    if incluir_terminadas:
+        filas = conn.execute(
+            'SELECT * FROM actividades ORDER BY nombre'
+        ).fetchall()
+    else:
+        filas = conn.execute(
+            'SELECT * FROM actividades WHERE terminada = 0 ORDER BY nombre'
+        ).fetchall()
+    conn.close()
+    return filas
+
+
+def obtener_actividad(actividad_id):
+    """Devuelve una actividad por su id, o None si no existe."""
+    conn = conectar()
+    fila = conn.execute(
+        'SELECT * FROM actividades WHERE id = ?', (actividad_id,)
+    ).fetchone()
+    conn.close()
+    return fila
+
+
+def agregar_actividad(nombre, area, responsable, recurrente, intervalo_n, intervalo_u,
+                       ultima, proxima_manual, avisar, lead_dias, uso_nota):
+    """Inserta una nueva actividad. Setea creado y actualizado al momento actual."""
+    conn = conectar()
+    cursor = conn.cursor()
+    ahora = _ahora_iso()
+    cursor.execute('''
+        INSERT INTO actividades (
+            nombre, area, responsable, recurrente, intervalo_n, intervalo_u,
+            ultima, proxima_manual, avisar, lead_dias, uso_nota,
+            terminada, creado, actualizado
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    ''', (nombre, area, responsable, recurrente, intervalo_n, intervalo_u,
+          ultima, proxima_manual, avisar, lead_dias, uso_nota, ahora, ahora))
+    conn.commit()
+    nuevo_id = cursor.lastrowid
+    conn.close()
+    return nuevo_id
+
+
+def editar_actividad(actividad_id, nombre, area, responsable, recurrente, intervalo_n,
+                      intervalo_u, ultima, proxima_manual, avisar, lead_dias, uso_nota):
+    """Actualiza todos los campos editables de una actividad. Refresca actualizado."""
+    conn = conectar()
+    conn.execute('''
+        UPDATE actividades
+        SET nombre=?, area=?, responsable=?, recurrente=?, intervalo_n=?, intervalo_u=?,
+            ultima=?, proxima_manual=?, avisar=?, lead_dias=?, uso_nota=?, actualizado=?
+        WHERE id=?
+    ''', (nombre, area, responsable, recurrente, intervalo_n, intervalo_u,
+          ultima, proxima_manual, avisar, lead_dias, uso_nota, _ahora_iso(), actividad_id))
+    conn.commit()
+    conn.close()
+
+
+def completar_actividad(actividad_id, fecha_hecha, repetir, intervalo_n=None, intervalo_u=None):
+    """
+    Marca una actividad como completada en fecha_hecha.
+
+    Pasos:
+      1. Inserta fila en actividades_historial (actividad_id, fecha_hecha, registrado=ahora).
+      2. Actualiza la actividad: ultima=fecha_hecha, proxima_manual=NULL, actualizado=ahora.
+      3. Si repetir=True: terminada=0, recurrente=1. Si vinieron intervalo_n/intervalo_u,
+         los actualiza también (permite cambiar la frecuencia al completar).
+      4. Si repetir=False: terminada=1 (se archiva, no vuelve a aparecer como pendiente).
+    """
+    conn = conectar()
+    cursor = conn.cursor()
+    ahora = _ahora_iso()
+
+    cursor.execute('''
+        INSERT INTO actividades_historial (actividad_id, fecha_hecha, registrado)
+        VALUES (?, ?, ?)
+    ''', (actividad_id, fecha_hecha, ahora))
+
+    cursor.execute('''
+        UPDATE actividades
+        SET ultima=?, proxima_manual=NULL, actualizado=?
+        WHERE id=?
+    ''', (fecha_hecha, ahora, actividad_id))
+
+    if repetir:
+        if intervalo_n is not None and intervalo_u is not None:
+            cursor.execute('''
+                UPDATE actividades
+                SET terminada=0, recurrente=1, intervalo_n=?, intervalo_u=?, actualizado=?
+                WHERE id=?
+            ''', (intervalo_n, intervalo_u, ahora, actividad_id))
+        else:
+            cursor.execute('''
+                UPDATE actividades
+                SET terminada=0, recurrente=1, actualizado=?
+                WHERE id=?
+            ''', (ahora, actividad_id))
+    else:
+        cursor.execute('''
+            UPDATE actividades
+            SET terminada=1, actualizado=?
+            WHERE id=?
+        ''', (ahora, actividad_id))
+
+    conn.commit()
+    conn.close()
+
+
+def reactivar_actividad(actividad_id):
+    """Reactiva una actividad archivada (terminada=0). Refresca actualizado."""
+    conn = conectar()
+    conn.execute('''
+        UPDATE actividades SET terminada=0, actualizado=? WHERE id=?
+    ''', (_ahora_iso(), actividad_id))
+    conn.commit()
+    conn.close()
+
+
+def eliminar_actividad(actividad_id):
+    """Elimina la actividad y todas sus filas de historial."""
+    conn = conectar()
+    conn.execute('DELETE FROM actividades_historial WHERE actividad_id = ?', (actividad_id,))
+    conn.execute('DELETE FROM actividades WHERE id = ?', (actividad_id,))
+    conn.commit()
+    conn.close()
+
+
+def obtener_historial(actividad_id=None):
+    """
+    Devuelve el historial de completadas, ordenado por fecha_hecha DESC.
+    Si actividad_id es None, devuelve el historial de todas las actividades.
+    """
+    conn = conectar()
+    if actividad_id is None:
+        filas = conn.execute(
+            'SELECT * FROM actividades_historial ORDER BY fecha_hecha DESC'
+        ).fetchall()
+    else:
+        filas = conn.execute(
+            'SELECT * FROM actividades_historial WHERE actividad_id = ? ORDER BY fecha_hecha DESC',
+            (actividad_id,)
+        ).fetchall()
+    conn.close()
+    return filas

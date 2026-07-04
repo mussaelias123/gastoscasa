@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Para todo lo relacionado a `config.json`.
 
 ## Archivos
-- `config.py` (65 líneas). API mínima: `cargar_config`, `guardar_config`, `es_primer_inicio`.
+- `config.py` (~130 líneas). API mínima: `cargar_config`, `guardar_config`, `es_primer_inicio`.
 - `config.json` (gitignored). Fuente única de verdad runtime.
 - `config.example.json` (en git). Plantilla.
 - `.env` (gitignored): solo si hace falta para ngrok local.
@@ -26,11 +26,13 @@
 | `google_client_id`           | `""`         | OAuth                                        |
 | `google_client_secret`       | `""`         | OAuth                                        |
 | `secret_key`                 | `""`         | Flask session signing                        |
-| `paleta_light`               | dict 21 vars | Colores base en modo claro (editables)       |
-| `paleta_dark`                | dict 21 vars | Colores base en modo oscuro (editables)      |
+| `auth_disabled`              | `False`      | Bypass login SOLO dev (triple cerrojo, ver `auth.py`) |
+| `backup_dir`                 | `"backups"`  | Carpeta de backups (relativa o absoluta)     |
+| `paleta_light`               | dict 22 vars | Colores base en modo claro (editables). Incluye `texto-invertido` (`#ffffff`), agregada para el módulo Calendario. |
+| `paleta_dark`                | dict 22 vars | Colores base en modo oscuro (editables). Misma clave `texto-invertido`.  |
 
 ## API
-- `cargar_config(ruta=None)` → dict con DEFAULTS + overrides del archivo.
+- `cargar_config(ruta=None)` → dict con DEFAULTS + overrides del archivo. **Paletas: merge por clave** — si `config.json` trae una paleta guardada con menos claves que DEFAULTS (ej. anterior a `texto-invertido`), las claves nuevas de DEFAULTS sobreviven y los overrides guardados se respetan.
 - `guardar_config(data, ruta=None)` → merge `data` sobre lo existente y persiste.
 - `es_primer_inicio()` → True si `first_run==True`.
 

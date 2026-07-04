@@ -3,8 +3,9 @@
 > Leer junto con `CLAUDE.md`. Para cambios visuales y de interactividad.
 
 ## Archivos del dominio
-- `static/style.css` (3789 líneas): estilos globales + variables.
+- `static/style.css` (~4650 líneas): estilos globales + variables.
 - `static/app.js` (1164 líneas): interactividad cliente, AJAX, edición inline.
+- `static/calendario.js` (826 líneas): módulo Calendario. Solo se carga en `/calendario` (vía `{% block scripts %}` de `base.html`, con el mismo `?v={{ static_version }}`).
 - `templates/`:
   - `base.html` — layout. Header + nav van en `.site-topbar` (sticky, siempre visible al scrollear; `top:24px` si hay dev-banner). Todas extienden esto.
   - `index.html` — pantalla principal (saldos + form rápido + tabla).
@@ -13,12 +14,13 @@
   - `resumen.html` — dashboard mensual (Chart.js), 5 secciones: saldos, sueldos (Elías vs Mari, evolución 6 meses), análisis de gastos, envíos, fijos.
   - `gastos_fijos.html` — gestión de fijos recurrentes y cuotas.
   - `settings.html` — ajustes. Layout 2 columnas (`.settings-layout`): izquierda scrollea (General, Paleta, Backups, Gastos fijos); derecha `.settings-aside` sticky con el Monitor de recursos (relojitos). Responsive: apila en 1 columna < 900px. **No incluye** ngrok/OAuth/estado-entorno (se manejan en `config.json`, fuera de la UI).
+  - `calendario.html` — módulo Calendario (tareas del hogar): agenda Pendientes + calendario mensual + alta rápida + modales Completar / Editor / Todas / Confirmar. Inyecta `window.CAL_DATOS/CAL_AREAS/CAL_RESPONSABLES` (tojson) y carga `calendario.js`. El form de alta rápida es un `<form>` real (POST `/api/actividades/crear`, funciona sin JS, pero pierde el date picker: el input queda de texto libre validado ISO por el backend). Desktop ≥900px: `body.cal-body` (la agrega el JS) fija alto = viewport, sin scroll de página. Fechas: los 3 date inputs (`cal-qa-ultima`, `cal-comp-fecha`, `cal-ed-ultima`/`cal-ed-limite`) son `type="text"` + flatpickr (mismo patrón que `inicializarFechaHoy()` de `app.js`), no `<input type="date">` nativo: valor real ISO `Y-m-d` vía `altInput`, display `d/m/Y`. `cal-comp-fecha` tiene `maxDate: 'today'`.
   - `login.html` — pantalla pre-OAuth.
   - `404.html`, `405.html` — errores.
 
 ## Paleta de colores (regla NO negociable)
 
-**Config-driven desde Fase 1 de dark mode.** Los 21 colores base se guardan en `config.json` como `paleta_light` y `paleta_dark`. `base.html` los inyecta en un `<style>` en el `<head>` antes del stylesheet, así:
+**Config-driven desde Fase 1 de dark mode.** Los 22 colores base se guardan en `config.json` como `paleta_light` y `paleta_dark`. `base.html` los inyecta en un `<style>` en el `<head>` antes del stylesheet, así:
 
 ```css
 :root { --color-acento: #4f46e5; ... }          /* desde cfg.paleta_light */
@@ -49,6 +51,7 @@ Variables actuales (al modificar, actualizar también `config.py DEFAULTS`, `app
 | `--color-superficie`      | Tarjetas, inputs, modales                      |
 | `--color-texto`           | Texto principal                                |
 | `--color-texto-muted`     | Texto secundario                               |
+| `--color-texto-invertido` | Texto sobre botones/badges de color (acento, éxito, peligro, badges responsable) |
 | `--color-borde`           | Bordes, separadores                            |
 | `--color-exito`           | Ingresos, OK, semáforo verde                   |
 | `--color-alerta`          | Pendiente, advertencia                         |
@@ -62,11 +65,11 @@ Variables actuales (al modificar, actualizar también `config.py DEFAULTS`, `app
 | `--color-moneda-usd`      | Badge USD, gauge total USD                     |
 | `--color-deco-1..4`       | Grises decorativos: nav, botones, bordes estructurales |
 
-No-color (también en `:root`): `--fuente-principal`, `--radio-borde`, `--espaciado-base`, `--sombra-card`, `--sombra-focus`.
+No-color (también en `:root`, NO editables desde Settings): `--fuente-principal`, `--radio-borde`, `--espaciado-base`, `--sombra-card`, `--sombra-focus`, `--sombra-modal`, `--overlay-modal` (fondo de overlays de modal).
 
 ## Mapa de secciones de `style.css` (línea inicial)
 
-57 banner DEV · 79 variables · 147 reset · 193 layout · 211 header · 283 nav · 326 footer · 347 page-header · 364 botones · 442 tabla gastos · 529 badges categoría · 557 sin-datos · 575 forms · 630 resumen · 735 tarjeta saldo · 761 carga rápida · 852 grilla saldos · 907 filtros · 986 badges tipo · 1010 badges persona · 1026 badges moneda · 1055 dashboard · 1528 edición inline · 1619 envío · 1690 badge envío · 1736 toasts · 1802 banner primer inicio · 1822 banner éxito · 1836 settings · 1969 monitor recursos · 2091 paginación · 2147 form rápido · 2163 responsive mobile · 2299 tabla saldos · 2364 nav mes · 2417 checklist fijos · 2531 gastos_fijos · 2606 git backup · 2691 fijos en settings · 2758 layout desktop · 2796 tarjeta saldos · 2860 movimientos card · 2968 select filtro · 2992 gauges · 3096 paleta settings · 3162 cotización settings · 3372 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor).
+57 banner DEV · 79 variables · 147 reset · 193 layout · 211 header · 283 nav · 326 footer · 347 page-header · 364 botones · 442 tabla gastos · 529 badges categoría · 557 sin-datos · 575 forms · 630 resumen · 735 tarjeta saldo · 761 carga rápida · 852 grilla saldos · 907 filtros · 986 badges tipo · 1010 badges persona · 1026 badges moneda · 1055 dashboard · 1528 edición inline · 1619 envío · 1690 badge envío · 1736 toasts · 1802 banner primer inicio · 1822 banner éxito · 1836 settings · 1969 monitor recursos · 2091 paginación · 2147 form rápido · 2163 responsive mobile · 2299 tabla saldos · 2364 nav mes · 2417 checklist fijos · 2531 gastos_fijos · 2606 git backup · 2691 fijos en settings · 2758 layout desktop · 2796 tarjeta saldos · 2860 movimientos card · 2968 select filtro · 2992 gauges · 3096 paleta settings · 3162 cotización settings · 3372 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor) · 3796 **calendario** (prefijo `cal-`: paneles, agenda, grilla mensual, alta rápida, switch, modales, tabla Todas, toasts `cal-toast-*` · desktop ≥900px: 2 col `minmax(0,1fr) 416px`, `body.cal-body` alto 100dvh sin scroll de página, scroll interno en agenda/detalle).
 
 ## Funciones JS principales (`static/app.js`)
 
@@ -93,6 +96,19 @@ No-color (también en `:root`): `--fuente-principal`, `--radio-borde`, `--espaci
 | `initFormAjax()`                | Submit sin recarga                                   |
 
 `var ordenarTablaFn` expuesta para que `initFormAjax` reordene tras insertar.
+
+## Funciones JS del módulo Calendario (`static/calendario.js`)
+
+Todo en una IIFE: no expone globales ni pisa `fmtFecha`/`mostrarToast` de app.js. Estado local = `window.CAL_DATOS`; cada mutación AJAX devuelve el payload completo fresco y se re-renderiza todo. El estado/próxima fecha NO se recalcula acá (viene del server).
+
+| Función                          | Propósito                                              |
+|----------------------------------|--------------------------------------------------------|
+| `sumarIntervalo()`               | Espejo de `_act_sumar_intervalo` (clamp fin de mes) — solo para el preview del modal Completar |
+| `fmtFecha/fmtMesAnio/fmtIntervalo/textoRelativo` | Formatos es-AR; clave ASCII `anios` → "años" |
+| `renderAgenda/renderCalendario/renderDetalle/renderTodas` | Re-render de cada bloque desde `DATOS` |
+| `mapaPorDia()`                   | iso → puntos: vencida/proxima/aldia (próxima fecha) + `hecha` (historial) |
+| `abrirCompletar/abrirEditor/abrirTodas` + `guardar*` | Modales y mutaciones (`postAccion()` = fetch + `X-Requested-With`) |
+| `toast()`                        | Toast propio: `.toast` base + `.cal-toast-ok/info/error` en `#cal-toast-container` |
 
 ## Reglas específicas frontend
 1. **Cero hardcode de color**. Solo `var(--color-...)`. Cero aliases: cada regla CSS nombra la variable real que necesita. Excepciones: (a) valores en `style.css :root` son fallbacks legítimos; (b) `login.html` usa hardcode (standalone pre-auth, sin config); (c) `.dash-toggle-btn.activo { color: #ffffff }` intencional (4.47:1 en dark). **Filosofía**: solo deco-1..4 para chrome estructural; colores llamativos únicamente para información.
