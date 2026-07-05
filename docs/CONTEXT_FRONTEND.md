@@ -3,12 +3,12 @@
 > Leer junto con `CLAUDE.md`. Para cambios visuales y de interactividad.
 
 ## Archivos del dominio
-- `static/style.css` (~3950 líneas): estilos globales + variables.
+- `static/style.css` (~4040 líneas): estilos globales + variables.
 - `static/app.js` (~1220 líneas): interactividad cliente, AJAX, edición inline.
 - `static/calendario.js` (826 líneas): módulo Calendario. Solo se carga en `/calendario` (vía `{% block scripts %}` de `base.html`, con el mismo `?v={{ static_version }}`).
 - `templates/`:
   - `base.html` — layout. Header + nav van en `.site-topbar` (sticky, siempre visible al scrollear; `top:24px` si hay dev-banner). Todas extienden esto.
-  - `index.html` — pantalla principal (saldos + form rápido + tags de gastos fijos + tabla). Los fijos del mes se muestran como pills con wrap (`.fijos-tags`): impagos primero (clickeables: precargan el form rápido vía `initTagsFijos()`), pagados al fondo grisados con ✓ + monto + badge persona.
+  - `index.html` — pantalla principal (saldos + form rápido + tags de gastos fijos + tabla). Los fijos del mes se muestran como pills con wrap (`.fijos-tags`): impagos primero (clickeables: precargan el form rápido vía `initTagsFijos()`), pagados al fondo grisados con ✓ + monto + badge persona; último pill = link "⚙ Administrar" (no hay header propio de sección). Desktop ≥900px: página sin scroll (mismo patrón que Calendario, `body:has(.layout-desktop)` alto 100dvh), la tabla de movimientos scrollea sola dentro del card con thead sticky, y la col izquierda se compacta para entrar en el viewport. Gauges: leyenda a la derecha de cada gauge (`.gauge-info`), no debajo.
   - `nuevo.html` — formulario completo de alta.
   - `editar.html` — edición completa de movimiento.
   - `resumen.html` — dashboard mensual (Chart.js), 5 secciones: saldos, sueldos (Elías vs Mari, evolución 6 meses), análisis de gastos, envíos, fijos.
@@ -69,7 +69,7 @@ No-color (también en `:root`, NO editables desde Settings): `--fuente-principal
 
 ## Mapa de secciones de `style.css` (línea inicial)
 
-57 banner DEV · 79 variables · 141 reset · 187 layout · 205 topbar · 220 header · 329 nav · 372 page-header · 389 botones · 480 tabla gastos · 567 badges categoría · 595 sin-datos · 613 forms · 669 resumen · 774 tarjeta saldo · 800 carga rápida · 891 grilla saldos · 946 filtros · 1025 badges tipo · 1049 badges persona · 1065 badges moneda · 1094 dashboard · 1567 edición inline · 1658 envío · 1729 badge envío · 1775 toasts · 1841 banner primer inicio · 1861 banner éxito · 1875 settings · 2008 monitor recursos · 2130 paginación · 2186 form rápido · 2202 responsive mobile · 2338 tabla saldos · 2403 nav mes · 2456 tags fijos (pills `.fijo-tag`, impagos clickeables + pagados grisados) · 2566 gastos_fijos · 2641 git backup · 2708 fijos en settings · 2775 layout desktop · 2813 tarjeta saldos · 2939 movimientos card · 3047 select filtro · 3071 gauges · 3184 paleta settings · 3302 cotización settings · 3371 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor) · 3792 **calendario** (prefijo `cal-`: paneles, agenda, grilla mensual, alta rápida, switch, modales, tabla Todas, toasts `cal-toast-*` · desktop ≥900px: 2 col `minmax(0,1fr) 416px`, `body.cal-body` alto 100dvh sin scroll de página, scroll interno en agenda/detalle).
+57 banner DEV · 79 variables · 141 reset · 187 layout · 205 topbar · 220 header · 329 nav · 372 page-header · 389 botones · 480 tabla gastos · 567 badges categoría · 595 sin-datos · 613 forms · 669 resumen · 774 tarjeta saldo · 800 carga rápida · 891 grilla saldos · 946 filtros · 1025 badges tipo · 1049 badges persona · 1065 badges moneda · 1094 dashboard · 1567 edición inline · 1658 envío · 1729 badge envío · 1775 toasts · 1841 banner primer inicio · 1861 banner éxito · 1875 settings · 2008 monitor recursos · 2130 paginación · 2186 form rápido · 2202 responsive mobile · 2338 tabla saldos · 2403 nav mes · 2456 tags fijos (pills `.fijo-tag`, impagos clickeables + pagados grisados + pill Administrar) · 2555 gastos_fijos · 2630 git backup · 2697 fijos en settings · 2764 layout desktop (incluye bloque "Home sin scroll de página": tabla con scroll propio + thead sticky + compactación col izquierda) · 2914 tarjeta saldos · 3040 movimientos card · 3148 select filtro · 3172 gauges (leyenda a la derecha, `.gauges-saldos .gauge-svg` scoped porque el Monitor de Settings redefine `.gauge-svg`) · 3302 paleta settings · 3420 cotización settings · 3489 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor) · 3910 **calendario** (prefijo `cal-`: paneles, agenda, grilla mensual, alta rápida, switch, modales, tabla Todas, toasts `cal-toast-*` · desktop ≥900px: 2 col `minmax(0,1fr) 416px`, `body.cal-body` alto 100dvh sin scroll de página, scroll interno en agenda/detalle).
 
 ## Funciones JS principales (`static/app.js`)
 
@@ -117,7 +117,7 @@ Todo en una IIFE: no expone globales ni pisa `fmtFecha`/`mostrarToast` de app.js
 3. AJAX usa header `X-Requested-With: XMLHttpRequest`. Si está, backend responde JSON.
 4. Cache busting: `?v={{ static_version }}` en `<link>` y `<script>` (versión = mtime del archivo).
 5. flatpickr y CDN externos: solo lo ya importado en `base.html`. No agregar libs sin acordar.
-6. Mobile breakpoint: `< 768px` (sección 2163 de `style.css`). Desktop dos columnas: `>= 900px` (2758).
+6. Mobile breakpoint: `< 768px` (sección 2202 de `style.css`). Desktop dos columnas: `>= 900px` (2764).
 
 ## Al modificar este dominio, actualizar:
 - Tabla de paleta si se agrega/renombra variable.
