@@ -3815,22 +3815,22 @@ body.has-dev-banner .settings-aside {
   text-align: center;
 }
 
-.gauge {
+.gauges-grid .gauge {
   position: relative;
   width: 100%;
   max-width: 96px;
   aspect-ratio: 1 / 1;
 }
 
-.gauge-svg { width: 100%; height: 100%; display: block; }
+.gauges-grid .gauge-svg { width: 100%; height: 100%; display: block; }
 
-.gauge-bg {
+.gauges-grid .gauge-bg {
   fill: none;
   stroke: var(--color-borde);
   stroke-width: 8;
 }
 
-.gauge-arc {
+.gauges-grid .gauge-arc {
   fill: none;
   stroke-width: 8;
   stroke-linecap: round;
@@ -3841,9 +3841,9 @@ body.has-dev-banner .settings-aside {
   transition: stroke-dashoffset 0.6s ease, stroke 0.4s ease;
 }
 
-.gauge-arc.g-verde    { stroke: var(--color-exito); }
-.gauge-arc.g-amarillo { stroke: var(--color-alerta); }
-.gauge-arc.g-rojo     { stroke: var(--color-peligro); }
+.gauges-grid .gauge-arc.g-verde    { stroke: var(--color-exito); }
+.gauges-grid .gauge-arc.g-amarillo { stroke: var(--color-alerta); }
+.gauges-grid .gauge-arc.g-rojo     { stroke: var(--color-peligro); }
 
 .gauge-centro {
   position: absolute;
