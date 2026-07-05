@@ -3,12 +3,12 @@
 > Leer junto con `CLAUDE.md`. Para cambios visuales y de interactividad.
 
 ## Archivos del dominio
-- `static/style.css` (~4650 líneas): estilos globales + variables.
-- `static/app.js` (1164 líneas): interactividad cliente, AJAX, edición inline.
+- `static/style.css` (~3950 líneas): estilos globales + variables.
+- `static/app.js` (~1220 líneas): interactividad cliente, AJAX, edición inline.
 - `static/calendario.js` (826 líneas): módulo Calendario. Solo se carga en `/calendario` (vía `{% block scripts %}` de `base.html`, con el mismo `?v={{ static_version }}`).
 - `templates/`:
   - `base.html` — layout. Header + nav van en `.site-topbar` (sticky, siempre visible al scrollear; `top:24px` si hay dev-banner). Todas extienden esto.
-  - `index.html` — pantalla principal (saldos + form rápido + tabla).
+  - `index.html` — pantalla principal (saldos + form rápido + tags de gastos fijos + tabla). Los fijos del mes se muestran como pills con wrap (`.fijos-tags`): impagos primero (clickeables: precargan el form rápido vía `initTagsFijos()`), pagados al fondo grisados con ✓ + monto + badge persona.
   - `nuevo.html` — formulario completo de alta.
   - `editar.html` — edición completa de movimiento.
   - `resumen.html` — dashboard mensual (Chart.js), 5 secciones: saldos, sueldos (Elías vs Mari, evolución 6 meses), análisis de gastos, envíos, fijos.
@@ -69,7 +69,7 @@ No-color (también en `:root`, NO editables desde Settings): `--fuente-principal
 
 ## Mapa de secciones de `style.css` (línea inicial)
 
-57 banner DEV · 79 variables · 147 reset · 193 layout · 211 header · 283 nav · 326 footer · 347 page-header · 364 botones · 442 tabla gastos · 529 badges categoría · 557 sin-datos · 575 forms · 630 resumen · 735 tarjeta saldo · 761 carga rápida · 852 grilla saldos · 907 filtros · 986 badges tipo · 1010 badges persona · 1026 badges moneda · 1055 dashboard · 1528 edición inline · 1619 envío · 1690 badge envío · 1736 toasts · 1802 banner primer inicio · 1822 banner éxito · 1836 settings · 1969 monitor recursos · 2091 paginación · 2147 form rápido · 2163 responsive mobile · 2299 tabla saldos · 2364 nav mes · 2417 checklist fijos · 2531 gastos_fijos · 2606 git backup · 2691 fijos en settings · 2758 layout desktop · 2796 tarjeta saldos · 2860 movimientos card · 2968 select filtro · 2992 gauges · 3096 paleta settings · 3162 cotización settings · 3372 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor) · 3796 **calendario** (prefijo `cal-`: paneles, agenda, grilla mensual, alta rápida, switch, modales, tabla Todas, toasts `cal-toast-*` · desktop ≥900px: 2 col `minmax(0,1fr) 416px`, `body.cal-body` alto 100dvh sin scroll de página, scroll interno en agenda/detalle).
+57 banner DEV · 79 variables · 141 reset · 187 layout · 205 topbar · 220 header · 329 nav · 372 page-header · 389 botones · 480 tabla gastos · 567 badges categoría · 595 sin-datos · 613 forms · 669 resumen · 774 tarjeta saldo · 800 carga rápida · 891 grilla saldos · 946 filtros · 1025 badges tipo · 1049 badges persona · 1065 badges moneda · 1094 dashboard · 1567 edición inline · 1658 envío · 1729 badge envío · 1775 toasts · 1841 banner primer inicio · 1861 banner éxito · 1875 settings · 2008 monitor recursos · 2130 paginación · 2186 form rápido · 2202 responsive mobile · 2338 tabla saldos · 2403 nav mes · 2456 tags fijos (pills `.fijo-tag`, impagos clickeables + pagados grisados) · 2566 gastos_fijos · 2641 git backup · 2708 fijos en settings · 2775 layout desktop · 2813 tarjeta saldos · 2939 movimientos card · 3047 select filtro · 3071 gauges · 3184 paleta settings · 3302 cotización settings · 3371 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor) · 3792 **calendario** (prefijo `cal-`: paneles, agenda, grilla mensual, alta rápida, switch, modales, tabla Todas, toasts `cal-toast-*` · desktop ≥900px: 2 col `minmax(0,1fr) 416px`, `body.cal-body` alto 100dvh sin scroll de página, scroll interno en agenda/detalle).
 
 ## Funciones JS principales (`static/app.js`)
 
@@ -94,6 +94,7 @@ No-color (también en `:root`, NO editables desde Settings): `--fuente-principal
 | `crearFilaMovimiento()`         | Renderea fila tras AJAX                              |
 | `mostrarToast()`                | Toast confirmación                                   |
 | `initFormAjax()`                | Submit sin recarga                                   |
+| `initTagsFijos()`               | Click en tag de fijo impago → precarga form rápido (gasto/Fijo/descripción) y enfoca monto |
 
 `var ordenarTablaFn` expuesta para que `initFormAjax` reordene tras insertar.
 

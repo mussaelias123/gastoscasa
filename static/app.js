@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initSelectVista();
     initEdicionInline();
     initFormAjax();
+    initTagsFijos();
 
     console.log('✓ Funcionalidades inicializadas');
 });
@@ -338,6 +339,48 @@ function actualizarDescripcionSegunCategoria(categoria) {
             seccionCuotasDesc.style.display = '';
         }
     }
+}
+
+
+/*
+================================================================================
+FUNCIÓN: initTagsFijos()
+================================================================================
+Propósito:
+  Hace clickeables los tags de gastos fijos IMPAGOS de la página de inicio
+  (los pagados no tienen data-descripcion y quedan fuera del selector).
+  Al hacer click, precarga el form "Nuevo movimiento": tipo=gasto,
+  categoría=Fijo, descripción=el fijo clickeado, y deja el foco en el monto.
+
+  El orden de los pasos importa: el change de tipo repuebla el select de
+  categorías (reseteándolo), recién después se puede setear "Fijo".
+================================================================================
+*/
+function initTagsFijos() {
+    var tags = document.querySelectorAll('.fijo-tag[data-descripcion]');
+    if (!tags.length) return;
+    tags.forEach(function(tag) {
+        tag.addEventListener('click', function() {
+            var selectTipo      = document.getElementById('tipo');
+            var selectCategoria = document.getElementById('categoria');
+            if (!selectTipo || !selectCategoria) return;
+            // 1. Tipo = gasto → repuebla categorías y visibilidad de extras
+            selectTipo.value = 'gasto';
+            selectTipo.dispatchEvent(new Event('change'));
+            // 2. Categoría = Fijo → activa el select de fijos
+            selectCategoria.value = 'Fijo';
+            selectCategoria.dispatchEvent(new Event('change'));
+            // 3. Seleccionar el fijo (values del select = descripciones de GASTOS_FIJOS)
+            var selectFijo = document.getElementById('descripcion-fijo');
+            if (selectFijo) selectFijo.value = tag.dataset.descripcion;
+            // 4. Foco en monto (con scroll al form en mobile)
+            var monto = document.getElementById('monto-display');
+            if (monto) {
+                monto.focus();
+                monto.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    });
 }
 
 
