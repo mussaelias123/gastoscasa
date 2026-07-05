@@ -315,32 +315,33 @@
     <span class="movimientos-card-contador">{{ total_movimientos }} movimiento{% if total_movimientos != 1 %}s{% endif %}</span>
   </div>
 
-  {# ── CHECKLIST DE GASTOS FIJOS ──────────────────────────────────────────── #}
+  {# ── GASTOS FIJOS — tags compactos: impagos primero, pagados grisados ──── #}
   {% if checklist %}
   <div class="seccion-gastos-fijos">
     <div class="gastos-fijos-header">
       <span class="gastos-fijos-titulo">📌 Gastos Fijos — {{ mes_nombre }}</span>
       <a href="{{ url_for('settings') }}#gastos-fijos" class="gastos-fijos-editar-link">Administrar</a>
     </div>
-    <ul class="checklist-gastos-fijos">
-      {% for item in checklist %}
-      <li class="checklist-item {{ 'item-ok' if item.encontrado else 'item-faltante' }}">
-        <span class="checklist-icono">{{ '✓' if item.encontrado else '✕' }}</span>
-        <span class="checklist-desc">{{ item.descripcion }}</span>
+    <ul class="fijos-tags">
+      {# Impagos: clickeables (data-descripcion habilita el handler JS) #}
+      {% for item in checklist | rejectattr('encontrado') %}
+      <li class="fijo-tag" data-descripcion="{{ item.descripcion }}" title="Cargar pago">
+        <span class="fijo-tag-desc">{{ item.descripcion }}</span>
         {% if item.es_cuota %}
-          {% if item.encontrado %}
-            <span class="badge-cuota" style="margin-left:0.4rem;">Cuota {{ item.cuota_actual }}/{{ item.total_cuotas }}</span>
-          {% else %}
-            <span class="badge-cuota" style="margin-left:0.4rem;">Cuota {{ item.cuota_actual + 1 }}/{{ item.total_cuotas }}</span>
-          {% endif %}
+        <span class="badge-cuota">Cuota {{ item.cuota_actual + 1 }}/{{ item.total_cuotas }}</span>
         {% endif %}
-        {% if item.encontrado and item.moneda %}
-        <span class="checklist-monto">
-          {{ item.monto | fmt_ars if item.moneda == 'ars' else item.monto | fmt_usd }}
-          <span class="badge-persona badge-{{ item.persona }}">
-            {{ 'Elías' if item.persona == 'elias' else 'Mari' }}
-          </span>
-        </span>
+      </li>
+      {% endfor %}
+      {# Pagados: grisados al fondo, con monto + persona #}
+      {% for item in checklist | selectattr('encontrado') %}
+      <li class="fijo-tag fijo-tag-pagado">
+        <span class="fijo-tag-desc">✓ {{ item.descripcion }}</span>
+        {% if item.es_cuota %}
+        <span class="badge-cuota">Cuota {{ item.cuota_actual }}/{{ item.total_cuotas }}</span>
+        {% endif %}
+        {% if item.moneda %}
+        <span class="fijo-tag-monto">{{ item.monto | fmt_ars if item.moneda == 'ars' else item.monto | fmt_usd }}</span>
+        <span class="badge-persona badge-{{ item.persona }}">{{ 'Elías' if item.persona == 'elias' else 'Mari' }}</span>
         {% endif %}
       </li>
       {% endfor %}

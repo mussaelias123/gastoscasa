@@ -2453,7 +2453,7 @@ a.btn-filtro {
 
 
 /* ============================================================================
-   CHECKLIST DE GASTOS FIJOS (index.html)
+   TAGS DE GASTOS FIJOS (index.html)
    ============================================================================ */
 .seccion-gastos-fijos {
   margin: 1rem 0 1.5rem;
@@ -2493,65 +2493,61 @@ a.btn-filtro {
   text-decoration: none;
 }
 
-.checklist-gastos-fijos {
+/* Contenedor: wrap horizontal, pills de ancho natural */
+.fijos-tags {
   list-style: none;
-  padding: 0.4rem 0;
   margin: 0;
-}
-
-.checklist-item {
+  padding: 0.6rem 0.8rem;
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/* Tag base: pill neutra (ISA 101: pendiente gris, sin rojo) */
+.fijo-tag {
+  display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.25rem 0.8rem;
-  border-left: 4px solid transparent;
-  transition: background 0.1s;
+  gap: 0.35rem;
+  max-width: 100%;
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--color-texto);
 }
 
-.checklist-item:hover {
-  background: rgba(0,0,0,0.03);
+/* Solo los impagos (con data-descripcion) son clickeables */
+.fijo-tag[data-descripcion] {
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-/* ISA 101: pagado → aspecto "disabled" (grisado, opaco) */
-.item-ok {
-  border-left-color: var(--color-borde);
+.fijo-tag[data-descripcion]:hover {
+  background: var(--color-deco-4);
+  border-color: var(--color-texto-muted);
+}
+
+/* ISA 101: pagado → aspecto "disabled" (grisado, opaco), al fondo de la lista */
+.fijo-tag-pagado {
   opacity: 0.45;
   filter: grayscale(40%);
 }
 
-/* ISA 101: pendiente → gris neutro, sin rojo */
-.item-faltante {
-  border-left-color: var(--color-texto-muted);
+.fijo-tag-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.checklist-icono {
-  font-weight: bold;
-  width: 1.2em;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.item-ok       .checklist-icono { color: var(--color-texto-muted); }
-.item-faltante .checklist-icono { color: var(--color-texto-muted); }  /* gris oscuro, legible sin alarmar */
-
-.checklist-desc {
-  flex: 1;
-  font-size: 0.93rem;
-}
-
-.checklist-meta {
-  display: flex;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-
-.checklist-monto {
+.fijo-tag-monto {
   font-weight: 700;
   font-family: 'Courier New', monospace;
-  font-size: 0.9rem;
-  margin-left: auto;
-  flex-shrink: 0;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
+
+.fijo-tag .badge-cuota { margin-left: 0; }
 
 .gastos-fijos-vacio {
   text-align: center;
