@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Este doc es para tareas que tocan `app.py`.
 
 ## Archivos del dominio
-- `app.py` (~1600 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulo Calendario.
+- `app.py` (~2030 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulos Calendario y Lactancia.
 - Imports clave: `database`, `auth`, `cotizacion`, `config`.
 
 ## Patrón general de ruta
@@ -37,6 +37,14 @@
 | POST   | `/api/actividades/<id>/completar` | `api_actividades_completar` | Marca hecha (`fecha_hecha`); `repetir` decide si se archiva o repite. |
 | POST   | `/api/actividades/<id>/reactivar` | `api_actividades_reactivar` | Reactiva una archivada. |
 | POST   | `/api/actividades/<id>/eliminar` | `api_actividades_eliminar` | Borra la actividad y su historial. |
+| GET    | `/lactancia`              | `lactancia`           | Página del módulo Lactancia (banco de leche). Context: `datos=_lac_payload()`. |
+| GET    | `/api/lactancia`          | `api_lactancia`       | JSON `{'ok': True, **_lac_payload()}`. |
+| POST   | `/api/lactancia/crear`    | `api_lactancia_crear` | Alta de partida. Valida con `_lac_leer_form_alta` (heladera: solo volumen, ignora fecha/hora del form). |
+| POST   | `/api/lactancia/<id>/cerrar` | `api_lactancia_cerrar` | Marca `usada` \| `descartada` (form `motivo`). `fecha_cierre` vacía → hoy. |
+| POST   | `/api/lactancia/<id>/trasladar` | `api_lactancia_trasladar` | Congelar sobrante: solo heladera abierta. Server fija fecha=hoy, hora=ahora. |
+| POST   | `/api/lactancia/<id>/reabrir` | `api_lactancia_reabrir` | Deshace un cierre. Si era traslado, borra la partida hija (falla si la hija ya se cerró). |
+| POST   | `/api/lactancia/<id>/editar` | `api_lactancia_editar` | Corrige volumen/notas (+fecha/hora solo freezer). |
+| POST   | `/api/lactancia/<id>/eliminar` | `api_lactancia_eliminar` | Borrado definitivo. |
 
 > **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
@@ -61,6 +69,20 @@ Convención de datos: `intervalo_u` ∈ `dias|semanas|meses|anios`. Fechas TEXT 
 - `_act_leer_form_comun(form)`: valida y arma kwargs para `database.agregar_actividad` / `editar_actividad`. Compartido por crear/editar.
 - `_act_parsear_fecha_opcional(valor, campo)`: valida `''` o `YYYY-MM-DD`; lanza `ValueError` si es inválida.
 - `_es_ajax()`: `request.headers.get('X-Requested-With') == 'XMLHttpRequest'`.
+
+## Módulo Lactancia — constantes y helpers
+Banco de leche materna (partidas de freezer y heladera). Vencimiento y estado se
+calculan acá (NUNCA se almacenan: cambiar un parámetro en Settings recalcula todo
+al refrescar). Capa de datos pura en `database.py` (tabla `lactancia_partidas`).
+Timestamps naive locales (`datetime.now()`), consistentes con `_ahora_iso()`.
+- `LAC_UBICACIONES = ('freezer', 'heladera')`; `LAC_MOTIVOS_CIERRE = ('usada', 'descartada', 'trasladada')`.
+- `_lac_params(cfg=None)` → dict con los 4 parámetros de config casteados a int (claves cortas: `freezer_meses`, `heladera_horas`, `aviso_freezer_dias`, `aviso_heladera_horas`); fallback a DEFAULTS si vienen corruptos.
+- `_lac_vencimiento(p, params)` → `datetime`. Freezer: extracción + N meses (reusa `_act_sumar_intervalo`, clamp fin de mes) al fin del día 23:59:59 (usable el día que vence, igual que el Excel). Heladera: `cargada` (timestamp inmutable) + N horas — cruza medianoche sin caso especial.
+- `_lac_estado(p, params, ahora)` → cascada: `motivo_cierre` → ese estado > `vencida` > `vence_pronto` (ventana: freezer en días, heladera en horas) > `disponible` | `en_heladera`.
+- `_lac_enriquecer(row, params, ahora)` → dict + `vencimiento` (ISO), `estado`, `dias_restantes` (freezer) / `horas_restantes` (heladera, negativas si venció).
+- `_lac_payload()` → `{'freezer': [FIFO], 'heladera': [FIFO], 'historial': [cerradas DESC], 'tablero': {...}, 'params': {...}, 'badge': int}`. FIFO = vencimiento asc, desempate por hora de extracción y luego id. Tablero: usables = disponible+vence_pronto (vencidas NO suman); trasladadas no cuentan como usadas ni descartadas; heladera separada del freezer. Fuente de TODAS las respuestas AJAX del módulo.
+- `_lac_badge_count()` → abiertas vencidas + vence_pronto (ambas ubicaciones). Lo usa `inject_lactancia_badge` (context_processor con try/except → 0: expone `lac_badge` a todos los templates para el contador del nav; jamás rompe un render).
+- `_lac_parsear_volumen(valor)` / `_lac_parsear_extraccion(form)` / `_lac_parsear_fecha_cierre(valor)` / `_lac_leer_form_alta(form)`: validaciones (ValueError). Volumen int 1..2000; fechas no futuras; heladera ignora fecha/hora del form (el momento real lo pone el server en `cargada`).
 
 ## Schedulers en hilo
 - `iniciar_scheduler_backup()`: chequea cada hora; backup de `gastos.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.

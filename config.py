@@ -21,6 +21,13 @@ DEFAULTS = {
     "ngrok_domain": "",
     "app_name": "Gastos Casa",
     "factor_sueldo": 0.7,
+    # ── Lactancia (banco de leche) — editables desde Settings ──────────────
+    # Vencimiento freezer = extracción + N meses; heladera = carga + N horas.
+    # Los avisos definen la ventana "vence pronto" de cada ubicación.
+    "lactancia_freezer_meses":        6,
+    "lactancia_heladera_horas":       48,
+    "lactancia_aviso_freezer_dias":   14,
+    "lactancia_aviso_heladera_horas": 12,
     # ── Cotización USD oficial ──────────────────────────────────────────────
     # Se obtiene de dolarapi.com (módulo cotizacion.py) y se refresca 1 vez/día.
     # El 1500.0 es solo un bootstrap inicial; se sobrescribe en la primera

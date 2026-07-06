@@ -76,6 +76,7 @@ Cada página hija define su propio {% block contenido %}.
         <li><a href="{{ url_for('index') }}">🏠 Inicio</a></li>
         <li><a href="{{ url_for('resumen') }}">📊 Resumen</a></li>
         <li><a href="{{ url_for('calendario') }}">📅 Calendario</a></li>
+        <li><a href="{{ url_for('lactancia') }}">🍼 Lactancia{% if lac_badge %}<span class="nav-badge">{{ lac_badge }}</span>{% endif %}</a></li>
         <li><a href="{{ url_for('settings') }}">⚙ Settings</a></li>
       </ul>
     </nav>

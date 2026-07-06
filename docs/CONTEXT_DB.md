@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Para cambios de esquema, queries o saldos.
 
 ## Archivo
-- `database.py` (~765 líneas). Capa de datos pura. SQLite vía `sqlite3` stdlib.
+- `database.py` (~968 líneas). Capa de datos pura. SQLite vía `sqlite3` stdlib.
 - Archivo físico: `gastos.db` en raíz (gitignored). Backups en `backups/` (gitignored).
 
 ## Esquema (actualizar al migrar)
@@ -66,6 +66,23 @@ Nota: capa de datos PURA. `database.py` NO calcula próximas fechas ni estados
 | `fecha_hecha`  | TEXT    | `YYYY-MM-DD`                     |
 | `registrado`   | TEXT    | Timestamp ISO al insertar        |
 
+### Tabla `lactancia_partidas` (módulo Lactancia — banco de leche)
+| Columna            | Tipo    | Notas                                                        |
+|--------------------|---------|--------------------------------------------------------------|
+| `id`               | INTEGER | PK autoincremental                                           |
+| `ubicacion`        | TEXT    | `freezer` \| `heladera`                                      |
+| `cargada`          | TEXT    | Timestamp ISO del servidor al insertar, **INMUTABLE** (base del vencimiento de heladera) |
+| `fecha_extraccion` | TEXT    | `YYYY-MM-DD` (heladera: derivada de `cargada`)               |
+| `hora_extraccion`  | TEXT    | `HH:MM`, solo freezer (NULL en heladera; desempata FIFO)     |
+| `volumen_ml`       | INTEGER | 1..2000 (validado en app.py)                                 |
+| `motivo_cierre`    | TEXT    | NULL (abierta) \| `usada` \| `descartada` \| `trasladada`    |
+| `fecha_cierre`     | TEXT    | `YYYY-MM-DD`. NULL si abierta                                |
+| `notas`            | TEXT    | Libre. Default `''`                                          |
+| `origen_id`        | INTEGER | Id de la heladera de origen si nació de un traslado. NULL ok |
+| `actualizado`      | TEXT    | Timestamp ISO al modificar                                   |
+
+Nota: capa PURA — vencimiento/estado se calculan en `app.py` (`_lac_*`), nunca se almacenan. Cerradas (`motivo_cierre` no NULL) = historial, misma tabla.
+
 ### Migraciones
 `inicializar_db()` ejecuta `ALTER TABLE ADD COLUMN` en bucle silencioso (try/except). **Nunca borrar columnas**, solo agregar. Migración manual de datos → `TempScripts/`.
 
@@ -97,6 +114,14 @@ Nota: capa de datos PURA. `database.py` NO calcula próximas fechas ni estados
 | `reactivar_actividad(id)`        | None                               | `terminada=0`                      |
 | `eliminar_actividad(id)`         | None                               | Borra actividad Y su historial     |
 | `obtener_historial(actividad_id=None)` | `list[Row]`                  | `None`=todo. Orden `fecha_hecha` DESC |
+| `obtener_partidas_lactancia(ubicacion=None)` | `list[Row]`             | Orden crudo `fecha_extraccion, id`; FIFO final en app.py |
+| `obtener_partida_lactancia(id)`  | `Row` o None                       |                                    |
+| `agregar_partida_lactancia(ubicacion, fecha, hora, volumen_ml, notas='', origen_id=None)` | id | `cargada` se setea SIEMPRE acá (timestamp servidor) |
+| `editar_partida_lactancia(id, fecha, hora, volumen_ml, notas)` | None  | NO toca `ubicacion` ni `cargada`   |
+| `cerrar_partida_lactancia(id, motivo, fecha_cierre, notas=None)` | None | Solo `usada`\|`descartada`         |
+| `trasladar_partida_lactancia(id, fecha_nueva, hora_nueva, volumen_ml)` | id nuevo | Atómica: cierra heladera como `trasladada` + inserta freezer con `origen_id` |
+| `reabrir_partida_lactancia(id)`  | None                               | Atómica. Traslado: borra la hija si sigue abierta; ValueError si ya se cerró |
+| `eliminar_partida_lactancia(id)` | None                               | DELETE definitivo                  |
 
 ## `calcular_saldos()` — 8 claves del dict
 - `elias_ars`, `elias_usd`, `mari_ars`, `mari_usd` → saldos en moneda nativa.

@@ -213,6 +213,60 @@
       {% endif %}
     </div>
 
+    {# ── LACTANCIA — BANCO DE LECHE ───────────────────────────────────────── #}
+    <form action="{{ url_for('settings') }}" method="POST" class="tarjeta settings-card" id="lactancia">
+      <input type="hidden" name="accion" value="guardar_lactancia">
+      <div class="settings-card-header">
+        <h3 class="settings-titulo-seccion">Banco de leche</h3>
+        <span class="settings-card-meta">Conservación y avisos del módulo Lactancia</span>
+      </div>
+
+      <div class="settings-campo">
+        <label for="lactancia_freezer_meses">Conservación en freezer (meses)</label>
+        <input type="number" id="lactancia_freezer_meses" name="lactancia_freezer_meses"
+               value="{{ cfg.lactancia_freezer_meses }}" min="1" max="24" step="1" required
+               class="input-corto">
+        <span class="settings-ayuda">
+          Una partida freezada vence a los <strong>N meses</strong> de la extracción (default 6).
+        </span>
+      </div>
+
+      <div class="settings-campo">
+        <label for="lactancia_heladera_horas">Conservación en heladera (horas)</label>
+        <input type="number" id="lactancia_heladera_horas" name="lactancia_heladera_horas"
+               value="{{ cfg.lactancia_heladera_horas }}" min="1" max="168" step="1" required
+               class="input-corto">
+        <span class="settings-ayuda">
+          Una partida de heladera vence a las <strong>N horas</strong> del momento real de carga (default 48).
+        </span>
+      </div>
+
+      <div class="settings-campo">
+        <label for="lactancia_aviso_freezer_dias">Aviso «vence pronto» — freezer (días)</label>
+        <input type="number" id="lactancia_aviso_freezer_dias" name="lactancia_aviso_freezer_dias"
+               value="{{ cfg.lactancia_aviso_freezer_dias }}" min="0" max="365" step="1" required
+               class="input-corto">
+        <span class="settings-ayuda">
+          Días antes del vencimiento en que la partida pasa a «Vence pronto» (default 14).
+        </span>
+      </div>
+
+      <div class="settings-campo settings-campo-ultimo">
+        <label for="lactancia_aviso_heladera_horas">Aviso «vence pronto» — heladera (horas)</label>
+        <input type="number" id="lactancia_aviso_heladera_horas" name="lactancia_aviso_heladera_horas"
+               value="{{ cfg.lactancia_aviso_heladera_horas }}" min="0" max="168" step="1" required
+               class="input-corto">
+        <span class="settings-ayuda">
+          Horas antes del vencimiento para el aviso en heladera (default 12).
+          Los cambios recalculan los vencimientos existentes al refrescar.
+        </span>
+      </div>
+
+      <div class="settings-acciones">
+        <button type="submit" class="btn btn-acento">Guardar parámetros</button>
+      </div>
+    </form>
+
   </div>{# fin settings-main #}
 
   {# ════════════════════ COLUMNA DERECHA — MONITOR (sticky) ════════════════ #}

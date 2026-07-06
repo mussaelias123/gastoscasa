@@ -3,9 +3,10 @@
 > Leer junto con `CLAUDE.md`. Para cambios visuales y de interactividad.
 
 ## Archivos del dominio
-- `static/style.css` (~4040 líneas): estilos globales + variables.
+- `static/style.css` (~5390 líneas): estilos globales + variables.
 - `static/app.js` (~1220 líneas): interactividad cliente, AJAX, edición inline.
 - `static/calendario.js` (826 líneas): módulo Calendario. Solo se carga en `/calendario` (vía `{% block scripts %}` de `base.html`, con el mismo `?v={{ static_version }}`).
+- `static/lactancia.js` (746 líneas): módulo Lactancia. Solo se carga en `/lactancia` (mismo mecanismo).
 - `templates/`:
   - `base.html` — layout. Header + nav van en `.site-topbar` (sticky, siempre visible al scrollear; `top:24px` si hay dev-banner). Todas extienden esto.
   - `index.html` — pantalla principal (saldos + form rápido + tags de gastos fijos + tabla). Los fijos del mes se muestran como pills con wrap (`.fijos-tags`): impagos primero (clickeables: precargan el form rápido vía `initTagsFijos()`), pagados al fondo grisados con ✓ + monto + badge persona; último pill = link "⚙ Administrar" (no hay header propio de sección). Desktop ≥900px: página sin scroll (mismo patrón que Calendario, `body:has(.layout-desktop)` alto 100dvh), la tabla de movimientos scrollea sola dentro del card con thead sticky, y la col izquierda se compacta para entrar en el viewport. Gauges: leyenda a la derecha de cada gauge (`.gauge-info`), no debajo.
@@ -15,6 +16,7 @@
   - `gastos_fijos.html` — gestión de fijos recurrentes y cuotas.
   - `settings.html` — ajustes. Layout 2 columnas (`.settings-layout`): izquierda scrollea (General, Paleta, Backups, Gastos fijos); derecha `.settings-aside` sticky con el Monitor de recursos (relojitos). Responsive: apila en 1 columna < 900px. **No incluye** ngrok/OAuth/estado-entorno (se manejan en `config.json`, fuera de la UI).
   - `calendario.html` — módulo Calendario (tareas del hogar): agenda Pendientes + calendario mensual + alta rápida + modales Completar / Editor / Todas / Confirmar. Inyecta `window.CAL_DATOS/CAL_AREAS/CAL_RESPONSABLES` (tojson) y carga `calendario.js`. El form de alta rápida es un `<form>` real (POST `/api/actividades/crear`, funciona sin JS, pero pierde el date picker: el input queda de texto libre validado ISO por el backend). Desktop ≥900px: `body.cal-body` (la agrega el JS) fija alto = viewport, sin scroll de página. Fechas: los 3 date inputs (`cal-qa-ultima`, `cal-comp-fecha`, `cal-ed-ultima`/`cal-ed-limite`) son `type="text"` + flatpickr (mismo patrón que `inicializarFechaHoy()` de `app.js`), no `<input type="date">` nativo: valor real ISO `Y-m-d` vía `altInput`, display `d/m/Y`. `cal-comp-fecha` tiene `maxDate: 'today'`.
+  - `lactancia.html` — módulo Lactancia (banco de leche de León): disclaimer médico fijo + aviso al entrar + alta rápida SIEMPRE visible (2 forms reales: freezer con volumen/fecha/hora, heladera solo volumen) + tablero + listas FIFO Freezer/Heladera + historial `<details>` + modales Cerrar-con-fecha / Freezar-sobrante / Más-opciones / Editor / Confirmar. Inyecta `window.LAC_DATOS` (tojson) y carga `lactancia.js`. Cierres one-click con fecha=hoy + toast con botón Deshacer (8 s, llama a `/reabrir`). En heladera NUNCA se muestra hora de carga (pedido de Mari); vencimiento relativo ("Vence en 5 h"). Desktop ≥900px: `body.lac-body`, grid con `grid-template-areas` (DOM en orden mobile: alta primero). Fecha extracción/cierre: flatpickr `maxDate: 'today'`.
   - `login.html` — pantalla pre-OAuth.
   - `404.html`, `405.html` — errores.
 
@@ -69,7 +71,7 @@ No-color (también en `:root`, NO editables desde Settings): `--fuente-principal
 
 ## Mapa de secciones de `style.css` (línea inicial)
 
-57 banner DEV · 79 variables · 141 reset · 187 layout · 205 topbar · 220 header · 329 nav · 372 page-header · 389 botones · 480 tabla gastos · 567 badges categoría · 595 sin-datos · 613 forms · 669 resumen · 774 tarjeta saldo · 800 carga rápida · 891 grilla saldos · 946 filtros · 1025 badges tipo · 1049 badges persona · 1065 badges moneda · 1094 dashboard · 1567 edición inline · 1658 envío · 1729 badge envío · 1775 toasts · 1841 banner primer inicio · 1861 banner éxito · 1875 settings · 2008 monitor recursos · 2130 paginación · 2186 form rápido · 2202 responsive mobile · 2338 tabla saldos · 2403 nav mes · 2456 tags fijos (pills `.fijo-tag`, impagos clickeables + pagados grisados + pill Administrar) · 2555 gastos_fijos · 2630 git backup · 2697 fijos en settings · 2764 layout desktop (incluye bloque "Home sin scroll de página": tabla con scroll propio + thead sticky + compactación col izquierda) · 2914 tarjeta saldos · 3040 movimientos card · 3148 select filtro · 3172 gauges (leyenda a la derecha, `.gauges-saldos .gauge-svg` scoped porque el Monitor de Settings redefine `.gauge-svg`) · 3302 paleta settings · 3420 cotización settings · 3489 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor) · 3910 **calendario** (prefijo `cal-`: paneles, agenda, grilla mensual, alta rápida, switch, modales, tabla Todas, toasts `cal-toast-*` · desktop ≥900px: 2 col `minmax(0,1fr) 416px`, `body.cal-body` alto 100dvh sin scroll de página, scroll interno en agenda/detalle).
+57 banner DEV · 79 variables · 141 reset · 187 layout · 205 topbar · 220 header · 329 nav · 372 page-header · 389 botones · 480 tabla gastos · 567 badges categoría · 595 sin-datos · 613 forms · 669 resumen · 774 tarjeta saldo · 800 carga rápida · 891 grilla saldos · 946 filtros · 1025 badges tipo · 1049 badges persona · 1065 badges moneda · 1094 dashboard · 1567 edición inline · 1658 envío · 1729 badge envío · 1775 toasts · 1841 banner primer inicio · 1861 banner éxito · 1875 settings · 2008 monitor recursos · 2130 paginación · 2186 form rápido · 2202 responsive mobile · 2338 tabla saldos · 2403 nav mes · 2456 tags fijos (pills `.fijo-tag`, impagos clickeables + pagados grisados + pill Administrar) · 2555 gastos_fijos · 2630 git backup · 2697 fijos en settings · 2764 layout desktop (incluye bloque "Home sin scroll de página": tabla con scroll propio + thead sticky + compactación col izquierda) · 2914 tarjeta saldos · 3040 movimientos card · 3148 select filtro · 3172 gauges (leyenda a la derecha, `.gauges-saldos .gauge-svg` scoped porque el Monitor de Settings redefine `.gauge-svg`) · 3302 paleta settings · 3420 cotización settings · 3489 **settings v2** (layout 2 col sticky · cot-box · paleta tabla única agrupada · backups · fijos chips con switch · relojitos/gauges monitor) · 3910 **calendario** (prefijo `cal-`: paneles, agenda, grilla mensual, alta rápida, switch, modales, tabla Todas, toasts `cal-toast-*` · desktop ≥900px: 2 col `minmax(0,1fr) 416px`, `body.cal-body` alto 100dvh sin scroll de página, scroll interno en agenda/detalle) · 4790 **lactancia** (prefijo `lac-`: disclaimer, aviso, alta, tablero `lac-stats`, listas `lac-item`, pills `lac-pill-*`, modales, toasts `lac-toast-*` con botón `.lac-toast-accion` Deshacer · estados→paleta: vencida=peligro, vence_pronto=alerta, disponible y en_heladera=exito — **sin variable nueva de paleta** — cierres=deco/muted/acento · desktop ≥900px: `body.lac-body` 100dvh + `grid-template-areas` "tablero alta / freezer heladera / freezer historial"). Además en sección nav (~370): `.nav-badge` (contador rojo del ítem Lactancia, server-side + actualizado por JS) y mobile <768px nav con scroll horizontal (5 ítems ya no entran en 375px).
 
 ## Funciones JS principales (`static/app.js`)
 
@@ -110,6 +112,19 @@ Todo en una IIFE: no expone globales ni pisa `fmtFecha`/`mostrarToast` de app.js
 | `mapaPorDia()`                   | iso → puntos: vencida/proxima/aldia (próxima fecha) + `hecha` (historial) |
 | `abrirCompletar/abrirEditor/abrirTodas` + `guardar*` | Modales y mutaciones (`postAccion()` = fetch + `X-Requested-With`) |
 | `toast()`                        | Toast propio: `.toast` base + `.cal-toast-ok/info/error` en `#cal-toast-container` |
+
+## Funciones JS del módulo Lactancia (`static/lactancia.js`)
+
+Misma arquitectura que calendario.js: IIFE, estado local desde `window.LAC_DATOS`, `postAccion()` reemplaza DATOS con el payload fresco y llama `renderTodo()`. Estados/vencimientos vienen del server (no se recalculan).
+
+| Función | Propósito |
+|---------|-----------|
+| `toast(texto, tipo, undoCb)` | Toast propio; con `undoCb` agrega botón "Deshacer" (8 s → POST `/reabrir`) |
+| `textoVencFreezer/Heladera()` | Relativos desde `dias_restantes`/`horas_restantes` ("Vence en 5 h"; nunca hora absoluta en heladera) |
+| `renderAviso/Tablero/Listas + renderTodo()` | Re-render total desde DATOS; `renderTodo` también llama `actualizarBadgeNav(DATOS.badge)` |
+| `actualizarBadgeNav(n)` | Crea/actualiza/borra el `span.nav-badge` del ítem de nav sin recargar |
+| `cerrarDirecto(id, motivo)` | One-click Usada/Tirar con fecha=hoy + toast Deshacer |
+| `abrirCerrarFecha/abrirTraslado/abrirMas/abrirEditor/abrirConfirmEliminar` + `guardar*` | Modales y mutaciones (`postAccion()` = fetch + `X-Requested-With`) |
 
 ## Reglas específicas frontend
 1. **Cero hardcode de color**. Solo `var(--color-...)`. Cero aliases: cada regla CSS nombra la variable real que necesita. Excepciones: (a) valores en `style.css :root` son fallbacks legítimos; (b) `login.html` usa hardcode (standalone pre-auth, sin config); (c) `.dash-toggle-btn.activo { color: #ffffff }` intencional (4.47:1 en dark). **Filosofía**: solo deco-1..4 para chrome estructural; colores llamativos únicamente para información.
