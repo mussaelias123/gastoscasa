@@ -4820,6 +4820,13 @@ body.has-dev-banner .settings-aside {
   min-width: 0;
 }
 
+/* Mobile apilado (<900px): Heladera antes que Freezer (es la que se opera
+   a diario). Desktop mantiene el orden físico Freezer arriba / Heladera
+   abajo (grid-template-areas, ver media query 900px) sin tocar el DOM. */
+@media (max-width: 899px) {
+  .lac-panel--heladera { order: -1; }
+}
+
 /* Aviso al entrar (solo si hay vencidas / por vencer) */
 .lac-aviso {
   font-size: 0.88rem;
@@ -5066,6 +5073,18 @@ body.has-dev-banner .settings-aside {
   flex: 1 1 auto;
   min-height: 0;
   padding: 0.45rem 0.65rem 0.65rem;
+}
+
+/* Mobile apilado (<900px): tope de alto + scroll interno (mismo criterio
+   que .lac-lista-historial, 280px) para que Freezer/Heladera no crezcan sin
+   límite y tapen el resto de la página. Desktop usa el alto del grid
+   (media query 900px ya agrega overflow-y ahí; acá el límite no aplica). */
+@media (max-width: 899px) {
+  .lac-panel--freezer .lac-lista-scroll,
+  .lac-panel--heladera .lac-lista-scroll {
+    max-height: 280px;
+    overflow-y: auto;
+  }
 }
 
 .lac-item {
