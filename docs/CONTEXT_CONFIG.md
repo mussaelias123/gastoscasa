@@ -23,6 +23,7 @@
 | `lactancia_heladera_horas`   | `48`         | Vida útil heladera (horas desde carga)       |
 | `lactancia_aviso_freezer_dias` | `14`       | Ventana "vence pronto" freezer (días)        |
 | `lactancia_aviso_heladera_horas` | `12`     | Ventana "vence pronto" heladera (horas)      |
+| `lactancia_freezar_hasta_horas`  | `24`     | Antigüedad máx. en heladera para poder pasar al freezer. Pasado el umbral, el checkbox de freezar se bloquea (front) y `/api/lactancia/freezar` lo rechaza (backend) |
 | `cotizacion_valor`           | `1500.0`     | Último ARS/USD oficial conocido              |
 | `cotizacion_fecha`           | `None`       | Fecha del valor                              |
 | `cotizacion_ultimo_intento`  | `None`       | Timestamp último intento                     |

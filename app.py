@@ -222,7 +222,7 @@ LAC_MOTIVOS_CIERRE = ('usada', 'descartada', 'trasladada')
 
 
 def _lac_params(cfg=None):
-    """Devuelve los 4 parámetros de conservación/aviso casteados a int
+    """Devuelve los 5 parámetros de conservación/aviso casteados a int
     (claves cortas). Si un valor viene corrupto en config.json, cae al DEFAULT."""
     if cfg is None:
         cfg = config.cargar_config(CONFIG_FILE)
@@ -232,6 +232,7 @@ def _lac_params(cfg=None):
         ('lactancia_heladera_horas',       'heladera_horas'),
         ('lactancia_aviso_freezer_dias',   'aviso_freezer_dias'),
         ('lactancia_aviso_heladera_horas', 'aviso_heladera_horas'),
+        ('lactancia_freezar_hasta_horas',  'freezar_hasta_horas'),
     ):
         try:
             params[corta] = int(cfg.get(clave, config.DEFAULTS[clave]))
@@ -272,11 +273,30 @@ def _lac_estado(p, params, ahora):
     return 'vence_pronto' if horas <= params['aviso_heladera_horas'] else 'en_heladera'
 
 
+def _lac_horas_en_heladera(p, ahora):
+    """Horas transcurridas desde que la partida entró a la heladera (`cargada`)."""
+    return (ahora - datetime.fromisoformat(str(p['cargada']))).total_seconds() / 3600
+
+
+def _lac_freezable(p, params, ahora):
+    """True si una partida de heladera TODAVÍA puede pasar al freezer: debe
+    estar abierta, no vencida, y con menos de `freezar_hasta_horas` de
+    antigüedad en la heladera. Regla de seguridad alimentaria: leche que ya
+    lleva demasiado tiempo refrigerada no se congela. Se valida acá (no solo
+    en el checkbox del front) para que el backend nunca acepte una freezada
+    inválida."""
+    if p['ubicacion'] != 'heladera' or p.get('motivo_cierre'):
+        return False
+    if _lac_estado(p, params, ahora) == 'vencida':
+        return False
+    return _lac_horas_en_heladera(p, ahora) < params['freezar_hasta_horas']
+
+
 def _lac_enriquecer(row, params, ahora):
     """Convierte una fila de `lactancia_partidas` en dict serializable JSON,
     agregando vencimiento (ISO), estado, dias_restantes (solo freezer) y
-    horas_restantes (solo heladera, negativas si venció). Los textos
-    relativos ("vence en 5 h") los arma el JS."""
+    horas_restantes + horas_en_heladera + freezable (solo heladera). Los
+    textos relativos ("vence en 5 h") los arma el JS."""
     p = dict(row)
     venc = _lac_vencimiento(p, params)
     p['vencimiento'] = venc.isoformat(timespec='seconds')
@@ -287,6 +307,8 @@ def _lac_enriquecer(row, params, ahora):
     else:
         p['dias_restantes'] = None
         p['horas_restantes'] = int((venc - ahora).total_seconds() // 3600)
+        p['horas_en_heladera'] = int(_lac_horas_en_heladera(p, ahora))
+        p['freezable'] = _lac_freezable(p, params, ahora)
     return p
 
 
@@ -1279,6 +1301,8 @@ def api_lactancia_freezar():
     Acción SIEMPRE manual (botón), nunca automática."""
     from datetime import date
     try:
+        params = _lac_params()
+        ahora = datetime.now()
         crudo = (request.form.get('ids') or '').strip()
         try:
             ids = [int(x) for x in crudo.split(',') if x.strip()]
@@ -1289,13 +1313,18 @@ def api_lactancia_freezar():
 
         partidas = []
         for pid in ids:
-            p = database.obtener_partida_lactancia(pid)
-            if p is None:
+            row = database.obtener_partida_lactancia(pid)
+            if row is None:
                 raise ValueError(f"No existe la partida {pid}.")
+            p = dict(row)  # los helpers _lac_* esperan dict (no sqlite3.Row)
             if p['ubicacion'] != 'heladera':
                 raise ValueError("Solo se freezan partidas de heladera.")
             if p['motivo_cierre']:
                 raise ValueError("Una de las partidas tildadas ya está cerrada.")
+            if not _lac_freezable(p, params, ahora):
+                raise ValueError(
+                    f"Una de las partidas tildadas ya no se puede freezar: pasó más de "
+                    f"{params['freezar_hasta_horas']} h en la heladera (o está vencida).")
             partidas.append(p)
 
         volumen_ml = sum(p['volumen_ml'] for p in partidas)
@@ -1510,6 +1539,7 @@ def settings():
                 ('lactancia_heladera_horas',       1, 168, 'Horas en heladera'),
                 ('lactancia_aviso_freezer_dias',   0, 365, 'Aviso freezer (días)'),
                 ('lactancia_aviso_heladera_horas', 0, 168, 'Aviso heladera (horas)'),
+                ('lactancia_freezar_hasta_horas',  1, 168, 'Freezar hasta (horas)'),
             )
             nuevos = {}
             for clave, minimo, maximo, etiqueta in campos:

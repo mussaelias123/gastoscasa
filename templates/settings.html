@@ -251,7 +251,7 @@
         </span>
       </div>
 
-      <div class="settings-campo settings-campo-ultimo">
+      <div class="settings-campo">
         <label for="lactancia_aviso_heladera_horas">Aviso «vence pronto» — heladera (horas)</label>
         <input type="number" id="lactancia_aviso_heladera_horas" name="lactancia_aviso_heladera_horas"
                value="{{ cfg.lactancia_aviso_heladera_horas }}" min="0" max="168" step="1" required
@@ -259,6 +259,18 @@
         <span class="settings-ayuda">
           Horas antes del vencimiento para el aviso en heladera (default 12).
           Los cambios recalculan los vencimientos existentes al refrescar.
+        </span>
+      </div>
+
+      <div class="settings-campo settings-campo-ultimo">
+        <label for="lactancia_freezar_hasta_horas">Freezar hasta (horas en heladera)</label>
+        <input type="number" id="lactancia_freezar_hasta_horas" name="lactancia_freezar_hasta_horas"
+               value="{{ cfg.lactancia_freezar_hasta_horas }}" min="1" max="168" step="1" required
+               class="input-corto">
+        <span class="settings-ayuda">
+          Una partida solo se puede pasar al freezer dentro de las primeras
+          <strong>N horas</strong> en la heladera (default 24). Pasado ese tiempo,
+          su casilla de freezar se bloquea (seguridad: leche muy refrigerada no se congela).
         </span>
       </div>
 

@@ -41,7 +41,7 @@
 | GET    | `/api/lactancia`          | `api_lactancia`       | JSON `{'ok': True, **_lac_payload()}`. |
 | POST   | `/api/lactancia/crear`    | `api_lactancia_crear` | Alta de partida (flujo estándar: heladera, con fecha/hora de extracción). Valida con `_lac_leer_form_alta`. |
 | POST   | `/api/lactancia/<id>/cerrar` | `api_lactancia_cerrar` | Marca `usada` \| `descartada` (form `motivo`). `fecha_cierre` vacía → hoy. |
-| POST   | `/api/lactancia/freezar`  | `api_lactancia_freezar` | Combina las heladeras tildadas (form `ids` CSV) en 1 partida de freezer: volumen sumado, extracción más vieja. |
+| POST   | `/api/lactancia/freezar`  | `api_lactancia_freezar` | Combina las heladeras tildadas (form `ids` CSV) en 1 partida de freezer: volumen sumado, extracción más vieja. Rechaza (400) si alguna no es freezable (`_lac_freezable`: >`freezar_hasta_horas` en heladera o vencida). |
 | POST   | `/api/lactancia/<id>/reabrir` | `api_lactancia_reabrir` | Deshace un cierre. En una freezada, deshace la combinación COMPLETA (falla si la hija ya se cerró). |
 | POST   | `/api/lactancia/<id>/editar` | `api_lactancia_editar` | Corrige volumen/notas/fecha/hora (ambas ubicaciones). |
 | POST   | `/api/lactancia/<id>/eliminar` | `api_lactancia_eliminar` | Borrado definitivo. |
@@ -79,10 +79,11 @@ Timestamps naive locales (`datetime.now()`), consistentes con `_ahora_iso()`.
 solo se pasa la combinación de heladeras tildadas (`/api/lactancia/freezar`).
 Sin alta directa a freezer en la UI ni traspaso individual.
 - `LAC_UBICACIONES = ('freezer', 'heladera')`; `LAC_MOTIVOS_CIERRE = ('usada', 'descartada', 'trasladada')`.
-- `_lac_params(cfg=None)` → dict con los 4 parámetros de config casteados a int (claves cortas: `freezer_meses`, `heladera_horas`, `aviso_freezer_dias`, `aviso_heladera_horas`); fallback a DEFAULTS si vienen corruptos.
+- `_lac_params(cfg=None)` → dict con los 5 parámetros de config casteados a int (claves cortas: `freezer_meses`, `heladera_horas`, `aviso_freezer_dias`, `aviso_heladera_horas`, `freezar_hasta_horas`); fallback a DEFAULTS si vienen corruptos.
 - `_lac_vencimiento(p, params)` → `datetime`. Freezer: extracción + N meses (reusa `_act_sumar_intervalo`, clamp fin de mes) al fin del día 23:59:59 (usable el día que vence, igual que el Excel). Heladera: `cargada` (timestamp inmutable) + N horas — cruza medianoche sin caso especial.
 - `_lac_estado(p, params, ahora)` → cascada: `motivo_cierre` → ese estado > `vencida` > `vence_pronto` (ventana: freezer en días, heladera en horas) > `disponible` | `en_heladera`.
-- `_lac_enriquecer(row, params, ahora)` → dict + `vencimiento` (ISO), `estado`, `dias_restantes` (freezer) / `horas_restantes` (heladera, negativas si venció).
+- `_lac_horas_en_heladera(p, ahora)` / `_lac_freezable(p, params, ahora)` → antigüedad en heladera (desde `cargada`) y si la partida TODAVÍA puede pasar al freezer (abierta, no vencida, y con menos de `freezar_hasta_horas` de antigüedad). Regla de seguridad: leche muy refrigerada no se congela. `_lac_freezable` espera dict (no `sqlite3.Row`).
+- `_lac_enriquecer(row, params, ahora)` → dict + `vencimiento` (ISO), `estado`, `dias_restantes` (freezer) / `horas_restantes` + `horas_en_heladera` + `freezable` (heladera).
 - `_lac_payload()` → `{'freezer': [FIFO], 'heladera': [FIFO], 'historial': [cerradas DESC], 'tablero': {...}, 'params': {...}, 'badge': int}`. FIFO = vencimiento asc, desempate por hora de extracción y luego id. Tablero: usables = disponible+vence_pronto (vencidas NO suman); trasladadas no cuentan como usadas ni descartadas; heladera separada del freezer. Fuente de TODAS las respuestas AJAX del módulo.
 - `_lac_badge_count()` → abiertas vencidas + vence_pronto (ambas ubicaciones). Lo usa `inject_lactancia_badge` (context_processor con try/except → 0: expone `lac_badge` a todos los templates para el contador del nav; jamás rompe un render).
 - `_lac_parsear_volumen(valor)` / `_lac_parsear_extraccion(form)` / `_lac_parsear_fecha_cierre(valor)` / `_lac_leer_form_alta(form)`: validaciones (ValueError). Volumen int 1..2000; fechas no futuras; ambas ubicaciones exigen fecha/hora de extracción (el momento real de carga lo pone el server en `cargada`, base del vencimiento de heladera).

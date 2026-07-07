@@ -24,10 +24,14 @@ DEFAULTS = {
     # ── Lactancia (banco de leche) — editables desde Settings ──────────────
     # Vencimiento freezer = extracción + N meses; heladera = carga + N horas.
     # Los avisos definen la ventana "vence pronto" de cada ubicación.
-    "lactancia_freezer_meses":        6,
-    "lactancia_heladera_horas":       48,
-    "lactancia_aviso_freezer_dias":   14,
-    "lactancia_aviso_heladera_horas": 12,
+    # freezar_hasta_horas: antigüedad máxima en heladera para poder pasar la
+    # partida al freezer (regla de seguridad: leche muy refrigerada no se
+    # congela). Pasado ese umbral, el checkbox de freezar se bloquea.
+    "lactancia_freezer_meses":         6,
+    "lactancia_heladera_horas":        48,
+    "lactancia_aviso_freezer_dias":    14,
+    "lactancia_aviso_heladera_horas":  12,
+    "lactancia_freezar_hasta_horas":   24,
     # ── Cotización USD oficial ──────────────────────────────────────────────
     # Se obtiene de dolarapi.com (módulo cotizacion.py) y se refresca 1 vez/día.
     # El 1500.0 es solo un bootstrap inicial; se sobrescribe en la primera
