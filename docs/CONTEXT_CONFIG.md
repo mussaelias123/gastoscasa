@@ -19,6 +19,10 @@
 | `ngrok_domain`               | `""`         | Dominio fijo (ej: miller-...)                |
 | `app_name`                   | `Gastos Casa`| Título. Si contiene `DEV` muestra banner     |
 | `factor_sueldo`              | `0.7`        | Multiplicador para ingresos tipo sueldo      |
+| `lactancia_freezer_meses`    | `6`          | Vida útil freezer (meses desde extracción). Editable en Settings → Banco de leche |
+| `lactancia_heladera_horas`   | `48`         | Vida útil heladera (horas desde carga)       |
+| `lactancia_aviso_freezer_dias` | `14`       | Ventana "vence pronto" freezer (días)        |
+| `lactancia_aviso_heladera_horas` | `12`     | Ventana "vence pronto" heladera (horas)      |
 | `cotizacion_valor`           | `1500.0`     | Último ARS/USD oficial conocido              |
 | `cotizacion_fecha`           | `None`       | Fecha del valor                              |
 | `cotizacion_ultimo_intento`  | `None`       | Timestamp último intento                     |

@@ -1,0 +1,236 @@
+{#
+================================================================================
+ARCHIVO: templates/lactancia.html
+================================================================================
+Módulo Lactancia — banco de leche materna de León (reemplaza al Excel
+Banco_de_leche_Leon.xlsx). Una sola vista con panelitos + modales.
+
+Camino estándar de la leche (decisión de Elías, 2026-07-06): toda extracción
+entra por HELADERA (un solo form de alta, con fecha/hora de extracción), y al
+freezer se pasa SIEMPRE una combinación de partidas de heladera tildadas
+(botón ⬆ del panel Heladera: suma los volúmenes y usa la fecha/hora de
+extracción más vieja). No hay alta directa a freezer ni traspaso individual.
+
+- Alta rápida SIEMPRE visible (un solo form → heladera).
+- Tablero de stock (freezer y heladera SEPARADOS, igual que el Excel).
+- Dos listas FIFO (vencimiento ascendente): Freezer y Heladera (con checkbox
+  por partida, tildado por defecto, para elegir qué se freeza).
+- Historial de cerradas (usadas / descartadas / freezadas) colapsable.
+- Modales: Cerrar con fecha, Más opciones, Editor, Confirmar.
+
+Los contenedores marcados con id lac-* los llena static/lactancia.js a partir
+de window.LAC_DATOS (payload inyectado abajo). Tras cada mutación AJAX el
+backend devuelve el payload completo y el JS re-renderiza todo.
+
+Los 2 forms de alta son <form> reales (POST /api/lactancia/crear): sin JS
+siguen funcionando (el backend redirige a /lactancia).
+
+En heladera NUNCA se muestra la hora de carga (pedido explícito de Mari);
+su vencimiento se muestra relativo ("Vence en 5 h").
+
+El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
+================================================================================#}
+
+{% extends "base.html" %}
+
+{% block titulo %}Lactancia{% endblock %}
+
+{% block contenido %}
+<div class="lac-wrap">
+
+  <!-- Aviso al entrar (lo llena el JS solo si hay vencidas / por vencer) -->
+  <div class="lac-aviso" id="lac-aviso" hidden></div>
+
+  {# Flujo izquierda → derecha: se carga a la izquierda, el stock queda en el
+     centro (freezer arriba / heladera abajo, como una heladera de casa) y el
+     historial a la derecha. En mobile las 3 columnas se apilan en ese orden. #}
+  <div class="lac-page">
+
+    <!-- ══ Columna izquierda: cargar + resumen ═══════════════════════════════ -->
+    <div class="lac-col lac-col--izq">
+
+      <!-- ── Alta rápida (siempre a la vista, primero en mobile).
+           Un solo form: toda extracción entra por HELADERA. ────────────────── -->
+      <section class="lac-panel lac-panel--alta">
+        <div class="lac-panel-header">
+          <div class="lac-panel-title">➕ Cargar</div>
+        </div>
+        <div class="lac-quickadd">
+
+          <form id="lac-form-extraccion" action="/api/lactancia/crear" method="post" class="lac-form-alta">
+            <input type="hidden" name="ubicacion" value="heladera">
+            <div class="lac-form-titulo">🥛 Nueva extracción</div>
+            <div class="lac-form-grid">
+              <div class="lac-campo">
+                <label for="lac-ex-volumen">Volumen (ml)</label>
+                <input type="number" id="lac-ex-volumen" name="volumen_ml"
+                       min="1" max="2000" inputmode="numeric" placeholder="Ej: 150" required>
+              </div>
+              <div class="lac-campo">
+                <label for="lac-ex-hora">Hora de extracción</label>
+                <input type="time" id="lac-ex-hora" name="hora_extraccion" required>
+              </div>
+              <div class="lac-campo">
+                <label for="lac-ex-fecha">Fecha de extracción</label>
+                <input type="text" id="lac-ex-fecha" name="fecha_extraccion"
+                       placeholder="DD/MM/AAAA" autocomplete="off">
+              </div>
+              <div class="lac-campo">
+                <label for="lac-ex-notas">Notas (opcional)</label>
+                <input type="text" id="lac-ex-notas" name="notas" maxlength="200">
+              </div>
+            </div>
+            <button type="submit" class="lac-btn-block" id="lac-ex-guardar">Guardar</button>
+            <div class="lac-help" id="lac-ex-hint"></div>
+          </form>
+
+        </div>
+      </section>
+
+      <!-- ── Resumen de stock ─────────────────────────────────────────────── -->
+      <section class="lac-panel lac-panel--tablero">
+        <div class="lac-panel-header">
+          <div class="lac-panel-title">📊 Resumen</div>
+        </div>
+        <div class="lac-tablero" id="lac-tablero"></div>
+      </section>
+
+    </div>
+
+    <!-- ══ Columna central: el stock, como una heladera de casa ══════════════ -->
+    <div class="lac-col lac-col--centro">
+
+      <!-- ── Freezer arriba (FIFO: usar siempre la primera) ────────────────── -->
+      <section class="lac-panel lac-panel--freezer">
+        <div class="lac-panel-header">
+          <div class="lac-panel-title">🧊 Freezer <span class="lac-count" id="lac-freezer-count"></span></div>
+          <span class="lac-fifo-hint" title="Lo primero que entra, primero que sale">FIFO: usar la primera</span>
+        </div>
+        <div class="lac-lista-scroll" id="lac-lista-freezer"></div>
+      </section>
+
+      <!-- ── Heladera abajo (lo operativo de las próximas 48 h).
+           El botón ⬆ freeza la combinación de las partidas tildadas. ───────── -->
+      <section class="lac-panel lac-panel--heladera">
+        <div class="lac-panel-header">
+          <div class="lac-panel-title">🥛 Heladera <span class="lac-count" id="lac-heladera-count"></span></div>
+          <button type="button" class="lac-btn-freezar" id="lac-btn-freezar"
+                  title="Freezar las tildadas: combina las partidas seleccionadas en una sola partida de freezer (volumen sumado, extracción más vieja)">⬆</button>
+        </div>
+        <div class="lac-lista-scroll" id="lac-lista-heladera"></div>
+      </section>
+
+    </div>
+
+    <!-- ══ Columna derecha: historial ════════════════════════════════════════ -->
+    <div class="lac-col lac-col--der">
+      <details class="lac-panel lac-panel--historial" open>
+        <summary class="lac-historial-summary">📦 Historial <span class="lac-count" id="lac-historial-count"></span></summary>
+        <div class="lac-lista-scroll lac-lista-historial" id="lac-lista-historial"></div>
+      </details>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Modal: Cerrar con fecha (Usada / Descartada) ─────────────────────────── -->
+<div class="lac-overlay" id="lac-modal-cerrar" role="dialog" aria-modal="true" hidden>
+  <div class="lac-modal">
+    <div class="lac-modal-head">
+      <h3 id="lac-cf-titulo">✓ Marcar usada <span class="lac-modal-sub" id="lac-cf-sub"></span></h3>
+      <button type="button" class="lac-x" data-lac-cerrar-modal aria-label="Cerrar">×</button>
+    </div>
+    <div class="lac-modal-body">
+      <div class="lac-campo">
+        <label for="lac-cf-fecha" id="lac-cf-fecha-label">¿Cuándo se usó?</label>
+        <input type="text" id="lac-cf-fecha" placeholder="DD/MM/AAAA" autocomplete="off">
+      </div>
+      <div class="lac-campo">
+        <label for="lac-cf-notas">Notas (opcional)</label>
+        <input type="text" id="lac-cf-notas" maxlength="200">
+      </div>
+    </div>
+    <div class="lac-modal-foot">
+      <button type="button" class="btn btn-secundario" data-lac-cerrar-modal>Cancelar</button>
+      <button type="button" class="lac-btn-block lac-btn-auto" id="lac-cf-guardar">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Más opciones (hoja de acciones por partida) ───────────────────── -->
+<div class="lac-overlay" id="lac-modal-mas" role="dialog" aria-modal="true" hidden>
+  <div class="lac-modal">
+    <div class="lac-modal-head">
+      <h3><span>⋯</span><span>Partida <span class="lac-modal-sub" id="lac-mas-sub"></span></span></h3>
+      <button type="button" class="lac-x" data-lac-cerrar-modal aria-label="Cerrar">×</button>
+    </div>
+    <div class="lac-modal-body lac-menu">
+      <button type="button" class="lac-menu-btn" id="lac-mas-usada">✓ Marcar usada con otra fecha…</button>
+      <button type="button" class="lac-menu-btn" id="lac-mas-descartada">🗑 Marcar descartada con otra fecha…</button>
+      <button type="button" class="lac-menu-btn" id="lac-mas-editar">✎ Editar partida…</button>
+      <button type="button" class="lac-menu-btn lac-menu-btn-peligro" id="lac-mas-eliminar">✕ Eliminar definitivamente…</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Editor de partida (corrección de typos) ───────────────────────── -->
+<div class="lac-overlay" id="lac-modal-editor" role="dialog" aria-modal="true" hidden>
+  <div class="lac-modal">
+    <div class="lac-modal-head">
+      <h3><span>✎</span><span>Editar partida <span class="lac-modal-sub" id="lac-ed-sub"></span></span></h3>
+      <button type="button" class="lac-x" data-lac-cerrar-modal aria-label="Cerrar">×</button>
+    </div>
+    <div class="lac-modal-body">
+      <div class="lac-campo">
+        <label for="lac-ed-volumen">Volumen (ml)</label>
+        <input type="number" id="lac-ed-volumen" min="1" max="2000" inputmode="numeric">
+      </div>
+      <div class="lac-form-grid">
+        <div class="lac-campo">
+          <label for="lac-ed-fecha">Fecha de extracción</label>
+          <input type="text" id="lac-ed-fecha" placeholder="DD/MM/AAAA" autocomplete="off">
+        </div>
+        <div class="lac-campo">
+          <label for="lac-ed-hora">Hora de extracción</label>
+          <input type="time" id="lac-ed-hora">
+        </div>
+      </div>
+      <div class="lac-campo">
+        <label for="lac-ed-notas">Notas</label>
+        <input type="text" id="lac-ed-notas" maxlength="200">
+      </div>
+    </div>
+    <div class="lac-modal-foot">
+      <button type="button" class="btn btn-secundario" data-lac-cerrar-modal>Cancelar</button>
+      <button type="button" class="lac-btn-block lac-btn-auto" id="lac-ed-guardar">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Confirmar eliminación ─────────────────────────────────────────── -->
+<div class="lac-overlay" id="lac-modal-confirm" role="dialog" aria-modal="true" hidden>
+  <div class="lac-modal">
+    <div class="lac-modal-head">
+      <h3><span>⚠️</span><span>Eliminar partida</span></h3>
+      <button type="button" class="lac-x" data-lac-cerrar-modal aria-label="Cerrar">×</button>
+    </div>
+    <div class="lac-modal-body">
+      <p class="lac-confirm-msg" id="lac-confirm-msg"></p>
+    </div>
+    <div class="lac-modal-foot">
+      <button type="button" class="btn btn-secundario" data-lac-cerrar-modal>Volver</button>
+      <button type="button" class="btn-peligro" id="lac-confirm-si">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts del módulo (contenedor propio, mismo criterio que Calendario) -->
+<div class="toast-container" id="lac-toast-container"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.LAC_DATOS = {{ datos|tojson }};
+</script>
+<script src="{{ url_for('static', filename='lactancia.js') }}?v={{ static_version }}"></script>
+{% endblock %}

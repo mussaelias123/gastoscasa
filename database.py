@@ -182,6 +182,38 @@ def inicializar_db():
         )
     ''')
 
+    # -------------------------------------------------------------------
+    # Tabla lactancia_partidas: banco de leche materna (módulo Lactancia).
+    # Una fila = una partida (bolsa de freezer o toma de heladera).
+    # Capa de datos pura: acá NO se calculan vencimientos ni estados
+    # (disponible / vence pronto / vencida), eso vive en app.py (_lac_*).
+    # Las partidas cerradas (motivo_cierre no NULL) quedan en esta misma
+    # tabla como historial: no hay tabla aparte.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS lactancia_partidas (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            ubicacion        TEXT    NOT NULL,
+            cargada          TEXT    NOT NULL,
+            fecha_extraccion TEXT    NOT NULL,
+            hora_extraccion  TEXT,
+            volumen_ml       INTEGER NOT NULL,
+            motivo_cierre    TEXT,
+            fecha_cierre     TEXT,
+            notas            TEXT    DEFAULT '',
+            origen_id        INTEGER,
+            actualizado      TEXT
+        )
+    ''')
+    # ubicacion: 'freezer' | 'heladera'.
+    # cargada: timestamp ISO del servidor al insertar, INMUTABLE (fuente de
+    #          verdad del vencimiento de heladera: cargada + N horas).
+    # hora_extraccion: 'HH:MM' (desempata FIFO; en heladera no se muestra).
+    # motivo_cierre: NULL (abierta) | 'usada' | 'descartada' | 'trasladada'.
+    # origen_id: en una heladera cerrada por traslado ('trasladada'), id de la
+    #            partida de freezer que nació de la combinación (N heladeras
+    #            → 1 freezer). Permite deshacer la combinación completa.
+
     conn.commit()   # Confirma los cambios (como un "guardar")
     conn.close()    # Cierra la conexión
 
@@ -762,3 +794,189 @@ def obtener_historial(actividad_id=None):
         ).fetchall()
     conn.close()
     return filas
+
+
+# =============================================================================
+# FUNCIONES: Partidas de leche (banco de leche, módulo Lactancia)
+# =============================================================================
+#
+# Capa de datos PURA: estas funciones no calculan vencimientos ni estados
+# (disponible, vence pronto, vencida). Eso vive en app.py (helpers _lac_*).
+# Acá solo se guarda/lee/actualiza cada partida. Las cerradas (motivo_cierre
+# no NULL) son el historial: viven en la misma tabla.
+#
+
+def obtener_partidas_lactancia(ubicacion=None):
+    """Devuelve todas las partidas (orden crudo por fecha_extraccion, id).
+    El orden FIFO definitivo (por vencimiento calculado) lo arma app.py."""
+    conn = conectar()
+    if ubicacion is None:
+        filas = conn.execute(
+            'SELECT * FROM lactancia_partidas ORDER BY fecha_extraccion, id'
+        ).fetchall()
+    else:
+        filas = conn.execute(
+            'SELECT * FROM lactancia_partidas WHERE ubicacion = ? ORDER BY fecha_extraccion, id',
+            (ubicacion,)
+        ).fetchall()
+    conn.close()
+    return filas
+
+
+def obtener_partida_lactancia(partida_id):
+    """Devuelve una partida por su id, o None si no existe."""
+    conn = conectar()
+    fila = conn.execute(
+        'SELECT * FROM lactancia_partidas WHERE id = ?', (partida_id,)
+    ).fetchone()
+    conn.close()
+    return fila
+
+
+def agregar_partida_lactancia(ubicacion, fecha_extraccion, hora_extraccion, volumen_ml,
+                              notas='', origen_id=None):
+    """Inserta una partida nueva y devuelve su id.
+
+    `cargada` se setea SIEMPRE acá con el timestamp real del servidor (nunca
+    viene del caller): es la fuente de verdad del vencimiento de heladera y
+    no se recalcula ni se mueve jamás."""
+    conn = conectar()
+    cursor = conn.cursor()
+    ahora = _ahora_iso()
+    cursor.execute('''
+        INSERT INTO lactancia_partidas (
+            ubicacion, cargada, fecha_extraccion, hora_extraccion,
+            volumen_ml, notas, origen_id, actualizado
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (ubicacion, ahora, fecha_extraccion, hora_extraccion, volumen_ml,
+          notas, origen_id, ahora))
+    conn.commit()
+    nuevo_id = cursor.lastrowid
+    conn.close()
+    return nuevo_id
+
+
+def editar_partida_lactancia(partida_id, fecha_extraccion, hora_extraccion, volumen_ml, notas):
+    """Actualiza los campos editables de una partida. NO toca `ubicacion` ni
+    `cargada` (el traspaso de ubicación es trasladar_partida_lactancia)."""
+    conn = conectar()
+    conn.execute('''
+        UPDATE lactancia_partidas
+        SET fecha_extraccion=?, hora_extraccion=?, volumen_ml=?, notas=?, actualizado=?
+        WHERE id=?
+    ''', (fecha_extraccion, hora_extraccion, volumen_ml, notas, _ahora_iso(), partida_id))
+    conn.commit()
+    conn.close()
+
+
+def cerrar_partida_lactancia(partida_id, motivo, fecha_cierre, notas=None):
+    """Cierra una partida como 'usada' o 'descartada' (la saca del stock sin
+    borrarla). El cierre por traslado va por trasladar_partida_lactancia."""
+    conn = conectar()
+    if notas is None:
+        conn.execute('''
+            UPDATE lactancia_partidas
+            SET motivo_cierre=?, fecha_cierre=?, actualizado=?
+            WHERE id=?
+        ''', (motivo, fecha_cierre, _ahora_iso(), partida_id))
+    else:
+        conn.execute('''
+            UPDATE lactancia_partidas
+            SET motivo_cierre=?, fecha_cierre=?, notas=?, actualizado=?
+            WHERE id=?
+        ''', (motivo, fecha_cierre, notas, _ahora_iso(), partida_id))
+    conn.commit()
+    conn.close()
+
+
+def combinar_partidas_lactancia(ids, fecha_extraccion, hora_extraccion, volumen_ml,
+                                fecha_cierre):
+    """
+    Freeza en bloque: N partidas de heladera → 1 partida nueva de freezer.
+
+    Pasos (una sola conexión/commit, operación atómica):
+      1. Inserta la partida de freezer (volumen combinado, fecha/hora de
+         extracción más vieja — las calcula el caller —, cargada=ahora).
+      2. Cierra cada heladera de origen: motivo_cierre='trasladada',
+         fecha_cierre, y origen_id = id de la partida nueva (el vínculo que
+         permite deshacer la combinación completa).
+    Devuelve el id de la partida nueva de freezer.
+    """
+    conn = conectar()
+    cursor = conn.cursor()
+    ahora = _ahora_iso()
+    cursor.execute('''
+        INSERT INTO lactancia_partidas (
+            ubicacion, cargada, fecha_extraccion, hora_extraccion,
+            volumen_ml, notas, origen_id, actualizado
+        )
+        VALUES ('freezer', ?, ?, ?, ?, '', NULL, ?)
+    ''', (ahora, fecha_extraccion, hora_extraccion, volumen_ml, ahora))
+    nuevo_id = cursor.lastrowid
+    for partida_id in ids:
+        cursor.execute('''
+            UPDATE lactancia_partidas
+            SET motivo_cierre='trasladada', fecha_cierre=?, origen_id=?, actualizado=?
+            WHERE id=?
+        ''', (fecha_cierre, nuevo_id, ahora, partida_id))
+    conn.commit()
+    conn.close()
+    return nuevo_id
+
+
+def reabrir_partida_lactancia(partida_id):
+    """
+    Deshace el cierre de una partida (motivo_cierre=NULL, fecha_cierre=NULL).
+
+    'usada'/'descartada': reabre esa partida y listo. 'trasladada' (freezada
+    en una combinación): deshace la combinación COMPLETA — borra la partida
+    de freezer hija (this.origen_id) y reabre TODAS las heladeras de esa
+    combinación — pero solo si la hija sigue abierta: si ya se cerró (se usó
+    o descartó), lanza ValueError y no toca nada. Si la hija fue eliminada a
+    mano, reabre solo esta partida. Todo en una sola conexión/commit.
+    """
+    conn = conectar()
+    try:
+        cursor = conn.cursor()
+        fila = cursor.execute(
+            'SELECT motivo_cierre, origen_id FROM lactancia_partidas WHERE id = ?',
+            (partida_id,)
+        ).fetchone()
+        if fila is None:
+            raise ValueError('La partida no existe.')
+        ahora = _ahora_iso()
+
+        if fila['motivo_cierre'] == 'trasladada' and fila['origen_id']:
+            hija = cursor.execute(
+                'SELECT id, motivo_cierre FROM lactancia_partidas WHERE id = ?',
+                (fila['origen_id'],)
+            ).fetchone()
+            if hija is not None:
+                if hija['motivo_cierre'] is not None:
+                    raise ValueError('No se puede reabrir: la partida freezada con esta leche ya se cerró.')
+                cursor.execute('DELETE FROM lactancia_partidas WHERE id = ?', (hija['id'],))
+                cursor.execute('''
+                    UPDATE lactancia_partidas
+                    SET motivo_cierre=NULL, fecha_cierre=NULL, origen_id=NULL, actualizado=?
+                    WHERE origen_id=? AND motivo_cierre='trasladada'
+                ''', (ahora, hija['id']))
+                conn.commit()
+                return
+
+        cursor.execute('''
+            UPDATE lactancia_partidas
+            SET motivo_cierre=NULL, fecha_cierre=NULL, origen_id=NULL, actualizado=?
+            WHERE id=?
+        ''', (ahora, partida_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def eliminar_partida_lactancia(partida_id):
+    """Elimina la partida definitivamente (corrección de cargas erróneas)."""
+    conn = conectar()
+    conn.execute('DELETE FROM lactancia_partidas WHERE id = ?', (partida_id,))
+    conn.commit()
+    conn.close()

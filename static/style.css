@@ -367,6 +367,33 @@ body.has-dev-banner .site-topbar {
   border-bottom: 3px solid white;
 }
 
+/* Contador rojo en un ítem de nav (hoy lo usa Lactancia: vencidas + por
+   vencer). Lo renderiza base.html server-side y lo actualiza lactancia.js. */
+.site-nav li a .nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 0.35rem;
+  border-radius: 999px;
+  background: var(--color-peligro);
+  color: var(--color-texto-invertido);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* Mobile: con 5 ítems la nav ya no entra en 375px → scroll horizontal
+   (patrón tabs; el ítem activo lo resalta app.js igual que siempre). */
+@media (max-width: 767px) {
+  .site-nav { overflow-x: auto; }
+  .site-nav ul { width: max-content; }
+  .site-nav li a { white-space: nowrap; }
+}
+
 
 /* ============================================================================
    ENCABEZADO DE PÁGINA (título + botón en la misma línea)
@@ -4756,4 +4783,633 @@ body.has-dev-banner .settings-aside {
 
 @media (min-width: 900px) and (max-width: 1080px) {
   .cal-page { grid-template-columns: minmax(0, 1fr) 360px; }
+}
+
+
+/* ============================================================================
+   LACTANCIA — módulo banco de leche (templates/lactancia.html)
+   Espejo estructural del módulo Calendario. Clases con prefijo lac-.
+   Base = apilado (mobile: alta primero, para cargar en el momento). Desktop
+   >= 900px = grilla de 2 columnas sin scroll de página (alto = viewport;
+   scroll interno en las listas de freezer/heladera/historial).
+   Estados → paleta (cero hardcode): vencida = peligro · vence_pronto = alerta
+   · disponible / en_heladera = exito · cierres históricos = deco / muted.
+   ============================================================================ */
+
+/* ── Layout base: apilado, scroll de página normal ────────────────────────── */
+.lac-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.lac-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+
+/* Columnas del layout desktop. En mobile son transparentes: cada una apila
+   sus paneles y el conjunto queda como una sola columna (alta, resumen,
+   freezer, heladera, historial). */
+.lac-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* Aviso al entrar (solo si hay vencidas / por vencer) */
+.lac-aviso {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-texto);
+  border-radius: var(--radio-borde);
+  padding: 0.6rem 0.85rem;
+  border-left: 4px solid transparent;
+}
+
+.lac-aviso[hidden] { display: none; }
+.lac-aviso.is-peligro { background: var(--color-peligro-suave); border-left-color: var(--color-peligro); }
+.lac-aviso.is-alerta { background: var(--color-alerta-suave); border-left-color: var(--color-alerta); }
+
+/* ── Panel base (mismo lenguaje que .cal-panel / .tarjeta) ────────────────── */
+.lac-panel {
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  border: 1px solid var(--color-borde);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.lac-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-borde);
+  flex-shrink: 0;
+}
+
+.lac-panel-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+.lac-panel-title .lac-count,
+.lac-historial-summary .lac-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+}
+
+.lac-fifo-hint {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+  white-space: nowrap;
+}
+
+/* ── Alta rápida (2 forms siempre visibles) ───────────────────────────────── */
+.lac-quickadd { padding: 0.7rem 0.9rem 0.85rem; }
+
+.lac-form-titulo {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-texto);
+  margin-bottom: 0.45rem;
+}
+
+.lac-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem 0.7rem;
+}
+
+.lac-form-grid[hidden] { display: none; }
+
+.lac-campo { margin-bottom: 0; }
+
+.lac-campo label {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+  margin-bottom: 0.18rem;
+}
+
+.lac-campo input[type="text"],
+.lac-campo input[type="number"],
+.lac-campo input[type="time"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.86rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background: var(--color-superficie);
+}
+
+.lac-campo input:focus {
+  outline: none;
+  border-color: var(--color-acento);
+  box-shadow: var(--sombra-focus);
+}
+
+/* Botón ⬆ del panel Heladera: freeza la combinación de las partidas
+   tildadas. Acción primaria de la sección → acento (misma excepción que
+   .btn-acento, ver regla de colores). */
+.lac-btn-freezar {
+  width: 34px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--color-acento);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.lac-btn-freezar:hover { background: var(--color-acento-oscuro); transform: translateY(-2px); }
+.lac-btn-freezar:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+/* Checkbox por partida de heladera: qué entra en la próxima freezada (⬆).
+   Tildado por defecto; alineado al borde derecho de la fila. */
+.lac-check {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.lac-check .lac-check-input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-acento);
+}
+
+.lac-btn-block {
+  display: block;
+  width: 100%;
+  margin-top: 0.55rem;
+  padding: 0.6rem;
+  background: var(--color-acento);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.lac-btn-block:hover { background: var(--color-acento-oscuro); transform: translateY(-1px); }
+
+/* Variante para footers de modal y para la fila de heladera */
+.lac-btn-block.lac-btn-auto { width: auto; margin-top: 0; flex-shrink: 0; }
+
+.lac-help {
+  font-size: 0.74rem;
+  color: var(--color-texto-muted);
+  margin-top: 0.3rem;
+  line-height: 1.4;
+}
+
+.lac-help[hidden] { display: none; }
+
+/* ── Tablero de stock ─────────────────────────────────────────────────────── */
+.lac-tablero { padding: 0.7rem 0.9rem 0.85rem; }
+
+.lac-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: 0.5rem;
+}
+
+.lac-stat {
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.lac-stat-num {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--color-texto);
+  line-height: 1.1;
+}
+
+.lac-stat-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+  line-height: 1.25;
+}
+
+.lac-stat.is-alerta { border-color: var(--color-alerta); }
+.lac-stat.is-alerta .lac-stat-num { color: var(--color-alerta); }
+.lac-stat.is-peligro { border-color: var(--color-peligro); }
+.lac-stat.is-peligro .lac-stat-num { color: var(--color-peligro); }
+
+/* Heladera separada del freezer (stock aparte, igual que el Excel) */
+.lac-stats-heladera {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-top: 1px dashed var(--color-borde);
+  font-size: 0.82rem;
+  color: var(--color-texto-muted);
+}
+
+.lac-stats-heladera strong { color: var(--color-texto); }
+
+/* Estado vacío (sin ninguna partida cargada todavía) */
+.lac-vacia,
+.lac-lista-vacia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--color-texto-muted);
+  padding: 1.4rem 1rem;
+  gap: 0.4rem;
+  font-size: 0.84rem;
+}
+
+.lac-vacia .lac-vacia-em { font-size: 2.4rem; }
+.lac-vacia .lac-vacia-t { font-size: 1rem; font-weight: 700; color: var(--color-texto); }
+
+/* ── Listas de partidas (FIFO) ────────────────────────────────────────────── */
+.lac-lista-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0.45rem 0.65rem 0.65rem;
+}
+
+.lac-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  margin-bottom: 0.4rem;
+  transition: box-shadow 0.15s;
+}
+
+.lac-item:hover { box-shadow: var(--sombra-card); }
+.lac-item.is-vencida { background: var(--color-peligro-suave); border-color: transparent; }
+.lac-item.is-vence_pronto { background: var(--color-alerta-suave); border-color: transparent; }
+.lac-item--hist { opacity: 0.8; }
+
+.lac-item-body { min-width: 0; }
+
+.lac-item-top {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.lac-item-vol {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--color-texto);
+}
+
+.lac-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.12rem;
+  font-size: 0.76rem;
+  color: var(--color-texto-muted);
+}
+
+.lac-item-meta .lac-sep { opacity: 0.5; }
+
+.lac-venc { font-weight: 700; }
+.lac-venc.t-vencida { color: var(--color-peligro); }
+.lac-venc.t-vence_pronto { color: var(--color-alerta); }
+
+.lac-venc-fecha { opacity: 0.85; }
+
+.lac-item-notas {
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--color-texto-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lac-hist-ubi { font-size: 0.85rem; }
+
+.lac-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+/* Botón principal de fila: marcar Usada (verde, misma familia que
+   .cal-btn-completar) */
+.lac-btn-usar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-exito);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.lac-btn-usar:hover { filter: brightness(1.08); transform: translateY(-1px); }
+
+.lac-btn-icono {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--color-borde);
+  color: var(--color-texto-muted);
+  border-radius: var(--radio-borde);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+
+.lac-btn-icono:hover { border-color: var(--color-acento); color: var(--color-acento); }
+
+/* ── Pills de estado (etiquetas que ya conoce Mari) ───────────────────────── */
+.lac-pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lac-pill-disponible { background: var(--color-exito-suave); color: var(--color-exito); }
+.lac-pill-en_heladera { background: var(--color-exito-suave); color: var(--color-exito); }
+.lac-pill-vence_pronto { background: var(--color-alerta-suave); color: var(--color-alerta); }
+.lac-pill-vencida { background: var(--color-peligro-suave); color: var(--color-peligro); }
+.lac-pill-usada { background: var(--color-deco-4); color: var(--color-texto); }
+.lac-pill-descartada { background: transparent; color: var(--color-texto-muted); border: 1px solid var(--color-borde); }
+.lac-pill-trasladada { background: transparent; color: var(--color-acento); border: 1px solid var(--color-acento); }
+
+/* ── Historial colapsable ─────────────────────────────────────────────────── */
+.lac-panel--historial { padding: 0; }
+
+.lac-historial-summary {
+  cursor: pointer;
+  padding: 0.85rem 1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-texto);
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+}
+
+.lac-historial-summary::-webkit-details-marker { display: none; }
+.lac-historial-summary::after { content: '▾'; margin-left: auto; color: var(--color-texto-muted); font-size: 0.85rem; }
+.lac-panel--historial[open] .lac-historial-summary { border-bottom: 1px solid var(--color-borde); }
+.lac-panel--historial[open] .lac-historial-summary::after { content: '▴'; }
+
+.lac-lista-historial { max-height: 280px; overflow-y: auto; }
+
+/* ── Modales (overlay + tarjeta, espejo de cal-) ──────────────────────────── */
+.lac-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-modal);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem;
+  animation: lac-fade 0.16s ease;
+}
+
+.lac-overlay[hidden] { display: none; }
+
+@keyframes lac-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.lac-modal {
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-modal);
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100vh - 2.4rem);
+  display: flex;
+  flex-direction: column;
+  animation: lac-pop 0.18s cubic-bezier(.2, .9, .3, 1.2);
+}
+
+@keyframes lac-pop {
+  from { transform: translateY(8px) scale(0.98); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.lac-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 1.05rem 1.25rem 0.85rem;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.lac-modal-head h3 {
+  margin: 0;
+  font-size: 1.12rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lac-modal-head .lac-modal-sub { font-size: 0.8rem; color: var(--color-texto-muted); font-weight: 400; }
+
+.lac-x {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  color: var(--color-texto-muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+  border-radius: var(--radio-borde);
+}
+
+.lac-x:hover { background: var(--color-deco-4); color: var(--color-texto); }
+
+.lac-modal-body { padding: 1.1rem 1.25rem; overflow-y: auto; }
+
+.lac-modal-body .lac-campo { margin-bottom: 0.85rem; }
+.lac-modal-body .lac-campo:last-child { margin-bottom: 0; }
+.lac-modal-body .lac-form-grid { margin-bottom: 0.85rem; }
+.lac-modal-body .lac-form-grid .lac-campo { margin-bottom: 0; }
+
+.lac-modal-foot {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  padding: 0.85rem 1.25rem 1.1rem;
+  border-top: 1px solid var(--color-borde);
+}
+
+.lac-confirm-msg { margin: 0; color: var(--color-texto-muted); line-height: 1.5; }
+
+/* Hoja "Más opciones": botones grandes apilados (táctil, mobile-first) */
+.lac-menu { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.lac-menu-btn {
+  width: 100%;
+  text-align: left;
+  padding: 0.65rem 0.8rem;
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  color: var(--color-texto);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.lac-menu-btn:hover { border-color: var(--color-acento); color: var(--color-acento); }
+
+.lac-menu-btn-peligro { color: var(--color-peligro); }
+.lac-menu-btn-peligro:hover { border-color: var(--color-peligro); background: var(--color-peligro-suave); color: var(--color-peligro); }
+
+/* Toasts del módulo (reusan .toast base; con botón Deshacer opcional) */
+.lac-toast-error { background-color: var(--color-peligro); }
+.lac-toast-ok    { background-color: var(--color-exito); }
+.lac-toast-info  { background-color: var(--color-deco-2); }
+
+.lac-toast-accion {
+  margin-left: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  background: transparent;
+  border: 1px solid var(--color-texto-invertido);
+  border-radius: 999px;
+  color: var(--color-texto-invertido);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+}
+
+.lac-toast-accion:hover { background: var(--color-texto-invertido); color: var(--color-texto); }
+
+/* ── Desktop >= 900px: 3 columnas (flujo izq → der), alto = viewport ──────────
+   Izquierda = cargar + resumen · Centro = stock (freezer arriba / heladera
+   abajo, como una heladera de casa) · Derecha = historial. Sin scroll de
+   página: cada lista scrollea internamente. */
+@media (min-width: 900px) {
+  /* Mismo patrón que body.cal-body: la página fija su alto al viewport.
+     body.lac-body la agrega lactancia.js; :has() cubre el primer paint. */
+  body.lac-body,
+  body:has(.lac-wrap) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.lac-body .contenido-principal,
+  body:has(.lac-wrap) .contenido-principal {
+    display: flex;
+    min-height: 0;
+  }
+
+  .lac-wrap { flex: 1 1 auto; min-height: 0; }
+
+  /* 3 columnas: el centro (stock) un poco más ancho que los laterales. */
+  .lac-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr) minmax(0, 5fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .lac-col { min-height: 0; }
+
+  /* Izquierda: alta + resumen, cada uno a su alto natural (arriba). */
+  .lac-col--izq .lac-panel { flex: 0 0 auto; }
+
+  /* Centro: freezer y heladera parten el alto 50/50 y scrollean adentro. */
+  .lac-panel--freezer,
+  .lac-panel--heladera {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  .lac-panel--freezer .lac-lista-scroll,
+  .lac-panel--heladera .lac-lista-scroll {
+    overflow-y: auto;
+  }
+
+  /* Derecha: el historial ocupa toda la columna y scrollea adentro. */
+  .lac-panel--historial { flex: 1 1 auto; min-height: 0; }
+  .lac-panel--historial[open] { display: flex; flex-direction: column; }
+  .lac-panel--historial[open] .lac-lista-historial {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+}
+
+/* Rango intermedio: laterales un poco más angostos para que el centro respire. */
+@media (min-width: 900px) and (max-width: 1200px) {
+  .lac-page { grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) minmax(0, 4fr); }
+}
+
+/* Mobile: acciones de fila más táctiles */
+@media (max-width: 767px) {
+  .lac-item { grid-template-columns: 1fr; }
+  .lac-item-actions { justify-content: flex-end; }
+  .lac-btn-icono { width: 36px; height: 36px; }
 }

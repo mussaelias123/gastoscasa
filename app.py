@@ -208,6 +208,214 @@ def _act_payload():
 
 
 # =============================================================================
+# MÓDULO LACTANCIA — constantes y helpers de vencimiento/estado
+# Propósito: banco de leche materna (partidas de freezer y heladera). La capa
+# de datos pura vive en database.py (tabla lactancia_partidas); acá vive el
+# cálculo de vencimiento y estado (disponible / vence pronto / vencida), a
+# propósito fuera de database.py, igual que el módulo Calendario. Vencimiento
+# y estado NUNCA se almacenan: cambiar un parámetro en Settings recalcula
+# todo al refrescar (mismo comportamiento que el Excel que reemplaza).
+# =============================================================================
+
+LAC_UBICACIONES = ('freezer', 'heladera')
+LAC_MOTIVOS_CIERRE = ('usada', 'descartada', 'trasladada')
+
+
+def _lac_params(cfg=None):
+    """Devuelve los 4 parámetros de conservación/aviso casteados a int
+    (claves cortas). Si un valor viene corrupto en config.json, cae al DEFAULT."""
+    if cfg is None:
+        cfg = config.cargar_config(CONFIG_FILE)
+    params = {}
+    for clave, corta in (
+        ('lactancia_freezer_meses',        'freezer_meses'),
+        ('lactancia_heladera_horas',       'heladera_horas'),
+        ('lactancia_aviso_freezer_dias',   'aviso_freezer_dias'),
+        ('lactancia_aviso_heladera_horas', 'aviso_heladera_horas'),
+    ):
+        try:
+            params[corta] = int(cfg.get(clave, config.DEFAULTS[clave]))
+        except (TypeError, ValueError):
+            params[corta] = config.DEFAULTS[clave]
+    return params
+
+
+def _lac_vencimiento(p, params):
+    """Vencimiento (datetime) de una partida.
+
+    Freezer: extracción + N meses (clamp fin de mes vía _act_sumar_intervalo),
+    al fin del día (23:59:59): la partida es usable el día que vence, igual
+    que el Excel (HOY() > vencimiento). Heladera: momento real de carga
+    (`cargada`, timestamp inmutable) + N horas — corre por timestamp, así que
+    cruza medianoche sin caso especial."""
+    from datetime import time
+    if p['ubicacion'] == 'freezer':
+        extraccion = datetime.strptime(str(p['fecha_extraccion']), '%Y-%m-%d').date()
+        venc_dia = _act_sumar_intervalo(extraccion, params['freezer_meses'], 'meses')
+        return datetime.combine(venc_dia, time(23, 59, 59))
+    return datetime.fromisoformat(str(p['cargada'])) + timedelta(hours=params['heladera_horas'])
+
+
+def _lac_estado(p, params, ahora):
+    """Estado de una partida, en cascada (mismo espíritu que el Excel):
+    cierre manual (usada/descartada/trasladada) > vencida > vence_pronto >
+    disponible (freezer) | en_heladera (heladera)."""
+    if p.get('motivo_cierre'):
+        return p['motivo_cierre']
+    venc = _lac_vencimiento(p, params)
+    if ahora > venc:
+        return 'vencida'
+    if p['ubicacion'] == 'freezer':
+        dias = (venc.date() - ahora.date()).days
+        return 'vence_pronto' if dias <= params['aviso_freezer_dias'] else 'disponible'
+    horas = (venc - ahora).total_seconds() / 3600
+    return 'vence_pronto' if horas <= params['aviso_heladera_horas'] else 'en_heladera'
+
+
+def _lac_enriquecer(row, params, ahora):
+    """Convierte una fila de `lactancia_partidas` en dict serializable JSON,
+    agregando vencimiento (ISO), estado, dias_restantes (solo freezer) y
+    horas_restantes (solo heladera, negativas si venció). Los textos
+    relativos ("vence en 5 h") los arma el JS."""
+    p = dict(row)
+    venc = _lac_vencimiento(p, params)
+    p['vencimiento'] = venc.isoformat(timespec='seconds')
+    p['estado'] = _lac_estado(p, params, ahora)
+    if p['ubicacion'] == 'freezer':
+        p['dias_restantes'] = (venc.date() - ahora.date()).days
+        p['horas_restantes'] = None
+    else:
+        p['dias_restantes'] = None
+        p['horas_restantes'] = int((venc - ahora).total_seconds() // 3600)
+    return p
+
+
+def _lac_payload():
+    """Payload completo del módulo Lactancia: listas FIFO + historial +
+    tablero + params + badge. Usado por GET /lactancia, GET /api/lactancia y
+    TODAS las mutaciones (el cliente re-renderiza todo con datos frescos).
+
+    FIFO = vencimiento ascendente; desempate freezer por hora de extracción y
+    luego id (dos extracciones el mismo día salen en orden). La heladera va
+    SEPARADA de los totales de freezer, igual que el Excel."""
+    params = _lac_params()
+    ahora = datetime.now()
+    partidas = [_lac_enriquecer(f, params, ahora)
+                for f in database.obtener_partidas_lactancia()]
+
+    abiertas = [p for p in partidas if not p['motivo_cierre']]
+    freezer = sorted((p for p in abiertas if p['ubicacion'] == 'freezer'),
+                     key=lambda p: (p['vencimiento'], p['hora_extraccion'] or '', p['id']))
+    heladera = sorted((p for p in abiertas if p['ubicacion'] == 'heladera'),
+                      key=lambda p: (p['vencimiento'], p['id']))
+    historial = sorted((p for p in partidas if p['motivo_cierre']),
+                       key=lambda p: (p['fecha_cierre'] or '', p['id']), reverse=True)
+
+    # "Usables" = disponible + vence_pronto (las vencidas NO suman al stock).
+    usables = [p for p in freezer if p['estado'] in ('disponible', 'vence_pronto')]
+    heladera_vigente = [p for p in heladera if p['estado'] in ('en_heladera', 'vence_pronto')]
+
+    tablero = {
+        'freezer_bolsas':        len(usables),
+        'freezer_ml':            sum(p['volumen_ml'] for p in usables),
+        'freezer_vence_pronto':  sum(1 for p in freezer if p['estado'] == 'vence_pronto'),
+        'freezer_vencidas':      sum(1 for p in freezer if p['estado'] == 'vencida'),
+        'freezer_proximo_venc':  min((p['vencimiento'] for p in usables), default=None),
+        # Las trasladadas no cuentan como usadas ni descartadas: la leche
+        # sigue existiendo, solo cambió de ubicación.
+        'usadas_total':          sum(1 for p in partidas if p['motivo_cierre'] == 'usada'),
+        'descartadas_total':     sum(1 for p in partidas if p['motivo_cierre'] == 'descartada'),
+        'heladera_bolsas':       len(heladera_vigente),
+        'heladera_ml':           sum(p['volumen_ml'] for p in heladera_vigente),
+        'heladera_proximo_venc': min((p['vencimiento'] for p in heladera_vigente), default=None),
+    }
+    badge = sum(1 for p in abiertas if p['estado'] in ('vencida', 'vence_pronto'))
+
+    return {'freezer': freezer, 'heladera': heladera, 'historial': historial,
+            'tablero': tablero, 'params': params, 'badge': badge}
+
+
+def _lac_badge_count():
+    """Contador del badge de nav: partidas abiertas vencidas o por vencer
+    (ambas ubicaciones). Usado por inject_lactancia_badge en cada render."""
+    params = _lac_params()
+    ahora = datetime.now()
+    total = 0
+    for fila in database.obtener_partidas_lactancia():
+        if fila['motivo_cierre']:
+            continue
+        if _lac_estado(dict(fila), params, ahora) in ('vencida', 'vence_pronto'):
+            total += 1
+    return total
+
+
+def _lac_parsear_volumen(valor):
+    """Valida el volumen en ml: entero 1..2000 (las bolsas Lansinoh son de
+    180 ml; el tope generoso cubre cualquier contenedor). Lanza ValueError."""
+    try:
+        volumen = int(str(valor if valor is not None else '').strip())
+    except ValueError:
+        raise ValueError("El volumen (ml) debe ser un número entero.")
+    if not 1 <= volumen <= 2000:
+        raise ValueError("El volumen debe estar entre 1 y 2000 ml.")
+    return volumen
+
+
+def _lac_parsear_extraccion(form):
+    """Valida fecha (YYYY-MM-DD, no futura) y hora (HH:MM) de extracción de
+    una partida de freezer. Devuelve (fecha, hora). Lanza ValueError."""
+    from datetime import date
+    fecha = (form.get('fecha_extraccion') or '').strip()
+    try:
+        fecha_dt = datetime.strptime(fecha, '%Y-%m-%d').date()
+    except ValueError:
+        raise ValueError(f"Fecha de extracción inválida: {fecha}")
+    if fecha_dt > date.today():
+        raise ValueError("La fecha de extracción no puede ser futura.")
+    hora = (form.get('hora_extraccion') or '').strip()
+    try:
+        datetime.strptime(hora, '%H:%M')
+    except ValueError:
+        raise ValueError(f"Hora de extracción inválida: {hora}")
+    return fecha, hora
+
+
+def _lac_parsear_fecha_cierre(valor):
+    """'' o ausente → hoy. Si viene, valida YYYY-MM-DD no futura. Lanza ValueError."""
+    from datetime import date
+    valor = (valor or '').strip()
+    if not valor:
+        return date.today().isoformat()
+    try:
+        fecha_dt = datetime.strptime(valor, '%Y-%m-%d').date()
+    except ValueError:
+        raise ValueError(f"Fecha de cierre inválida: {valor}")
+    if fecha_dt > date.today():
+        raise ValueError("La fecha de cierre no puede ser futura.")
+    return valor
+
+
+def _lac_leer_form_alta(form):
+    """Lee y valida el alta de una partida. Devuelve dict listo para
+    database.agregar_partida_lactancia. Lanza ValueError.
+
+    El flujo estándar es a heladera (toda extracción entra por ahí, con su
+    fecha/hora de extracción; el momento real de carga lo pone el servidor en
+    `cargada`, que sigue siendo la base del vencimiento de heladera). La hora
+    de extracción se guarda pero en heladera no se muestra; importa al
+    freezar la combinación (la más vieja define el vencimiento de freezer)."""
+    ubicacion = form.get('ubicacion', '')
+    if ubicacion not in LAC_UBICACIONES:
+        raise ValueError(f"Ubicación inválida: {ubicacion}")
+
+    volumen_ml = _lac_parsear_volumen(form.get('volumen_ml'))
+    notas = (form.get('notas') or '').strip()[:200]
+    fecha, hora = _lac_parsear_extraccion(form)
+    return dict(ubicacion=ubicacion, fecha_extraccion=fecha, hora_extraccion=hora,
+                volumen_ml=volumen_ml, notas=notas)
+
+
+# =============================================================================
 # HELPER: _calcular_monto_usd(monto, moneda, cfg)
 # Propósito: Centraliza la conversión ARS→USD al insertar/editar movimientos.
 # =============================================================================
@@ -264,6 +472,17 @@ def inject_config():
     }
 
 
+@app.context_processor
+def inject_lactancia_badge():
+    """Expone `lac_badge` (partidas vencidas + por vencer) a todos los
+    templates para el contador del ítem de nav Lactancia. Con red de
+    seguridad: un fallo acá jamás debe romper el render de una página."""
+    try:
+        return {'lac_badge': _lac_badge_count()}
+    except Exception:
+        return {'lac_badge': 0}
+
+
 def _static_version():
     """Devuelve el mtime más reciente de los archivos estáticos principales."""
     try:
@@ -271,6 +490,7 @@ def _static_version():
             os.path.join(app.static_folder, 'style.css'),
             os.path.join(app.static_folder, 'app.js'),
             os.path.join(app.static_folder, 'calendario.js'),
+            os.path.join(app.static_folder, 'lactancia.js'),
         ]
         return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))
     except Exception:
@@ -977,6 +1197,199 @@ def api_actividades_eliminar(id):
 
 
 # =============================================================================
+# MÓDULO LACTANCIA — rutas (banco de leche)
+# =============================================================================
+#
+# GET  /lactancia                        → página completa
+# GET  /api/lactancia                    → payload fresco (JSON)
+# POST /api/lactancia/crear              → alta (flujo estándar: heladera)
+# POST /api/lactancia/<id>/cerrar        → marcar usada o descartada
+# POST /api/lactancia/freezar            → combinar heladeras tildadas → 1 freezer
+# POST /api/lactancia/<id>/reabrir       → deshacer un cierre (traslado: completo)
+# POST /api/lactancia/<id>/editar        → corregir volumen/fecha/hora/notas
+# POST /api/lactancia/<id>/eliminar      → borrado definitivo
+#
+# Mismo contrato que Calendario: mutaciones responden AJAX con
+# {'ok': True, **_lac_payload()} (el cliente re-renderiza todo). Errores:
+# {'ok': False, 'error': str(e)}, 400 (validación) / 500. No-AJAX: redirect.
+
+@app.route('/lactancia')
+def lactancia():
+    return render_template('lactancia.html', datos=_lac_payload())
+
+
+@app.route('/api/lactancia')
+def api_lactancia():
+    return jsonify({'ok': True, **_lac_payload()})
+
+
+@app.route('/api/lactancia/crear', methods=['POST'])
+def api_lactancia_crear():
+    try:
+        datos = _lac_leer_form_alta(request.form)
+        database.agregar_partida_lactancia(**datos)
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/<int:id>/cerrar', methods=['POST'])
+def api_lactancia_cerrar(id):
+    try:
+        partida = database.obtener_partida_lactancia(id)
+        if partida is None:
+            raise ValueError(f"No existe la partida {id}.")
+        if partida['motivo_cierre']:
+            raise ValueError("La partida ya está cerrada.")
+
+        motivo = request.form.get('motivo', '')
+        if motivo not in ('usada', 'descartada'):
+            raise ValueError(f"Motivo de cierre inválido: {motivo}")
+
+        fecha_cierre = _lac_parsear_fecha_cierre(request.form.get('fecha_cierre'))
+        notas = (request.form.get('notas') or '').strip()[:200] or None
+
+        database.cerrar_partida_lactancia(id, motivo, fecha_cierre, notas)
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/freezar', methods=['POST'])
+def api_lactancia_freezar():
+    """Freezar en bloque: combina las partidas de heladera tildadas en UNA
+    partida nueva de freezer (volumen = suma; fecha/hora de extracción = la
+    más vieja, que es la que define el vencimiento — criterio conservador).
+    Acción SIEMPRE manual (botón), nunca automática."""
+    from datetime import date
+    try:
+        crudo = (request.form.get('ids') or '').strip()
+        try:
+            ids = [int(x) for x in crudo.split(',') if x.strip()]
+        except ValueError:
+            raise ValueError(f"Ids inválidos: {crudo}")
+        if not ids:
+            raise ValueError("Tildá al menos una partida de heladera para freezar.")
+
+        partidas = []
+        for pid in ids:
+            p = database.obtener_partida_lactancia(pid)
+            if p is None:
+                raise ValueError(f"No existe la partida {pid}.")
+            if p['ubicacion'] != 'heladera':
+                raise ValueError("Solo se freezan partidas de heladera.")
+            if p['motivo_cierre']:
+                raise ValueError("Una de las partidas tildadas ya está cerrada.")
+            partidas.append(p)
+
+        volumen_ml = sum(p['volumen_ml'] for p in partidas)
+        if volumen_ml > 2000:
+            raise ValueError("El volumen combinado supera los 2000 ml; freezá en tandas.")
+
+        # La más vieja: fecha asc, luego hora asc (hora NULL primero = conservador)
+        mas_vieja = min(partidas,
+                        key=lambda p: (p['fecha_extraccion'], p['hora_extraccion'] or ''))
+        database.combinar_partidas_lactancia(
+            ids, mas_vieja['fecha_extraccion'], mas_vieja['hora_extraccion'],
+            volumen_ml, date.today().isoformat())
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/<int:id>/reabrir', methods=['POST'])
+def api_lactancia_reabrir(id):
+    try:
+        partida = database.obtener_partida_lactancia(id)
+        if partida is None:
+            raise ValueError(f"No existe la partida {id}.")
+        if not partida['motivo_cierre']:
+            raise ValueError("La partida no está cerrada.")
+        database.reabrir_partida_lactancia(id)
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/<int:id>/editar', methods=['POST'])
+def api_lactancia_editar(id):
+    try:
+        partida = database.obtener_partida_lactancia(id)
+        if partida is None:
+            raise ValueError(f"No existe la partida {id}.")
+
+        volumen_ml = _lac_parsear_volumen(request.form.get('volumen_ml'))
+        notas = (request.form.get('notas') or '').strip()[:200]
+        # Fecha/hora de extracción editables en ambas ubicaciones (`cargada`,
+        # la base del vencimiento de heladera, sigue siendo inmutable).
+        fecha, hora = _lac_parsear_extraccion(request.form)
+
+        database.editar_partida_lactancia(id, fecha, hora, volumen_ml, notas)
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/<int:id>/eliminar', methods=['POST'])
+def api_lactancia_eliminar(id):
+    try:
+        if database.obtener_partida_lactancia(id) is None:
+            raise ValueError(f"No existe la partida {id}.")
+        database.eliminar_partida_lactancia(id)
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+# =============================================================================
 # RUTA: Refresco manual de la cotización del dólar
 # URL: POST http://localhost:5000/api/cotizacion/refresh
 # =============================================================================
@@ -1088,6 +1501,30 @@ def settings():
             )
             flash('Carpeta de backups guardada.')
             return redirect(url_for('settings') + '#backup-db')
+
+        if accion == 'guardar_lactancia':
+            # Parámetros de conservación del banco de leche. Se validan de a
+            # uno; si alguno falla no se guarda nada (config intacta).
+            campos = (
+                ('lactancia_freezer_meses',        1, 24,  'Meses en freezer'),
+                ('lactancia_heladera_horas',       1, 168, 'Horas en heladera'),
+                ('lactancia_aviso_freezer_dias',   0, 365, 'Aviso freezer (días)'),
+                ('lactancia_aviso_heladera_horas', 0, 168, 'Aviso heladera (horas)'),
+            )
+            nuevos = {}
+            for clave, minimo, maximo, etiqueta in campos:
+                try:
+                    valor = int(request.form.get(clave, ''))
+                except (TypeError, ValueError):
+                    flash(f'No se guardó: "{etiqueta}" debe ser un número entero.')
+                    return redirect(url_for('settings') + '#lactancia')
+                if not minimo <= valor <= maximo:
+                    flash(f'No se guardó: "{etiqueta}" debe estar entre {minimo} y {maximo}.')
+                    return redirect(url_for('settings') + '#lactancia')
+                nuevos[clave] = valor
+            config.guardar_config(nuevos, CONFIG_FILE)
+            flash('Parámetros del banco de leche guardados.')
+            return redirect(url_for('settings') + '#lactancia')
 
         # Guardado general: solo campos visibles en la UI de Settings.
         # ngrok / OAuth / puerto se manejan fuera (config.json) y NO se tocan acá:
