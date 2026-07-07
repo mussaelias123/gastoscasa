@@ -18,9 +18,14 @@ Vencimiento, estado, dias_restantes y horas_restantes vienen CALCULADOS del
 servidor: acá no se recalculan, solo se formatean. Las listas ya llegan en
 orden FIFO (vencimiento ascendente) del servidor.
 
+Camino estándar de la leche: el form de alta carga SIEMPRE a heladera; el
+botón ⬆ del panel Heladera combina las partidas tildadas (checkbox por fila,
+tildado por defecto) en UNA partida de freezer (POST /api/lactancia/freezar).
+
 Cierres one-click: marcan con fecha de hoy y muestran un toast con botón
-"Deshacer" (8 s) que llama a /reabrir. Para cerrar con otra fecha está la
-hoja "Más opciones" (⋯) de cada partida.
+"Deshacer" (8 s) que llama a /reabrir (en una freezada, deshace la
+combinación completa). Para cerrar con otra fecha está la hoja "Más
+opciones" (⋯) de cada partida.
 ================================================================================
 */
 
@@ -33,14 +38,13 @@ hoja "Más opciones" (⋯) de cada partida.
 
     var cfPartidaId = null;      // id en el modal Cerrar con fecha
     var cfMotivo = 'usada';      // 'usada' | 'descartada' en ese modal
-    var trPartidaId = null;      // id en el modal Freezar sobrante
     var masPartidaId = null;     // id en la hoja Más opciones
     var edPartidaId = null;      // id en el Editor
     var eliminarId = null;       // id pendiente de confirmación de borrado
 
     // Instancias flatpickr (mismo patrón que calendario.js: valor real ISO
     // Y-m-d, altInput muestra d/m/Y). Se llenan en initFlatpickrs().
-    var fpFzFecha = null;
+    var fpExFecha = null;
     var fpCfFecha = null;
     var fpEdFecha = null;
 
@@ -267,7 +271,6 @@ hoja "Más opciones" (⋯) de cada partida.
         var vacio = !DATOS.freezer.length && !DATOS.heladera.length && !DATOS.historial.length;
 
         if (vacio) {
-            $('lac-tablero-sub').textContent = '';
             cont.innerHTML = '<div class="lac-vacia">' +
                 '<span class="lac-vacia-em">🍼</span>' +
                 '<span class="lac-vacia-t">Todavía no hay partidas cargadas</span>' +
@@ -275,10 +278,6 @@ hoja "Más opciones" (⋯) de cada partida.
             '</div>';
             return;
         }
-
-        $('lac-tablero-sub').textContent =
-            (t.freezer_bolsas || 0) + (t.freezer_bolsas === 1 ? ' bolsa' : ' bolsas') +
-            ' · ' + fmtMl(t.freezer_ml);
 
         var html = '<div class="lac-stats">' +
             stat(t.freezer_bolsas || 0, 'Bolsas disponibles') +
@@ -336,12 +335,14 @@ hoja "Más opciones" (⋯) de cada partida.
         '</div>';
     }
 
-    // En heladera JAMÁS se muestra la hora de carga; el vencimiento va relativo.
+    // En heladera JAMÁS se muestra la hora (regla del módulo); el vencimiento
+    // va relativo. El checkbox (tildado por defecto) marca qué partidas entran
+    // en la próxima freezada con el botón ⬆ del panel.
     function itemHeladera(p) {
         return '<div class="lac-item is-' + p.estado + '">' +
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' + pill(p.estado) + '</div>' +
-                '<div class="lac-item-meta">Cargada ' + fmtFechaCorta(p.fecha_extraccion) +
+                '<div class="lac-item-meta">Extraída ' + fmtFechaCorta(p.fecha_extraccion) +
                     ' <span class="lac-sep">·</span> <span class="lac-venc t-' + p.estado + '">' +
                     textoVencHeladera(p.horas_restantes) + '</span>' +
                 '</div>' + notasHtml(p) +
@@ -349,8 +350,10 @@ hoja "Más opciones" (⋯) de cada partida.
             '<div class="lac-item-actions">' +
                 '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="Se le dio a León (fecha de hoy)">✓ Usada</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-tirar="' + p.id + '" title="Descartar (fecha de hoy)">🗑</button>' +
-                '<button type="button" class="lac-btn-icono" data-lac-freezar="' + p.id + '" title="Freezar el sobrante">❄️</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-mas="' + p.id + '" title="Más opciones">⋯</button>' +
+                '<label class="lac-check" title="Entra en la próxima freezada (⬆)">' +
+                    '<input type="checkbox" class="lac-check-input" value="' + p.id + '" checked>' +
+                '</label>' +
             '</div>' +
         '</div>';
     }
@@ -416,16 +419,16 @@ hoja "Más opciones" (⋯) de cada partida.
         renderTablero();
         renderListas();
         actualizarBadgeNav(DATOS.badge);
-        // Hint del form de heladera con el parámetro vigente
-        var hint = $('lac-he-hint');
+        // Hint del form de alta con el parámetro vigente
+        var hint = $('lac-ex-hint');
         if (hint && DATOS.params.heladera_horas) {
-            hint.textContent = 'Queda registrada con la hora de carga automática. Vence a las ' +
-                DATOS.params.heladera_horas + ' h.';
+            hint.textContent = 'Va a la heladera y vence a las ' + DATOS.params.heladera_horas +
+                ' h de la carga. Lo que juntes lo freezás con el botón ⬆️ de Heladera.';
         }
     }
 
     // ── Overlays ─────────────────────────────────────────────────────────────
-    var OVERLAYS = ['lac-modal-cerrar', 'lac-modal-traslado', 'lac-modal-mas',
+    var OVERLAYS = ['lac-modal-cerrar', 'lac-modal-mas',
                     'lac-modal-editor', 'lac-modal-confirm'];
 
     function cerrarOverlay(ov) { ov.hidden = true; }
@@ -492,28 +495,30 @@ hoja "Más opciones" (⋯) de cada partida.
         }, function () { btn.disabled = false; });
     }
 
-    // ── Modal: Freezar sobrante ──────────────────────────────────────────────
-    function abrirTraslado(id) {
-        var p = buscarPartida(id);
-        if (!p) return;
-        trPartidaId = id;
-        $('lac-tr-sub').textContent = subPartida(p);
-        $('lac-tr-volumen').value = p.volumen_ml;
-        $('lac-modal-traslado').hidden = false;
-        $('lac-tr-volumen').focus();
-    }
-
-    function guardarTraslado() {
-        if (trPartidaId === null) return;
+    // ── Freezar la combinación de las tildadas (botón ⬆ del panel Heladera) ──
+    // Combina las partidas de heladera con checkbox tildado en UNA partida de
+    // freezer (el server suma volúmenes y usa la extracción más vieja).
+    // Deshacer llama a /reabrir de un origen y revierte la combinación entera.
+    function freezarSeleccionadas() {
+        var checks = document.querySelectorAll('#lac-lista-heladera .lac-check-input:checked');
+        var ids = [].map.call(checks, function (c) { return c.value; });
+        if (!ids.length) {
+            toast('⚠ Tildá al menos una partida de heladera.', 'error');
+            return;
+        }
         var params = new URLSearchParams();
-        params.append('volumen_ml', $('lac-tr-volumen').value);
-        var id = trPartidaId;
-        var btn = $('lac-tr-guardar');
+        params.append('ids', ids.join(','));
+        var primero = parseInt(ids[0], 10);
+        var btn = $('lac-btn-freezar');
         btn.disabled = true;
-        postAccion('/api/lactancia/' + id + '/trasladar', params, function () {
-            $('lac-modal-traslado').hidden = true;
-            toast('❄️ Sobrante freezado: partida nueva en el freezer.', 'ok',
-                function () { deshacerCierre(id, '↩ Deshecho: volvió a la heladera.'); });
+        postAccion('/api/lactancia/freezar', params, function (data) {
+            var vol = null;
+            (data.historial || []).forEach(function (p) {
+                if (ids.indexOf(String(p.id)) !== -1) vol = (vol || 0) + p.volumen_ml;
+            });
+            toast('❄️ ' + ids.length + (ids.length === 1 ? ' partida freezada' : ' partidas freezadas') +
+                (vol ? ': ' + fmtMl(vol) + ' al freezer.' : '.'),
+                'ok', function () { deshacerCierre(primero, '↩ Deshecho: volvieron a la heladera.'); });
         }, function () { btn.disabled = false; });
     }
 
@@ -526,7 +531,8 @@ hoja "Más opciones" (⋯) de cada partida.
         $('lac-modal-mas').hidden = false;
     }
 
-    // ── Modal: Editor ────────────────────────────────────────────────────────
+    // ── Modal: Editor (fecha/hora de extracción editables en ambas
+    //    ubicaciones; `cargada` — base del vencimiento de heladera — no) ──────
     function abrirEditor(id) {
         var p = buscarPartida(id);
         if (!p) return;
@@ -534,30 +540,22 @@ hoja "Más opciones" (⋯) de cada partida.
         $('lac-ed-sub').textContent = subPartida(p);
         $('lac-ed-volumen').value = p.volumen_ml;
         $('lac-ed-notas').value = p.notas || '';
-        var esFreezer = p.ubicacion === 'freezer';
-        $('lac-ed-bloque-freezer').hidden = !esFreezer;
-        $('lac-ed-hint').hidden = esFreezer;
-        if (esFreezer) {
-            fpEdFecha.setDate(p.fecha_extraccion, true);
-            $('lac-ed-hora').value = p.hora_extraccion || '';
-        }
+        fpEdFecha.setDate(p.fecha_extraccion, true);
+        $('lac-ed-hora').value = p.hora_extraccion || '';
         $('lac-modal-editor').hidden = false;
     }
 
     function guardarEditor() {
         if (edPartidaId === null) return;
-        var p = buscarPartida(edPartidaId);
         var params = new URLSearchParams();
         params.append('volumen_ml', $('lac-ed-volumen').value);
         params.append('notas', $('lac-ed-notas').value.trim());
-        if (p && p.ubicacion === 'freezer') {
-            if (!$('lac-ed-fecha').value) {
-                toast('⚠ La fecha de extracción es obligatoria.', 'error');
-                return;
-            }
-            params.append('fecha_extraccion', $('lac-ed-fecha').value);
-            params.append('hora_extraccion', $('lac-ed-hora').value);
+        if (!$('lac-ed-fecha').value) {
+            toast('⚠ La fecha de extracción es obligatoria.', 'error');
+            return;
         }
+        params.append('fecha_extraccion', $('lac-ed-fecha').value);
+        params.append('hora_extraccion', $('lac-ed-hora').value);
         var btn = $('lac-ed-guardar');
         btn.disabled = true;
         postAccion('/api/lactancia/' + edPartidaId + '/editar', params, function () {
@@ -594,63 +592,43 @@ hoja "Más opciones" (⋯) de cada partida.
         });
     }
 
-    // ── Forms de alta ────────────────────────────────────────────────────────
-    function resetFormFreezer() {
-        $('lac-form-freezer').reset();
-        fpFzFecha.setDate(isoDate(hoy()), true);   // reset no repone el altInput
-        $('lac-fz-hora').value = horaAhora();
+    // ── Form de alta (único: toda extracción entra por heladera) ────────────
+    function resetFormAlta() {
+        $('lac-form-extraccion').reset();
+        fpExFecha.setDate(isoDate(hoy()), true);   // reset no repone el altInput
+        $('lac-ex-hora').value = horaAhora();
     }
 
     function initForms() {
-        resetFormFreezer();
+        resetFormAlta();
 
-        $('lac-form-freezer').addEventListener('submit', function (e) {
+        $('lac-form-extraccion').addEventListener('submit', function (e) {
             e.preventDefault();
-            var vol = $('lac-fz-volumen').value.trim();
+            var vol = $('lac-ex-volumen').value.trim();
             if (!vol) {
                 toast('⚠ Cargá el volumen en ml.', 'error');
-                $('lac-fz-volumen').focus();
-                return;
-            }
-            var params = new URLSearchParams();
-            params.append('ubicacion', 'freezer');
-            params.append('volumen_ml', vol);
-            params.append('fecha_extraccion', $('lac-fz-fecha').value || '');
-            params.append('hora_extraccion', $('lac-fz-hora').value || '');
-            params.append('notas', $('lac-fz-notas').value.trim());
-
-            var btn = $('lac-fz-guardar');
-            btn.disabled = true;
-            postAccion('/api/lactancia/crear', params, function () {
-                toast('🧊 ' + fmtMl(vol) + ' al freezer.');
-                resetFormFreezer();
-                $('lac-fz-volumen').focus();
-            }, function () { btn.disabled = false; });
-        });
-
-        $('lac-form-heladera').addEventListener('submit', function (e) {
-            e.preventDefault();
-            var vol = $('lac-he-volumen').value.trim();
-            if (!vol) {
-                toast('⚠ Cargá el volumen en ml.', 'error');
-                $('lac-he-volumen').focus();
+                $('lac-ex-volumen').focus();
                 return;
             }
             var params = new URLSearchParams();
             params.append('ubicacion', 'heladera');
             params.append('volumen_ml', vol);
+            params.append('fecha_extraccion', $('lac-ex-fecha').value || '');
+            params.append('hora_extraccion', $('lac-ex-hora').value || '');
+            params.append('notas', $('lac-ex-notas').value.trim());
 
-            var btn = $('lac-he-guardar');
+            var btn = $('lac-ex-guardar');
             btn.disabled = true;
             postAccion('/api/lactancia/crear', params, function () {
                 toast('🥛 ' + fmtMl(vol) + ' a la heladera.');
-                $('lac-form-heladera').reset();
+                resetFormAlta();
+                $('lac-ex-volumen').focus();
             }, function () { btn.disabled = false; });
         });
     }
 
     function initFlatpickrs() {
-        fpFzFecha = flatpickr($('lac-fz-fecha'), {
+        fpExFecha = flatpickr($('lac-ex-fecha'), {
             locale: 'es', dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
             allowInput: true, maxDate: 'today'
         });
@@ -674,11 +652,11 @@ hoja "Más opciones" (⋯) de cada partida.
         initFlatpickrs();
         initForms();
 
-        // Botones fijos de modales
+        // Botones fijos
         $('lac-cf-guardar').addEventListener('click', guardarCierre);
-        $('lac-tr-guardar').addEventListener('click', guardarTraslado);
         $('lac-ed-guardar').addEventListener('click', guardarEditor);
         $('lac-confirm-si').addEventListener('click', confirmarEliminar);
+        $('lac-btn-freezar').addEventListener('click', freezarSeleccionadas);
 
         // Hoja "Más opciones" → acciones sobre masPartidaId
         $('lac-mas-usada').addEventListener('click', function () {
@@ -704,8 +682,6 @@ hoja "Más opciones" (⋯) de cada partida.
             if (btn) { cerrarDirecto(parseInt(btn.getAttribute('data-lac-usar'), 10), 'usada'); return; }
             btn = e.target.closest('[data-lac-tirar]');
             if (btn) { cerrarDirecto(parseInt(btn.getAttribute('data-lac-tirar'), 10), 'descartada'); return; }
-            btn = e.target.closest('[data-lac-freezar]');
-            if (btn) { abrirTraslado(parseInt(btn.getAttribute('data-lac-freezar'), 10)); return; }
             btn = e.target.closest('[data-lac-mas]');
             if (btn) { abrirMas(parseInt(btn.getAttribute('data-lac-mas'), 10)); return; }
             btn = e.target.closest('[data-lac-reabrir]');

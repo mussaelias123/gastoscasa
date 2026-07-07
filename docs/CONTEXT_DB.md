@@ -78,7 +78,7 @@ Nota: capa de datos PURA. `database.py` NO calcula próximas fechas ni estados
 | `motivo_cierre`    | TEXT    | NULL (abierta) \| `usada` \| `descartada` \| `trasladada`    |
 | `fecha_cierre`     | TEXT    | `YYYY-MM-DD`. NULL si abierta                                |
 | `notas`            | TEXT    | Libre. Default `''`                                          |
-| `origen_id`        | INTEGER | Id de la heladera de origen si nació de un traslado. NULL ok |
+| `origen_id`        | INTEGER | En heladeras cerradas `trasladada`: id de la partida de freezer nacida de la combinación (N heladeras → 1 freezer). NULL ok |
 | `actualizado`      | TEXT    | Timestamp ISO al modificar                                   |
 
 Nota: capa PURA — vencimiento/estado se calculan en `app.py` (`_lac_*`), nunca se almacenan. Cerradas (`motivo_cierre` no NULL) = historial, misma tabla.
@@ -119,8 +119,8 @@ Nota: capa PURA — vencimiento/estado se calculan en `app.py` (`_lac_*`), nunca
 | `agregar_partida_lactancia(ubicacion, fecha, hora, volumen_ml, notas='', origen_id=None)` | id | `cargada` se setea SIEMPRE acá (timestamp servidor) |
 | `editar_partida_lactancia(id, fecha, hora, volumen_ml, notas)` | None  | NO toca `ubicacion` ni `cargada`   |
 | `cerrar_partida_lactancia(id, motivo, fecha_cierre, notas=None)` | None | Solo `usada`\|`descartada`         |
-| `trasladar_partida_lactancia(id, fecha_nueva, hora_nueva, volumen_ml)` | id nuevo | Atómica: cierra heladera como `trasladada` + inserta freezer con `origen_id` |
-| `reabrir_partida_lactancia(id)`  | None                               | Atómica. Traslado: borra la hija si sigue abierta; ValueError si ya se cerró |
+| `combinar_partidas_lactancia(ids, fecha, hora, volumen_ml, fecha_cierre)` | id nuevo | Atómica: inserta 1 freezer combinada + cierra N heladeras como `trasladada` con `origen_id`=hija |
+| `reabrir_partida_lactancia(id)`  | None                               | Atómica. Freezada: borra la hija y reabre TODA la combinación; ValueError si la hija ya se cerró |
 | `eliminar_partida_lactancia(id)` | None                               | DELETE definitivo                  |
 
 ## `calcular_saldos()` — 8 claves del dict

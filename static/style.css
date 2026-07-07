@@ -4810,15 +4810,14 @@ body.has-dev-banner .settings-aside {
   min-height: 0;
 }
 
-/* Disclaimer médico fijo (regla del módulo: sobrevive siempre en la UI) */
-.lac-disclaimer {
-  font-size: 0.78rem;
-  color: var(--color-texto-muted);
-  background: var(--color-superficie);
-  border: 1px dashed var(--color-borde);
-  border-radius: var(--radio-borde);
-  padding: 0.5rem 0.8rem;
-  line-height: 1.45;
+/* Columnas del layout desktop. En mobile son transparentes: cada una apila
+   sus paneles y el conjunto queda como una sola columna (alta, resumen,
+   freezer, heladera, historial). */
+.lac-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
 }
 
 /* Aviso al entrar (solo si hay vencidas / por vencer) */
@@ -4927,33 +4926,43 @@ body.has-dev-banner .settings-aside {
   box-shadow: var(--sombra-focus);
 }
 
-.lac-alta-sep {
-  border-top: 1px dashed var(--color-borde);
-  margin: 0.8rem 0;
-}
-
-/* Heladera: una sola línea volumen + botón (carga ultrarrápida) */
-.lac-heladera-row {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.lac-heladera-row input {
-  flex: 1 1 auto;
-  box-sizing: border-box;
-  padding: 0.4rem 0.55rem;
-  border: 1px solid var(--color-borde);
+/* Botón ⬆ del panel Heladera: freeza la combinación de las partidas
+   tildadas. Acción primaria de la sección → acento (misma excepción que
+   .btn-acento, ver regla de colores). */
+.lac-btn-freezar {
+  width: 34px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--color-acento);
+  color: var(--color-texto-invertido);
+  border: none;
   border-radius: var(--radio-borde);
-  font-size: 0.86rem;
-  font-family: var(--fuente-principal);
-  color: var(--color-texto);
-  background: var(--color-superficie);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
 }
 
-.lac-heladera-row input:focus {
-  outline: none;
-  border-color: var(--color-acento);
-  box-shadow: var(--sombra-focus);
+.lac-btn-freezar:hover { background: var(--color-acento-oscuro); transform: translateY(-2px); }
+.lac-btn-freezar:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+/* Checkbox por partida de heladera: qué entra en la próxima freezada (⬆).
+   Tildado por defecto; alineado al borde derecho de la fila. */
+.lac-check {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.lac-check .lac-check-input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-acento);
 }
 
 .lac-btn-block {
@@ -5333,7 +5342,10 @@ body.has-dev-banner .settings-aside {
 
 .lac-toast-accion:hover { background: var(--color-texto-invertido); color: var(--color-texto); }
 
-/* ── Desktop >= 900px: grilla 2 columnas, alto = viewport, sin scroll ─────── */
+/* ── Desktop >= 900px: 3 columnas (flujo izq → der), alto = viewport ──────────
+   Izquierda = cargar + resumen · Centro = stock (freezer arriba / heladera
+   abajo, como una heladera de casa) · Derecha = historial. Sin scroll de
+   página: cada lista scrollea internamente. */
 @media (min-width: 900px) {
   /* Mismo patrón que body.cal-body: la página fija su alto al viewport.
      body.lac-body la agrega lactancia.js; :has() cubre el primer paint. */
@@ -5352,36 +5364,47 @@ body.has-dev-banner .settings-aside {
 
   .lac-wrap { flex: 1 1 auto; min-height: 0; }
 
-  /* El orden del DOM es el de mobile (alta primero); acá cada panel se
-     ubica por área. Freezer ocupa toda la columna izquierda restante. */
+  /* 3 columnas: el centro (stock) un poco más ancho que los laterales. */
   .lac-page {
     flex: 1 1 auto;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 416px;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "tablero  alta"
-      "freezer  heladera"
-      "freezer  historial";
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr) minmax(0, 5fr);
+    grid-template-rows: minmax(0, 1fr);
     gap: 1rem;
   }
 
-  .lac-panel--alta { grid-area: alta; }
-  .lac-panel--tablero { grid-area: tablero; }
-  .lac-panel--freezer { grid-area: freezer; min-height: 0; }
-  .lac-panel--heladera { grid-area: heladera; min-height: 0; }
-  .lac-panel--historial { grid-area: historial; min-height: 0; }
+  .lac-col { min-height: 0; }
 
-  /* Scroll interno en las listas largas, no en la página */
+  /* Izquierda: alta + resumen, cada uno a su alto natural (arriba). */
+  .lac-col--izq .lac-panel { flex: 0 0 auto; }
+
+  /* Centro: freezer y heladera parten el alto 50/50 y scrollean adentro. */
+  .lac-panel--freezer,
+  .lac-panel--heladera {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
   .lac-panel--freezer .lac-lista-scroll,
   .lac-panel--heladera .lac-lista-scroll {
     overflow-y: auto;
   }
+
+  /* Derecha: el historial ocupa toda la columna y scrollea adentro. */
+  .lac-panel--historial { flex: 1 1 auto; min-height: 0; }
+  .lac-panel--historial[open] { display: flex; flex-direction: column; }
+  .lac-panel--historial[open] .lac-lista-historial {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
 }
 
-@media (min-width: 900px) and (max-width: 1080px) {
-  .lac-page { grid-template-columns: minmax(0, 1fr) 360px; }
+/* Rango intermedio: laterales un poco más angostos para que el centro respire. */
+@media (min-width: 900px) and (max-width: 1200px) {
+  .lac-page { grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) minmax(0, 4fr); }
 }
 
 /* Mobile: acciones de fila más táctiles */

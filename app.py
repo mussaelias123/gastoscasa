@@ -399,24 +399,19 @@ def _lac_leer_form_alta(form):
     """Lee y valida el alta de una partida. Devuelve dict listo para
     database.agregar_partida_lactancia. Lanza ValueError.
 
-    Heladera: solo volumen — el momento real lo pone el servidor (`cargada`)
-    y la fecha/hora del form se ignoran a propósito (historia de carga
-    ultrarrápida; la hora jamás se muestra en heladera)."""
-    from datetime import date
-
+    El flujo estándar es a heladera (toda extracción entra por ahí, con su
+    fecha/hora de extracción; el momento real de carga lo pone el servidor en
+    `cargada`, que sigue siendo la base del vencimiento de heladera). La hora
+    de extracción se guarda pero en heladera no se muestra; importa al
+    freezar la combinación (la más vieja define el vencimiento de freezer)."""
     ubicacion = form.get('ubicacion', '')
     if ubicacion not in LAC_UBICACIONES:
         raise ValueError(f"Ubicación inválida: {ubicacion}")
 
     volumen_ml = _lac_parsear_volumen(form.get('volumen_ml'))
     notas = (form.get('notas') or '').strip()[:200]
-
-    if ubicacion == 'heladera':
-        return dict(ubicacion='heladera', fecha_extraccion=date.today().isoformat(),
-                    hora_extraccion=None, volumen_ml=volumen_ml, notas=notas)
-
     fecha, hora = _lac_parsear_extraccion(form)
-    return dict(ubicacion='freezer', fecha_extraccion=fecha, hora_extraccion=hora,
+    return dict(ubicacion=ubicacion, fecha_extraccion=fecha, hora_extraccion=hora,
                 volumen_ml=volumen_ml, notas=notas)
 
 
@@ -1207,10 +1202,10 @@ def api_actividades_eliminar(id):
 #
 # GET  /lactancia                        → página completa
 # GET  /api/lactancia                    → payload fresco (JSON)
-# POST /api/lactancia/crear              → alta (freezer o heladera)
+# POST /api/lactancia/crear              → alta (flujo estándar: heladera)
 # POST /api/lactancia/<id>/cerrar        → marcar usada o descartada
-# POST /api/lactancia/<id>/trasladar     → congelar sobrante de heladera
-# POST /api/lactancia/<id>/reabrir       → deshacer un cierre
+# POST /api/lactancia/freezar            → combinar heladeras tildadas → 1 freezer
+# POST /api/lactancia/<id>/reabrir       → deshacer un cierre (traslado: completo)
 # POST /api/lactancia/<id>/editar        → corregir volumen/fecha/hora/notas
 # POST /api/lactancia/<id>/eliminar      → borrado definitivo
 #
@@ -1276,26 +1271,43 @@ def api_lactancia_cerrar(id):
         return redirect(url_for('lactancia'))
 
 
-@app.route('/api/lactancia/<int:id>/trasladar', methods=['POST'])
-def api_lactancia_trasladar(id):
-    """Congelar sobrante: acción SIEMPRE manual (botón), nunca automática.
-    La partida de heladera se cierra como 'trasladada' (no cuenta como usada
-    ni descartada) y nace una partida de freezer con fecha de hoy."""
+@app.route('/api/lactancia/freezar', methods=['POST'])
+def api_lactancia_freezar():
+    """Freezar en bloque: combina las partidas de heladera tildadas en UNA
+    partida nueva de freezer (volumen = suma; fecha/hora de extracción = la
+    más vieja, que es la que define el vencimiento — criterio conservador).
+    Acción SIEMPRE manual (botón), nunca automática."""
     from datetime import date
     try:
-        partida = database.obtener_partida_lactancia(id)
-        if partida is None:
-            raise ValueError(f"No existe la partida {id}.")
-        if partida['ubicacion'] != 'heladera':
-            raise ValueError("Solo se puede congelar el sobrante de una partida de heladera.")
-        if partida['motivo_cierre']:
-            raise ValueError("La partida ya está cerrada.")
+        crudo = (request.form.get('ids') or '').strip()
+        try:
+            ids = [int(x) for x in crudo.split(',') if x.strip()]
+        except ValueError:
+            raise ValueError(f"Ids inválidos: {crudo}")
+        if not ids:
+            raise ValueError("Tildá al menos una partida de heladera para freezar.")
 
-        crudo = (request.form.get('volumen_ml') or '').strip()
-        volumen_ml = _lac_parsear_volumen(crudo) if crudo else partida['volumen_ml']
+        partidas = []
+        for pid in ids:
+            p = database.obtener_partida_lactancia(pid)
+            if p is None:
+                raise ValueError(f"No existe la partida {pid}.")
+            if p['ubicacion'] != 'heladera':
+                raise ValueError("Solo se freezan partidas de heladera.")
+            if p['motivo_cierre']:
+                raise ValueError("Una de las partidas tildadas ya está cerrada.")
+            partidas.append(p)
 
-        database.trasladar_partida_lactancia(
-            id, date.today().isoformat(), datetime.now().strftime('%H:%M'), volumen_ml)
+        volumen_ml = sum(p['volumen_ml'] for p in partidas)
+        if volumen_ml > 2000:
+            raise ValueError("El volumen combinado supera los 2000 ml; freezá en tandas.")
+
+        # La más vieja: fecha asc, luego hora asc (hora NULL primero = conservador)
+        mas_vieja = min(partidas,
+                        key=lambda p: (p['fecha_extraccion'], p['hora_extraccion'] or ''))
+        database.combinar_partidas_lactancia(
+            ids, mas_vieja['fecha_extraccion'], mas_vieja['hora_extraccion'],
+            volumen_ml, date.today().isoformat())
         if _es_ajax():
             return jsonify({'ok': True, **_lac_payload()})
         return redirect(url_for('lactancia'))
@@ -1340,13 +1352,9 @@ def api_lactancia_editar(id):
 
         volumen_ml = _lac_parsear_volumen(request.form.get('volumen_ml'))
         notas = (request.form.get('notas') or '').strip()[:200]
-
-        if partida['ubicacion'] == 'freezer':
-            fecha, hora = _lac_parsear_extraccion(request.form)
-        else:
-            # Heladera: fecha/hora no son editables (derivan del momento
-            # real de carga, que es inmutable).
-            fecha, hora = partida['fecha_extraccion'], partida['hora_extraccion']
+        # Fecha/hora de extracción editables en ambas ubicaciones (`cargada`,
+        # la base del vencimiento de heladera, sigue siendo inmutable).
+        fecha, hora = _lac_parsear_extraccion(request.form)
 
         database.editar_partida_lactancia(id, fecha, hora, volumen_ml, notas)
         if _es_ajax():

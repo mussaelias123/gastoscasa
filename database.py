@@ -208,10 +208,11 @@ def inicializar_db():
     # ubicacion: 'freezer' | 'heladera'.
     # cargada: timestamp ISO del servidor al insertar, INMUTABLE (fuente de
     #          verdad del vencimiento de heladera: cargada + N horas).
-    # hora_extraccion: 'HH:MM', solo freezer (NULL en heladera).
+    # hora_extraccion: 'HH:MM' (desempata FIFO; en heladera no se muestra).
     # motivo_cierre: NULL (abierta) | 'usada' | 'descartada' | 'trasladada'.
-    # origen_id: id de la partida de heladera de la que nació (solo partidas
-    #            de freezer creadas al congelar un sobrante).
+    # origen_id: en una heladera cerrada por traslado ('trasladada'), id de la
+    #            partida de freezer que nació de la combinación (N heladeras
+    #            → 1 freezer). Permite deshacer la combinación completa.
 
     conn.commit()   # Confirma los cambios (como un "guardar")
     conn.close()    # Cierra la conexión
@@ -889,36 +890,37 @@ def cerrar_partida_lactancia(partida_id, motivo, fecha_cierre, notas=None):
     conn.close()
 
 
-def trasladar_partida_lactancia(partida_id, fecha_extraccion_nueva, hora_extraccion_nueva,
-                                volumen_nuevo_ml):
+def combinar_partidas_lactancia(ids, fecha_extraccion, hora_extraccion, volumen_ml,
+                                fecha_cierre):
     """
-    Congela el sobrante de una partida de heladera (traspaso heladera → freezer).
+    Freeza en bloque: N partidas de heladera → 1 partida nueva de freezer.
 
     Pasos (una sola conexión/commit, operación atómica):
-      1. Cierra la heladera de origen: motivo_cierre='trasladada',
-         fecha_cierre=fecha_extraccion_nueva.
-      2. Inserta la partida nueva de freezer con origen_id=partida_id y
-         cargada=ahora (timestamp real de servidor).
+      1. Inserta la partida de freezer (volumen combinado, fecha/hora de
+         extracción más vieja — las calcula el caller —, cargada=ahora).
+      2. Cierra cada heladera de origen: motivo_cierre='trasladada',
+         fecha_cierre, y origen_id = id de la partida nueva (el vínculo que
+         permite deshacer la combinación completa).
     Devuelve el id de la partida nueva de freezer.
     """
     conn = conectar()
     cursor = conn.cursor()
     ahora = _ahora_iso()
     cursor.execute('''
-        UPDATE lactancia_partidas
-        SET motivo_cierre='trasladada', fecha_cierre=?, actualizado=?
-        WHERE id=?
-    ''', (fecha_extraccion_nueva, ahora, partida_id))
-    cursor.execute('''
         INSERT INTO lactancia_partidas (
             ubicacion, cargada, fecha_extraccion, hora_extraccion,
             volumen_ml, notas, origen_id, actualizado
         )
-        VALUES ('freezer', ?, ?, ?, ?, '', ?, ?)
-    ''', (ahora, fecha_extraccion_nueva, hora_extraccion_nueva, volumen_nuevo_ml,
-          partida_id, ahora))
-    conn.commit()
+        VALUES ('freezer', ?, ?, ?, ?, '', NULL, ?)
+    ''', (ahora, fecha_extraccion, hora_extraccion, volumen_ml, ahora))
     nuevo_id = cursor.lastrowid
+    for partida_id in ids:
+        cursor.execute('''
+            UPDATE lactancia_partidas
+            SET motivo_cierre='trasladada', fecha_cierre=?, origen_id=?, actualizado=?
+            WHERE id=?
+        ''', (fecha_cierre, nuevo_id, ahora, partida_id))
+    conn.commit()
     conn.close()
     return nuevo_id
 
@@ -927,34 +929,46 @@ def reabrir_partida_lactancia(partida_id):
     """
     Deshace el cierre de una partida (motivo_cierre=NULL, fecha_cierre=NULL).
 
-    Si el cierre era un traslado, borra además la partida de freezer hija
-    (origen_id=partida_id) para no duplicar leche — pero solo si la hija sigue
-    abierta: si ya se cerró (se usó o descartó), lanza ValueError y no toca
-    nada. Si la hija fue eliminada a mano, reabre igual. Todo en una sola
-    conexión/commit (operación atómica).
+    'usada'/'descartada': reabre esa partida y listo. 'trasladada' (freezada
+    en una combinación): deshace la combinación COMPLETA — borra la partida
+    de freezer hija (this.origen_id) y reabre TODAS las heladeras de esa
+    combinación — pero solo si la hija sigue abierta: si ya se cerró (se usó
+    o descartó), lanza ValueError y no toca nada. Si la hija fue eliminada a
+    mano, reabre solo esta partida. Todo en una sola conexión/commit.
     """
     conn = conectar()
     try:
         cursor = conn.cursor()
         fila = cursor.execute(
-            'SELECT motivo_cierre FROM lactancia_partidas WHERE id = ?', (partida_id,)
+            'SELECT motivo_cierre, origen_id FROM lactancia_partidas WHERE id = ?',
+            (partida_id,)
         ).fetchone()
         if fila is None:
             raise ValueError('La partida no existe.')
-        if fila['motivo_cierre'] == 'trasladada':
-            hijas = cursor.execute(
-                'SELECT id, motivo_cierre FROM lactancia_partidas WHERE origen_id = ?',
-                (partida_id,)
-            ).fetchall()
-            if any(h['motivo_cierre'] is not None for h in hijas):
-                raise ValueError('No se puede reabrir: la partida freezada con este sobrante ya se cerró.')
-            for h in hijas:
-                cursor.execute('DELETE FROM lactancia_partidas WHERE id = ?', (h['id'],))
+        ahora = _ahora_iso()
+
+        if fila['motivo_cierre'] == 'trasladada' and fila['origen_id']:
+            hija = cursor.execute(
+                'SELECT id, motivo_cierre FROM lactancia_partidas WHERE id = ?',
+                (fila['origen_id'],)
+            ).fetchone()
+            if hija is not None:
+                if hija['motivo_cierre'] is not None:
+                    raise ValueError('No se puede reabrir: la partida freezada con esta leche ya se cerró.')
+                cursor.execute('DELETE FROM lactancia_partidas WHERE id = ?', (hija['id'],))
+                cursor.execute('''
+                    UPDATE lactancia_partidas
+                    SET motivo_cierre=NULL, fecha_cierre=NULL, origen_id=NULL, actualizado=?
+                    WHERE origen_id=? AND motivo_cierre='trasladada'
+                ''', (ahora, hija['id']))
+                conn.commit()
+                return
+
         cursor.execute('''
             UPDATE lactancia_partidas
-            SET motivo_cierre=NULL, fecha_cierre=NULL, actualizado=?
+            SET motivo_cierre=NULL, fecha_cierre=NULL, origen_id=NULL, actualizado=?
             WHERE id=?
-        ''', (_ahora_iso(), partida_id))
+        ''', (ahora, partida_id))
         conn.commit()
     finally:
         conn.close()
