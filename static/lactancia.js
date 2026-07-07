@@ -336,8 +336,22 @@ opciones" (⋯) de cada partida.
     }
 
     // En heladera JAMÁS se muestra la hora (regla del módulo); el vencimiento
-    // va relativo. El checkbox (tildado por defecto) marca qué partidas entran
-    // en la próxima freezada con el botón ⬆ del panel.
+    // va relativo. El checkbox marca qué partidas entran en la próxima freezada
+    // (botón ⬆). Si la partida ya no es freezable (demasiadas horas en heladera
+    // o vencida — p.freezable=false del server), la casilla va destildada y
+    // bloqueada: no se puede pasar leche muy refrigerada al freezer.
+    function checkHeladera(p) {
+        if (p.freezable) {
+            return '<label class="lac-check" title="Entra en la próxima freezada (⬆)">' +
+                '<input type="checkbox" class="lac-check-input" value="' + p.id + '" checked>' +
+            '</label>';
+        }
+        return '<label class="lac-check is-off" title="Ya lleva ' + p.horas_en_heladera +
+                ' h en la heladera: no se puede pasar al freezer">' +
+            '<input type="checkbox" class="lac-check-input" value="' + p.id + '" disabled>' +
+        '</label>';
+    }
+
     function itemHeladera(p) {
         return '<div class="lac-item is-' + p.estado + '">' +
             '<div class="lac-item-body">' +
@@ -351,9 +365,7 @@ opciones" (⋯) de cada partida.
                 '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="Se le dio a León (fecha de hoy)">✓ Usada</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-tirar="' + p.id + '" title="Descartar (fecha de hoy)">🗑</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-mas="' + p.id + '" title="Más opciones">⋯</button>' +
-                '<label class="lac-check" title="Entra en la próxima freezada (⬆)">' +
-                    '<input type="checkbox" class="lac-check-input" value="' + p.id + '" checked>' +
-                '</label>' +
+                checkHeladera(p) +
             '</div>' +
         '</div>';
     }

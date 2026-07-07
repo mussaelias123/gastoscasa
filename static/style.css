@@ -4972,6 +4972,11 @@ body.has-dev-banner .settings-aside {
   accent-color: var(--color-acento);
 }
 
+/* Partida que ya no se puede freezar (demasiadas horas en heladera): casilla
+   bloqueada. Se ve tenue y no acepta click. */
+.lac-check.is-off { cursor: not-allowed; }
+.lac-check .lac-check-input:disabled { cursor: not-allowed; opacity: 0.4; }
+
 .lac-btn-block {
   display: block;
   width: 100%;
