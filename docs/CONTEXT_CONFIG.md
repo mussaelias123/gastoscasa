@@ -33,8 +33,8 @@
 | `secret_key`                 | `""`         | Flask session signing                        |
 | `auth_disabled`              | `False`      | Bypass login SOLO dev (triple cerrojo, ver `auth.py`) |
 | `backup_dir`                 | `"backups"`  | Carpeta de backups (relativa o absoluta)     |
-| `paleta_light`               | dict 22 vars | Colores base en modo claro (editables). Incluye `texto-invertido` (`#ffffff`), agregada para el módulo Calendario. |
-| `paleta_dark`                | dict 22 vars | Colores base en modo oscuro (editables). Misma clave `texto-invertido`.  |
+| `paleta_light`               | dict 23 vars | Colores base en modo claro (editables). Incluye `texto-invertido` (`#ffffff`, del módulo Calendario) y `persona-leon` (turquesa pastel, del módulo Rutina). |
+| `paleta_dark`                | dict 23 vars | Colores base en modo oscuro (editables). Mismas claves.                  |
 
 ## API
 - `cargar_config(ruta=None)` → dict con DEFAULTS + overrides del archivo. **Paletas: merge por clave** — si `config.json` trae una paleta guardada con menos claves que DEFAULTS (ej. anterior a `texto-invertido`), las claves nuevas de DEFAULTS sobreviven y los overrides guardados se respetan.

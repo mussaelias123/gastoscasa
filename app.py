@@ -73,6 +73,7 @@ PALETA_META = [
     ("peligro-suave",  "Peligro suave",     "Fondo badge error"),
     ("persona-elias",  "Persona — Elías",   "Identificador visual Elías"),
     ("persona-mari",   "Persona — Mari",    "Identificador visual Mari"),
+    ("persona-leon",   "Persona — León",    "Identificador visual León (rutina, lactancia)"),
     ("moneda-ars",     "Moneda — AR$",      "Badge AR$, gauge total ARS"),
     ("moneda-usd",     "Moneda — USD",      "Badge USD, gauge total USD"),
     ("deco-1",         "Deco 1",            "Barra de título (header)"),
@@ -513,6 +514,8 @@ def _static_version():
             os.path.join(app.static_folder, 'app.js'),
             os.path.join(app.static_folder, 'calendario.js'),
             os.path.join(app.static_folder, 'lactancia.js'),
+            os.path.join(app.static_folder, 'rutina.js'),
+            os.path.join(app.static_folder, 'rutina-actividades.js'),
         ]
         return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))
     except Exception:
@@ -1416,6 +1419,165 @@ def api_lactancia_eliminar(id):
         if _es_ajax():
             return jsonify({'ok': False, 'error': str(e)}), 500
         return redirect(url_for('lactancia'))
+
+
+# =============================================================================
+# MÓDULO RUTINA — helpers (rutina diaria de León + agendas de mamá/papá)
+# =============================================================================
+#
+# Las definiciones de rutina por etapa (cadenas de ítems, tips) y las
+# actividades de estimulación son constantes JS (static/rutina.js y
+# static/rutina-actividades.js). Acá solo se persisten los AJUSTES de
+# horario por (fecha, etapa, item_id) para que ambos teléfonos vean lo
+# mismo. La cascada de horarios se calcula en el front.
+# La fecha-clave la define SIEMPRE el cliente (su fecha local): el server
+# solo filtra por rango y hace upsert/delete — así no hay ambigüedad de
+# timezone entre server y teléfonos.
+
+_RUT_ETAPAS = ('actual', 'tres', 'guarderia')
+_RUT_ITEM_RE = _re.compile(r'^[a-z0-9-]{1,40}$')
+
+
+def _rut_semana_servidor():
+    """Domingo..sábado (ISO) de la semana que contiene a hoy. Solo fallback
+    para cuando el cliente no manda rango (p.ej. GET /rutina inicial)."""
+    from datetime import date
+    hoy = date.today()
+    desde = hoy - timedelta(days=(hoy.weekday() + 1) % 7)  # weekday(): lunes=0
+    return desde.isoformat(), (desde + timedelta(days=6)).isoformat()
+
+
+def _rut_parsear_fecha(valor, campo):
+    """Valida que `valor` sea 'YYYY-MM-DD' real (rechaza 2026-02-31)."""
+    valor = (valor or '').strip()
+    try:
+        datetime.strptime(valor, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError(f"Fecha inválida en '{campo}': {valor}")
+    return valor
+
+
+def _rut_parsear_rango(fuente):
+    """Lee desde/hasta (form o query). Default: semana del servidor.
+    Tope de 31 días como defensa contra rangos absurdos."""
+    desde = fuente.get('desde')
+    hasta = fuente.get('hasta')
+    if not desde or not hasta:
+        return _rut_semana_servidor()
+    desde = _rut_parsear_fecha(desde, 'desde')
+    hasta = _rut_parsear_fecha(hasta, 'hasta')
+    if hasta < desde:
+        raise ValueError("Rango inválido: 'hasta' es anterior a 'desde'.")
+    dias = (datetime.strptime(hasta, '%Y-%m-%d') - datetime.strptime(desde, '%Y-%m-%d')).days
+    if dias > 31:
+        raise ValueError("Rango demasiado largo (máximo 31 días).")
+    return desde, hasta
+
+
+def _rut_payload(desde, hasta):
+    """Ajustes del rango como dict anidado: fecha → etapa → item_id → minutos."""
+    from datetime import date
+    ajustes = {}
+    for fila in database.obtener_ajustes_rutina(desde, hasta):
+        ajustes.setdefault(fila['fecha'], {}) \
+               .setdefault(fila['etapa'], {})[fila['item_id']] = fila['inicio_min']
+    return {'ajustes': ajustes, 'hoy': date.today().isoformat(),
+            'desde': desde, 'hasta': hasta}
+
+
+def _rut_leer_form_ajuste(form):
+    """Valida el form de /api/rutina/ajustar. Lanza ValueError si algo falla."""
+    fecha = _rut_parsear_fecha(form.get('fecha'), 'fecha')
+    etapa = (form.get('etapa') or '').strip()
+    if etapa not in _RUT_ETAPAS:
+        raise ValueError(f"Etapa inválida: {etapa}")
+    item_id = (form.get('item_id') or '').strip()
+    if not _RUT_ITEM_RE.match(item_id):
+        raise ValueError(f"item_id inválido: {item_id}")
+    if item_id.startswith('mama-') or item_id.startswith('papa-'):
+        # Ids derivados que genera expandir() en el front para los ítems de
+        # adultos vinculados a León: heredan horario y NO son editables.
+        raise ValueError("Los ítems de adultos vinculados a León no son editables.")
+    try:
+        inicio_min = int(form.get('inicio_min', ''))
+    except ValueError:
+        raise ValueError("inicio_min debe ser un entero (minutos desde 00:00).")
+    if not 0 <= inicio_min <= 2879:
+        raise ValueError(f"inicio_min fuera de rango (0..2879): {inicio_min}")
+    return fecha, etapa, item_id, inicio_min
+
+
+# =============================================================================
+# MÓDULO RUTINA — rutas
+# =============================================================================
+#
+# GET  /rutina             → página completa (ajustes de la semana actual)
+# GET  /api/rutina         → payload fresco; query desde/hasta (fechas del cliente)
+# POST /api/rutina/ajustar → upsert de un ajuste (fecha, etapa, item_id, inicio_min)
+# POST /api/rutina/reset   → borra los ajustes de fecha+etapa ("↺ Plan original")
+#
+# Mismo contrato que Lactancia: mutaciones responden AJAX con
+# {'ok': True, **_rut_payload(desde, hasta)} (el cliente re-renderiza todo).
+# Errores: {'ok': False, 'error': str(e)}, 400 (validación) / 500. No-AJAX:
+# redirect. Los POST reciben también desde/hasta para responder el rango
+# que el cliente tiene en pantalla.
+
+@app.route('/rutina')
+def rutina():
+    desde, hasta = _rut_semana_servidor()
+    return render_template('rutina.html', datos=_rut_payload(desde, hasta))
+
+
+@app.route('/api/rutina')
+def api_rutina():
+    try:
+        desde, hasta = _rut_parsear_rango(request.args)
+        return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/rutina/ajustar', methods=['POST'])
+def api_rutina_ajustar():
+    try:
+        fecha, etapa, item_id, inicio_min = _rut_leer_form_ajuste(request.form)
+        database.guardar_ajuste_rutina(fecha, etapa, item_id, inicio_min)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/reset', methods=['POST'])
+def api_rutina_reset():
+    try:
+        fecha = _rut_parsear_fecha(request.form.get('fecha'), 'fecha')
+        etapa = (request.form.get('etapa') or '').strip()
+        if etapa not in _RUT_ETAPAS:
+            raise ValueError(f"Etapa inválida: {etapa}")
+        database.borrar_ajustes_rutina(fecha, etapa)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
 
 
 # =============================================================================

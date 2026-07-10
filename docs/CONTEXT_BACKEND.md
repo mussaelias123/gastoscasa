@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Este doc es para tareas que tocan `app.py`.
 
 ## Archivos del dominio
-- `app.py` (~2030 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulos Calendario y Lactancia.
+- `app.py` (~2200 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulos Calendario, Lactancia y Rutina.
 - Imports clave: `database`, `auth`, `cotizacion`, `config`.
 
 ## Patrón general de ruta
@@ -45,6 +45,10 @@
 | POST   | `/api/lactancia/<id>/reabrir` | `api_lactancia_reabrir` | Deshace un cierre. En una freezada, deshace la combinación COMPLETA (falla si la hija ya se cerró). |
 | POST   | `/api/lactancia/<id>/editar` | `api_lactancia_editar` | Corrige volumen/notas/fecha/hora (ambas ubicaciones). |
 | POST   | `/api/lactancia/<id>/eliminar` | `api_lactancia_eliminar` | Borrado definitivo. |
+| GET    | `/rutina`                 | `rutina`              | Página del módulo Rutina. Context: `datos=_rut_payload(semana del server)`. |
+| GET    | `/api/rutina`             | `api_rutina`          | JSON `{'ok': True, **_rut_payload(desde, hasta)}`. Query `desde`/`hasta` (fechas locales del CLIENTE; default semana del server). |
+| POST   | `/api/rutina/ajustar`     | `api_rutina_ajustar`  | Upsert de un ajuste de horario. Form `fecha`, `etapa`, `item_id`, `inicio_min` (+ `desde`/`hasta` para la respuesta). Valida con `_rut_leer_form_ajuste`. |
+| POST   | `/api/rutina/reset`       | `api_rutina_reset`    | Borra TODOS los ajustes de `fecha`+`etapa` ("↺ Plan original"). |
 
 > **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
@@ -53,7 +57,7 @@
 - `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `index` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
-- `PALETA_META`: lista `(key, nombre, uso)` con las 22 variables de paleta (incluye `texto-invertido`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
+- `PALETA_META`: lista `(key, nombre, uso)` con las 23 variables de paleta (incluye `texto-invertido` y `persona-leon`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
 - `_HEX_RE`: regex `^#[0-9a-fA-F]{6}$` para validar hex de la paleta.
 
 ## Módulo Calendario — constantes y helpers
@@ -87,6 +91,22 @@ Sin alta directa a freezer en la UI ni traspaso individual.
 - `_lac_payload()` → `{'freezer': [FIFO], 'heladera': [FIFO], 'historial': [cerradas DESC], 'tablero': {...}, 'params': {...}, 'badge': int}`. FIFO = vencimiento asc, desempate por hora de extracción y luego id. Tablero: usables = disponible+vence_pronto (vencidas NO suman); trasladadas no cuentan como usadas ni descartadas; heladera separada del freezer. Fuente de TODAS las respuestas AJAX del módulo.
 - `_lac_badge_count()` → abiertas vencidas + vence_pronto (ambas ubicaciones). Lo usa `inject_lactancia_badge` (context_processor con try/except → 0: expone `lac_badge` a todos los templates para el contador del nav; jamás rompe un render).
 - `_lac_parsear_volumen(valor)` / `_lac_parsear_extraccion(form)` / `_lac_parsear_fecha_cierre(valor)` / `_lac_leer_form_alta(form)`: validaciones (ValueError). Volumen int 1..2000; fechas no futuras; ambas ubicaciones exigen fecha/hora de extracción (el momento real de carga lo pone el server en `cargada`, base del vencimiento de heladera).
+
+## Módulo Rutina — helpers
+Rutina diaria de León + agendas de mamá/papá con horarios en cascada. Las
+DEFINICIONES de rutina por etapa y las actividades de estimulación son
+constantes JS (`static/rutina.js`, `static/rutina-actividades.js`): el backend
+solo persiste los AJUSTES de horario por `(fecha, etapa, item_id)` (tabla
+`rutina_ajustes`) para sincronizar ambos teléfonos. La cascada se calcula en
+el front. **La fecha-clave la define SIEMPRE el cliente** (su fecha local):
+el server solo filtra por rango y hace upsert/delete — así no hay ambigüedad
+de timezone. Sin badge de nav ni parámetros de Settings (v1).
+- `_RUT_ETAPAS = ('actual', 'tres', 'guarderia')`; `_RUT_ITEM_RE = ^[a-z0-9-]{1,40}$`.
+- `_rut_semana_servidor()` → `(desde, hasta)` ISO, domingo..sábado de la semana de hoy. Solo fallback cuando el cliente no manda rango.
+- `_rut_parsear_fecha(valor, campo)` → valida `YYYY-MM-DD` real (strptime); ValueError.
+- `_rut_parsear_rango(fuente)` → lee `desde`/`hasta` de form o query; default semana del server; rechaza rango invertido o >31 días.
+- `_rut_payload(desde, hasta)` → `{'ajustes': {fecha: {etapa: {item_id: min}}}, 'hoy', 'desde', 'hasta'}`. Fuente de TODAS las respuestas AJAX del módulo.
+- `_rut_leer_form_ajuste(form)` → `(fecha, etapa, item_id, inicio_min)`. Rechaza ids con prefijo `mama-`/`papa-` (derivados de `expandir()` en el front: heredan horario de León, NO editables) e `inicio_min` fuera de 0..2879 (las tomas nocturnas cruzan la medianoche).
 
 ## Schedulers en hilo
 - `iniciar_scheduler_backup()`: chequea cada hora; backup de `gastos.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.

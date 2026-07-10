@@ -1,0 +1,88 @@
+{#
+================================================================================
+ARCHIVO: templates/rutina.html
+================================================================================
+Módulo Rutina — rutina diaria de León (nacido 14/05/2026) junto a las agendas
+de Mamá y Papá, con horarios ajustables en cascada: corregir la hora de un
+ítem re-encadena los que siguen (inicio = fin del anterior); los anteriores
+no se mueven. Diseño del design handoff "Rutina" (hifi, una sola columna
+mobile-first, max-width 430px centrada).
+
+Zonas (de arriba a abajo):
+  1. Topbar sticky del módulo: header (⏰ Rutina + fecha / 🦁 León + edad)
+     y chips multi-select de usuarios (León / Mamá / Papá).
+  2. Selector de día (L M X J V S D, lunes primero).
+  3. Selector de etapa (2 meses "actual" / 3 meses "tres" / 4 meses-guardería).
+  4. Aviso contextual (solo si no se está viendo "hoy real").
+  5. Tarjetas "Ahora" por usuario (solo hoy real + etapa actual).
+  6. Línea de tiempo del día completo, con editor inline por fila editable
+     y botón "↺ Plan original".
+  7. Card de tips por etapa.
+
+Los contenedores con id rut-* los llena static/rutina.js: las definiciones de
+rutina por etapa son constantes JS ahí, las actividades de estimulación viven
+en static/rutina-actividades.js, y window.RUT_DATOS (inyectado abajo) trae
+solo los ajustes de horario persistidos (SQLite, sincronizados entre ambos
+teléfonos; ver rutina_ajustes en docs/CONTEXT_DB.md). El JS re-renderiza las
+zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
+================================================================================#}
+
+{% extends "base.html" %}
+
+{% block titulo %}Rutina{% endblock %}
+
+{% block contenido %}
+<div class="rut-wrap">
+
+  <!-- ══ 1. Topbar sticky del módulo ══════════════════════════════════════ -->
+  <div class="rut-topbar" id="rut-topbar">
+    <header class="rut-header">
+      <div>
+        <h1 class="rut-header-titulo">⏰ Rutina</h1>
+        <p class="rut-header-fecha" id="rut-fecha"></p>
+      </div>
+      <div class="rut-header-leon">
+        <div class="rut-header-nombre">🦁 León</div>
+        <div class="rut-header-edad" id="rut-edad"></div>
+      </div>
+    </header>
+    <nav class="rut-chips-nav">
+      <div class="rut-chips" id="rut-chips"></div>
+      <span class="rut-chips-leyenda">ver rutinas de…</span>
+    </nav>
+  </div>
+
+  <!-- ══ 2-4. Selectores de día y etapa + aviso contextual ════════════════ -->
+  <div class="rut-selectores">
+    <div class="rut-dias" id="rut-dias"></div>
+    <div class="rut-etapas" id="rut-etapas"></div>
+    <div class="rut-aviso" id="rut-aviso" hidden></div>
+  </div>
+
+  <!-- ══ 5. Tarjetas "Ahora" (solo hoy real + etapa actual) ═══════════════ -->
+  <div class="rut-ahora" id="rut-ahora"></div>
+
+  <!-- ══ 6. Línea de tiempo del día completo ══════════════════════════════ -->
+  <section class="rut-dia-completo">
+    <div class="rut-tl-head">
+      <span class="rut-tl-titulo">📋 El día completo</span>
+      <button type="button" class="rut-btn-fantasma" id="rut-reset">↺ Plan original</button>
+    </div>
+    <div class="rut-filas" id="rut-filas"></div>
+    <p class="rut-leyenda">Tocá una actividad para corregir su hora — el resto se
+      reacomoda solo. La teta va a demanda: los horarios son orientativos.</p>
+
+    <!-- ══ 7. Card de tips por etapa ══════════════════════════════════════ -->
+    <div class="rut-tips" id="rut-tips"></div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.RUT_DATOS = {{ datos|tojson }};
+</script>
+<script src="{{ url_for('static', filename='rutina-actividades.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='rutina.js') }}?v={{ static_version }}"></script>
+{% endblock %}
