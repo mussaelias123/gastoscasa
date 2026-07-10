@@ -214,6 +214,34 @@ def inicializar_db():
     #            partida de freezer que nació de la combinación (N heladeras
     #            → 1 freezer). Permite deshacer la combinación completa.
 
+    # -------------------------------------------------------------------
+    # Tabla rutina_ajustes: ajustes de horario del módulo Rutina.
+    # Una fila = "el ítem X de la etapa Y empezó a los N minutos" en una
+    # fecha concreta. Las definiciones de rutina (cadenas de ítems por
+    # etapa) NO viven acá: son constantes JS en static/rutina.js; acá solo
+    # se persisten los corrimientos para sincronizar ambos teléfonos.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_ajustes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha       TEXT    NOT NULL,
+            etapa       TEXT    NOT NULL,
+            item_id     TEXT    NOT NULL,
+            inicio_min  INTEGER NOT NULL,
+            actualizado TEXT,
+            UNIQUE (fecha, etapa, item_id)
+        )
+    ''')
+    # fecha: YYYY-MM-DD LOCAL del cliente (el teléfono define la fecha-clave).
+    # etapa: 'actual' | 'tres' | 'guarderia'.
+    # item_id: id del ítem editable ('siesta2', 't-noct1', 'gm-ext', ...).
+    #          Los ids derivados de adultos vinculados a León (prefijos
+    #          'mama-'/'papa-' que genera expandir() en el front) no son
+    #          editables y NUNCA se persisten.
+    # inicio_min: minutos desde 00:00, rango 0..2879 (las tomas nocturnas
+    #             cruzan la medianoche: noche 19:35 + off 570 = 1745).
+    # UNIQUE habilita el upsert (último ajuste gana).
+
     conn.commit()   # Confirma los cambios (como un "guardar")
     conn.close()    # Cierra la conexión
 
@@ -978,5 +1006,51 @@ def eliminar_partida_lactancia(partida_id):
     """Elimina la partida definitivamente (corrección de cargas erróneas)."""
     conn = conectar()
     conn.execute('DELETE FROM lactancia_partidas WHERE id = ?', (partida_id,))
+    conn.commit()
+    conn.close()
+
+
+# =============================================================================
+# FUNCIONES: Ajustes de rutina (módulo Rutina)
+# =============================================================================
+#
+# Capa de datos PURA: la cascada de horarios (re-encadenar los ítems que
+# siguen a un ajuste) se calcula en el front (static/rutina.js). Acá solo
+# se guardan/leen los corrimientos por (fecha, etapa, item_id).
+#
+
+def obtener_ajustes_rutina(desde, hasta):
+    """Devuelve los ajustes con fecha en [desde, hasta] (strings YYYY-MM-DD)."""
+    conn = conectar()
+    filas = conn.execute('''
+        SELECT fecha, etapa, item_id, inicio_min
+        FROM rutina_ajustes
+        WHERE fecha BETWEEN ? AND ?
+    ''', (desde, hasta)).fetchall()
+    conn.close()
+    return filas
+
+
+def guardar_ajuste_rutina(fecha, etapa, item_id, inicio_min):
+    """Inserta o pisa el ajuste de un ítem (último ajuste gana)."""
+    conn = conectar()
+    conn.execute('''
+        INSERT INTO rutina_ajustes (fecha, etapa, item_id, inicio_min, actualizado)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (fecha, etapa, item_id) DO UPDATE SET
+            inicio_min  = excluded.inicio_min,
+            actualizado = excluded.actualizado
+    ''', (fecha, etapa, item_id, inicio_min, _ahora_iso()))
+    conn.commit()
+    conn.close()
+
+
+def borrar_ajustes_rutina(fecha, etapa):
+    """Borra todos los ajustes de una fecha+etapa (botón "↺ Plan original")."""
+    conn = conectar()
+    conn.execute(
+        'DELETE FROM rutina_ajustes WHERE fecha = ? AND etapa = ?',
+        (fecha, etapa)
+    )
     conn.commit()
     conn.close()

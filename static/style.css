@@ -81,7 +81,7 @@ body.has-dev-banner {
    acá son accesibles en todo el CSS.
    ============================================================================ */
 :root {
-  /* ── Paleta de colores — 22 variables semánticas ──────────────────────────
+  /* ── Paleta de colores — 23 variables semánticas ──────────────────────────
      Para cambiar el tema de la app, solo modificar los valores de acá.
      Cada variable tiene un propósito específico definido en Settings → Paleta.
      ──────────────────────────────────────────────────────────────────────── */
@@ -115,6 +115,7 @@ body.has-dev-banner {
   /* Personas */
   --color-persona-elias:  #0284c7;   /* Identificador visual Elías (sky blue) */
   --color-persona-mari:   #7c3aed;   /* Identificador visual Mari (violet) */
+  --color-persona-leon:   #4dd0e1;   /* Identificador visual León (turquesa pastel — rutina, lactancia) */
 
   /* Monedas */
   --color-moneda-ars:     #74acdf;   /* Celeste argentina — badge AR$, selector, gauge Total */
@@ -4903,7 +4904,7 @@ body.has-dev-banner .settings-aside {
 
 .lac-form-grid[hidden] { display: none; }
 
-.lac-campo { margin-bottom: 0; }
+.lac-campo { margin-bottom: 0; min-width: 0; }
 
 .lac-campo label {
   display: block;
@@ -5436,4 +5437,450 @@ body.has-dev-banner .settings-aside {
   .lac-item { grid-template-columns: 1fr; }
   .lac-item-actions { justify-content: flex-end; }
   .lac-btn-icono { width: 36px; height: 36px; }
+}
+
+
+/* ============================================================================
+   RUTINA — módulo rutina diaria de León (templates/rutina.html)
+   Port hifi del design handoff "Rutina". Clases con prefijo rut-. Columna
+   única mobile-first (max 480px centrada). El color identificador de cada
+   persona lo fija --rut-color en los modificadores .rut--leon / .rut--mama /
+   .rut--papa (León = --color-persona-leon, variable 23 de la paleta).
+   TINTES (técnica nueva en el repo): fondos suaves por tipo de fila con
+   color-mix(in srgb, var(--color-X) N%, var(--color-superficie)). Regla:
+   SOLO var() adentro del color-mix (sigue valiendo "cero hardcode") y se
+   adapta solo a light/dark. La base .rut-fila queda en superficie como
+   fallback si el browser no soporta color-mix.
+   Los translúcidos rgba(255,255,255,…) de los chips van sobre el chrome
+   oscuro deco-2 — mismo patrón existente de la nav.
+   Única animación del módulo: rutinaPulso (badge AHORA).
+   ============================================================================ */
+
+.rut-wrap {
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+/* Color identificador por persona (dot, borde, barra, tinte de tarjeta) */
+.rut--leon { --rut-color: var(--color-persona-leon); }
+.rut--mama { --rut-color: var(--color-persona-mari); }
+.rut--papa { --rut-color: var(--color-persona-elias); }
+
+/* ── Topbar sticky del módulo (se pega debajo del .site-topbar; el top
+      exacto lo mide rutina.js porque depende del banner DEV) ──────────────── */
+.rut-topbar {
+  position: sticky;
+  top: 0;                    /* fallback; rutina.js lo ajusta */
+  z-index: 400;              /* bajo el .site-topbar (500) */
+  box-shadow: var(--sombra-card);
+  border-radius: var(--radio-borde);
+  overflow: hidden;
+}
+
+.rut-header {
+  background: var(--color-deco-1);
+  color: var(--color-texto-invertido);
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rut-header-titulo {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--color-texto-invertido);
+}
+
+.rut-header-fecha { margin: 0; opacity: 0.8; font-size: 0.7rem; }
+.rut-header-leon  { text-align: right; }
+.rut-header-nombre { font-size: 0.82rem; font-weight: 600; }
+.rut-header-edad   { font-size: 0.7rem; opacity: 0.8; }
+
+.rut-chips-nav {
+  background: var(--color-deco-2);
+  padding: 0.45rem 0.8rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.rut-chips { display: flex; gap: 0.4rem; }
+
+.rut-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  font-weight: 400;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.rut-chip.activo {
+  background: var(--color-superficie);
+  border-color: var(--color-superficie);
+  color: var(--rut-color);
+  font-weight: 700;
+}
+
+.rut-chips-leyenda {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── Selectores de día y etapa + aviso contextual ─────────────────────────── */
+.rut-selectores {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.rut-dias { display: flex; gap: 0.3rem; }
+
+.rut-dia-btn {
+  flex: 1;
+  padding: 0.4rem 0;
+  border-radius: var(--radio-borde);
+  font-family: var(--fuente-principal);
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-weight: 400;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  color: var(--color-texto-muted);
+}
+
+/* Hoy sin seleccionar: marcado en acento */
+.rut-dia-btn.es-hoy {
+  border-color: var(--color-acento);
+  color: var(--color-acento);
+}
+
+.rut-dia-btn.activo {
+  background: var(--color-deco-2);
+  border-color: var(--color-deco-2);
+  color: var(--color-texto-invertido);
+  font-weight: 700;
+}
+
+.rut-etapas { display: flex; gap: 0.35rem; align-items: stretch; }
+
+.rut-etapa-btn {
+  flex: 1;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--radio-borde);
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-borde);
+}
+
+.rut-etapa-btn.activo {
+  background: var(--color-superficie);
+  border-color: var(--color-acento);
+}
+
+.rut-etapa-sup {
+  display: block;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-texto-muted);
+}
+
+.rut-etapa-nombre {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-texto);
+}
+
+.rut-aviso {
+  background: var(--color-alerta-suave);
+  border: 1px solid var(--color-alerta);
+  border-radius: var(--radio-borde);
+  padding: 0.5rem 0.8rem;
+  font-size: 0.78rem;
+}
+
+/* ── Tarjetas "Ahora" (solo hoy real + etapa actual) ──────────────────────── */
+.rut-ahora { display: flex; flex-direction: column; gap: 0.5rem; }
+.rut-ahora:empty { display: none; }
+
+.rut-card-ahora {
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  padding: 0.9rem 1rem;
+  border-left: 4px solid var(--rut-color);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--rut-color) 7%, var(--color-superficie));
+}
+
+.rut-ahora-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.2rem;
+}
+
+.rut-ahora-quien {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rut-color);
+}
+
+.rut-ahora-rango {
+  font-size: 0.72rem;
+  font-family: 'Courier New', monospace;
+  color: var(--color-texto-muted);
+}
+
+.rut-ahora-cuerpo { display: flex; align-items: center; gap: 0.7rem; }
+.rut-ahora-emoji  { font-size: 2rem; line-height: 1; }
+.rut-ahora-texto  { flex: 1; min-width: 0; }
+.rut-ahora-titulo { font-size: 1.05rem; font-weight: 700; }
+.rut-ahora-sub    { font-size: 0.75rem; color: var(--color-texto-muted); }
+
+.rut-barra {
+  height: 7px;
+  background: var(--color-borde);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0.6rem 0 0.3rem;
+}
+
+.rut-barra-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--rut-color);
+}
+
+.rut-ahora-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rut-ahora-luego { font-size: 0.72rem; color: var(--color-texto-muted); }
+.rut-mono { font-family: 'Courier New', monospace; }
+
+.rut-btn-empezo {
+  padding: 0.25rem 0.6rem;
+  border: none;
+  border-radius: 20px;
+  background: var(--color-acento);
+  color: var(--color-texto-invertido);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+}
+
+/* ── Línea de tiempo del día completo ─────────────────────────────────────── */
+.rut-tl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.rut-tl-titulo { font-weight: 700; font-size: 0.95rem; }
+
+.rut-btn-fantasma {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--color-texto-muted);
+  font-size: 0.72rem;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+}
+
+.rut-filas {
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  overflow: hidden;
+}
+
+/* Base en superficie = fallback si el browser no soporta color-mix */
+.rut-fila {
+  border-bottom: 1px solid var(--color-borde);
+  background: var(--color-superficie);
+}
+
+.rut-fila:last-child { border-bottom: none; }
+
+/* Tintes por tipo de fila (adultos y juego quedan en superficie plana) */
+.rut-fila--sueno     { background: color-mix(in srgb, var(--color-acento) 8%,        var(--color-superficie)); }
+.rut-fila--noche,
+.rut-fila--noct      { background: color-mix(in srgb, var(--color-acento) 14%,       var(--color-superficie)); }
+.rut-fila--teta      { background: color-mix(in srgb, var(--color-persona-mari) 8%,  var(--color-superficie)); }
+.rut-fila--bano      { background: color-mix(in srgb, var(--color-persona-leon) 12%, var(--color-superficie)); }
+.rut-fila--guarderia { background: color-mix(in srgb, var(--color-alerta) 10%,       var(--color-superficie)); }
+.rut-fila.is-ahora   { background: color-mix(in srgb, var(--color-acento) 16%,       var(--color-superficie)); }
+
+.rut-fila-tap {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+}
+
+.rut-fila-tap[data-tap] { cursor: pointer; }
+
+.rut-fila-hora {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--color-texto-muted);
+  width: 44px;
+  flex-shrink: 0;
+}
+
+.rut-fila.is-ahora .rut-fila-hora {
+  font-weight: 700;
+  color: var(--color-acento);
+}
+
+.rut-fila-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--rut-color);
+}
+
+.rut-fila-emoji { font-size: 1.05rem; flex-shrink: 0; }
+.rut-fila-cuerpo { flex: 1; min-width: 0; }
+.rut-fila-titulo { font-size: 0.85rem; font-weight: 600; }
+
+.rut-badge-ahora {
+  margin-left: 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-texto-invertido);
+  background: var(--color-acento);
+  border-radius: 999px;
+  padding: 0.08rem 0.45rem;
+  vertical-align: middle;
+  animation: rutinaPulso 2s infinite;
+}
+
+.rut-fila-sub {
+  font-size: 0.7rem;
+  color: var(--color-texto-muted);
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.rut-fila-dur {
+  font-size: 0.68rem;
+  color: var(--color-texto-muted);
+  font-family: 'Courier New', monospace;
+  flex-shrink: 0;
+}
+
+/* ── Editor inline (tap en fila editable) ─────────────────────────────────── */
+.rut-editor {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem 0.7rem;
+  background: var(--color-fondo);
+}
+
+.rut-editor-btn {
+  width: 44px;
+  height: 34px;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-family: var(--fuente-principal);
+}
+
+.rut-editor-hora {
+  flex: 1;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.rut-editor-ahora,
+.rut-editor-ok {
+  height: 34px;
+  padding: 0 0.7rem;
+  border: none;
+  border-radius: var(--radio-borde);
+  color: var(--color-texto-invertido);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--fuente-principal);
+}
+
+.rut-editor-ahora { background: var(--color-acento); }
+.rut-editor-ok    { background: var(--color-deco-3); }
+
+.rut-leyenda {
+  font-size: 0.68rem;
+  color: var(--color-texto-muted);
+  margin: 0.5rem 0 0;
+  text-align: center;
+}
+
+/* ── Card de tips por etapa ───────────────────────────────────────────────── */
+.rut-tips-card {
+  margin-top: 0.9rem;
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  padding: 0.9rem 1rem;
+  border-left: 4px solid var(--color-persona-leon);
+}
+
+.rut-tips-titulo {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-texto-muted);
+  margin-bottom: 0.4rem;
+}
+
+.rut-tip {
+  font-size: 0.78rem;
+  margin-bottom: 0.35rem;
+  line-height: 1.45;
+}
+
+.rut-tips-nota {
+  font-size: 0.66rem;
+  color: var(--color-texto-muted);
+  margin-top: 0.55rem;
+}
+
+/* Única animación del módulo: pulso del badge AHORA */
+@keyframes rutinaPulso {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
 }

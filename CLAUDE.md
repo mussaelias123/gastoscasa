@@ -26,7 +26,7 @@
 | Cotización    | `cotizacion.py`, `tests/test_cotizacion.py`            | `docs/CONTEXT_COTIZACION.md`     |
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
-| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
+| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/rutina.js`, `static/rutina-actividades.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
 | Deploy/serv   | NSSM (`E:\Fondo\nssm.exe`, fuera de git), ngrok, `logs/`, `logutil.py` | `docs/CONTEXT_DEPLOY.md` |
 | Scripts ad-hoc| `TempScripts/`                                         | (one-shot, no producción)        |
 
@@ -49,6 +49,7 @@
 | Verificación final en navegador        | `CLAUDE.md` + `CONTEXT_DEPLOY.md` (sección ngrok)             | `verifier`              |
 | Script one-shot (backfill, migración)  | `CLAUDE.md` + `CONTEXT_DB.md`                                 | `db-engineer`           |
 | Módulo Lactancia (banco de leche)      | `CLAUDE.md` + `CONTEXT_BACKEND.md` + `CONTEXT_DB.md` + `CONTEXT_FRONTEND.md` (+ `CONTEXT_CONFIG.md` si tocás parámetros) | según capa |
+| Módulo Rutina (rutina diaria de León)  | `CLAUDE.md` + `CONTEXT_FRONTEND.md` (la lógica y las definiciones viven en `static/rutina.js`) + `CONTEXT_BACKEND.md`/`CONTEXT_DB.md` si tocás los ajustes persistidos | según capa |
 
 **Regla**: si la tarea entra en una sola fila, **no leer los demás `CONTEXT_*.md`**. Eso es el ahorro.
 
@@ -57,7 +58,7 @@
 ## 4. Reglas globales (NO negociables)
 
 1. **Paleta de colores**: todos los colores se referencian con `var(--color-...)`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres de color). Arquitectura:
-   - **Valores runtime**: `config.json → paleta_light / paleta_dark` (22 vars c/u). `base.html` los inyecta en `<style>` en el `<head>` como `:root { ... }` y `html[data-theme="dark"] { ... }`.
+   - **Valores runtime**: `config.json → paleta_light / paleta_dark` (23 vars c/u). `base.html` los inyecta en `<style>` en el `<head>` como `:root { ... }` y `html[data-theme="dark"] { ... }`.
    - **Fallbacks**: `static/style.css → :root` define los mismos valores por si `config.json` no carga.
    - **Excepciones documentadas** (hardcode intencional): `login.html` (página standalone sin acceso a config); `.dash-toggle-btn.activo { color: #ffffff }` (blanco intencional: mejor contraste que `var(--color-superficie)` en dark mode, 4.47:1 vs 3.27:1).
    - Definición y leyenda en página Settings → Paleta.

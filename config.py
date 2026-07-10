@@ -52,7 +52,7 @@ DEFAULTS = {
     # Ruta relativa a la carpeta del proyecto, o absoluta. Default: "backups".
     "backup_dir": "backups",
     # ── Paletas de colores — editables desde Settings ──────────────────────────
-    # 22 variables base. Los aliases (--color-primario, etc.) siguen en style.css
+    # 23 variables base. Los aliases (--color-primario, etc.) siguen en style.css
     # como var() y NO se mueven aquí.
     "paleta_light": {
         "acento":         "#4f46e5",
@@ -71,6 +71,7 @@ DEFAULTS = {
         "peligro-suave":  "#fee2e2",
         "persona-elias":  "#0284c7",
         "persona-mari":   "#7c3aed",
+        "persona-leon":   "#4dd0e1",
         "moneda-ars":     "#74acdf",
         "moneda-usd":     "#3d8b37",
         "deco-1":         "#1f2937",
@@ -95,6 +96,7 @@ DEFAULTS = {
         "peligro-suave":  "#7f1d1d",
         "persona-elias":  "#38bdf8",
         "persona-mari":   "#a78bfa",
+        "persona-leon":   "#80deea",
         "moneda-ars":     "#8cbce6",
         "moneda-usd":     "#5cb85c",
         "deco-1":         "#0b1220",

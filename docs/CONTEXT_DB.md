@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Para cambios de esquema, queries o saldos.
 
 ## Archivo
-- `database.py` (~968 líneas). Capa de datos pura. SQLite vía `sqlite3` stdlib.
+- `database.py` (~1056 líneas). Capa de datos pura. SQLite vía `sqlite3` stdlib.
 - Archivo físico: `gastos.db` en raíz (gitignored). Backups en `backups/` (gitignored).
 
 ## Esquema (actualizar al migrar)
@@ -83,6 +83,21 @@ Nota: capa de datos PURA. `database.py` NO calcula próximas fechas ni estados
 
 Nota: capa PURA — vencimiento/estado se calculan en `app.py` (`_lac_*`), nunca se almacenan. Cerradas (`motivo_cierre` no NULL) = historial, misma tabla.
 
+### Tabla `rutina_ajustes` (módulo Rutina — ajustes de horario)
+| Columna       | Tipo    | Notas                                                        |
+|---------------|---------|--------------------------------------------------------------|
+| `id`          | INTEGER | PK autoincremental                                           |
+| `fecha`       | TEXT    | `YYYY-MM-DD` **local del cliente** (el teléfono define la fecha-clave) |
+| `etapa`       | TEXT    | `actual` \| `tres` \| `guarderia`                            |
+| `item_id`     | TEXT    | Id del ítem editable (`siesta2`, `t-noct1`, `gm-ext`, ...). Los ids derivados de adultos vinculados a León (prefijos `mama-`/`papa-`) NO son editables y nunca se persisten |
+| `inicio_min`  | INTEGER | Minutos desde 00:00, rango 0..2879 (las tomas nocturnas cruzan la medianoche) |
+| `actualizado` | TEXT    | Timestamp ISO al insertar/pisar                              |
+
+`UNIQUE (fecha, etapa, item_id)` → habilita el upsert (último ajuste gana).
+Nota: capa PURA — la cascada de horarios (re-encadenar los ítems que siguen a
+un ajuste) se calcula en el FRONT (`static/rutina.js`); las definiciones de
+rutina por etapa son constantes JS, no viven en la DB.
+
 ### Migraciones
 `inicializar_db()` ejecuta `ALTER TABLE ADD COLUMN` en bucle silencioso (try/except). **Nunca borrar columnas**, solo agregar. Migración manual de datos → `TempScripts/`.
 
@@ -122,6 +137,9 @@ Nota: capa PURA — vencimiento/estado se calculan en `app.py` (`_lac_*`), nunca
 | `combinar_partidas_lactancia(ids, fecha, hora, volumen_ml, fecha_cierre)` | id nuevo | Atómica: inserta 1 freezer combinada + cierra N heladeras como `trasladada` con `origen_id`=hija |
 | `reabrir_partida_lactancia(id)`  | None                               | Atómica. Freezada: borra la hija y reabre TODA la combinación; ValueError si la hija ya se cerró |
 | `eliminar_partida_lactancia(id)` | None                               | DELETE definitivo                  |
+| `obtener_ajustes_rutina(desde, hasta)` | `list[Row]`                  | Ajustes con `fecha` en `[desde, hasta]` (strings ISO) |
+| `guardar_ajuste_rutina(fecha, etapa, item_id, inicio_min)` | None       | Upsert (`ON CONFLICT ... DO UPDATE`), refresca `actualizado` |
+| `borrar_ajustes_rutina(fecha, etapa)` | None                           | DELETE de todos los ajustes de esa fecha+etapa ("↺ Plan original") |
 
 ## `calcular_saldos()` — 8 claves del dict
 - `elias_ars`, `elias_usd`, `mari_ars`, `mari_usd` → saldos en moneda nativa.
