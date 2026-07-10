@@ -47,6 +47,8 @@ opciones" (⋯) de cada partida.
     var fpExFecha = null;
     var fpCfFecha = null;
     var fpEdFecha = null;
+    var fpExHora = null;   // hora extracción alta (24h)
+    var fpEdHora = null;   // hora extracción editor (24h)
 
     function $(id) { return document.getElementById(id); }
 
@@ -553,7 +555,7 @@ opciones" (⋯) de cada partida.
         $('lac-ed-volumen').value = p.volumen_ml;
         $('lac-ed-notas').value = p.notas || '';
         fpEdFecha.setDate(p.fecha_extraccion, true);
-        $('lac-ed-hora').value = p.hora_extraccion || '';
+        fpEdHora.setDate(p.hora_extraccion || '', true);
         $('lac-modal-editor').hidden = false;
     }
 
@@ -608,7 +610,7 @@ opciones" (⋯) de cada partida.
     function resetFormAlta() {
         $('lac-form-extraccion').reset();
         fpExFecha.setDate(isoDate(hoy()), true);   // reset no repone el altInput
-        $('lac-ex-hora').value = horaAhora();
+        fpExHora.setDate(horaAhora(), true);
     }
 
     function initForms() {
@@ -651,6 +653,15 @@ opciones" (⋯) de cada partida.
         fpEdFecha = flatpickr($('lac-ed-fecha'), {
             locale: 'es', dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
             allowInput: true, maxDate: 'today'
+        });
+        // Hora en 24h (evita el time picker nativo de iOS: 12h AM/PM y desbordante)
+        fpExHora = flatpickr($('lac-ex-hora'), {
+            enableTime: true, noCalendar: true, dateFormat: 'H:i',
+            time_24hr: true, allowInput: true
+        });
+        fpEdHora = flatpickr($('lac-ed-hora'), {
+            enableTime: true, noCalendar: true, dateFormat: 'H:i',
+            time_24hr: true, allowInput: true
         });
     }
 
