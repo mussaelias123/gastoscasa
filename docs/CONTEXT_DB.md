@@ -98,6 +98,13 @@ Nota: capa PURA — la cascada de horarios (re-encadenar los ítems que siguen a
 un ajuste) se calcula en el FRONT (`static/rutina.js`); las definiciones de
 rutina por etapa son constantes JS, no viven en la DB.
 
+### Tabla `rutina_dur` (módulo Rutina — duraciones estiradas)
+Espejo de `rutina_ajustes` pero para la DURACIÓN (drag estilo Teams: estirar un
+ítem desde su manija inferior). Columnas: `id`, `fecha` (`YYYY-MM-DD` local del
+cliente), `etapa`, `item_id`, `dur_min` (5..720), `actualizado`; `UNIQUE (fecha,
+etapa, item_id)` para el upsert. "↺ Plan original" (`borrar_ajustes_rutina`)
+borra TAMBIÉN estas filas.
+
 ### Tabla `rutina_tareas` (módulo Rutina — tareas añadidas por el usuario)
 | Columna      | Tipo    | Notas                                                        |
 |--------------|---------|--------------------------------------------------------------|
@@ -165,7 +172,9 @@ la cadena ANTES de la cascada (los siguientes se re-encadenan, en el front).
 | `eliminar_partida_lactancia(id)` | None                               | DELETE definitivo                  |
 | `obtener_ajustes_rutina(desde, hasta)` | `list[Row]`                  | Ajustes con `fecha` en `[desde, hasta]` (strings ISO) |
 | `guardar_ajuste_rutina(fecha, etapa, item_id, inicio_min)` | None       | Upsert (`ON CONFLICT ... DO UPDATE`), refresca `actualizado` |
-| `borrar_ajustes_rutina(fecha, etapa)` | None                           | DELETE de todos los ajustes de esa fecha+etapa ("↺ Plan original") |
+| `borrar_ajustes_rutina(fecha, etapa)` | None                           | DELETE de ajustes de inicio Y duraciones de esa fecha+etapa ("↺ Plan original") |
+| `obtener_duraciones_rutina(desde, hasta)` | `list[Row]`                | Duraciones estiradas con `fecha` en rango |
+| `guardar_duracion_rutina(fecha, etapa, item_id, dur_min)` | None        | Upsert (última gana) |
 | `obtener_tareas_rutina(desde, hasta)` | `list[Row]`                    | Tareas añadidas: permanentes (`fecha=''`) + fechadas en rango |
 | `crear_tarea_rutina(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)` | id nuevo | `fecha=''` = permanente |
 | `borrar_tarea_rutina(id)`        | None                               | Borra la tarea Y sus ocultos/ajustes `c-<id>` |

@@ -5614,6 +5614,47 @@ body.has-dev-banner .settings-aside {
   font-size: 0.78rem;
 }
 
+/* ── Tarjeta "Hoy por calendario" (discreta: todo en el mismo tono muted) ── */
+.rut-cal { display: flex; flex-direction: column; gap: 0.45rem; }
+.rut-cal[hidden] { display: none; }
+
+.rut-cal-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-deco-3);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-deco-3) 10%, var(--color-superficie));
+  color: var(--color-texto-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.rut-cal-card b { font-weight: 700; color: var(--color-texto-muted); }
+.rut-cal-txt { flex: 1; min-width: 0; }
+
+.rut-cal-x {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-deco-3);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-texto-muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: var(--fuente-principal);
+}
+
+/* El form de añadir también puede abrirse acá (bordes de card propios) */
+.rut-cal .rut-add-form {
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+}
+
 /* ── Tarjetas "Ahora" (solo hoy real + etapa actual) ──────────────────────── */
 .rut-ahora { display: flex; flex-direction: column; gap: 0.5rem; }
 .rut-ahora:empty { display: none; }
@@ -5684,6 +5725,25 @@ span.rut-ahora-emoji { cursor: default; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* "⏳ Aún en {anterior}": acción secundaria junto a "⏱ Empezó ahora" */
+.rut-btn-aun {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--color-texto-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rut-ahora-luego { font-size: 0.72rem; color: var(--color-texto-muted); }
@@ -5878,13 +5938,38 @@ span.rut-ahora-emoji { cursor: default; }
   font-family: var(--fuente-principal);
 }
 
+/* Hora editable: dos inputs numéricos (ruedita ±, teclado numérico al foco) */
 .rut-editor-hora {
   flex: 1;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   font-family: 'Courier New', monospace;
   font-size: 1.05rem;
   font-weight: 700;
 }
+
+.rut-hora-in {
+  width: 2.5rem;
+  padding: 0.2rem 0.1rem;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Sin flechitas nativas: la ruedita y el teclado ya cubren el ajuste */
+.rut-hora-in::-webkit-outer-spin-button,
+.rut-hora-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.rut-hora-sep { font-weight: 700; }
 
 .rut-editor-ahora,
 .rut-editor-ok {
@@ -6118,6 +6203,49 @@ span.rut-ahora-emoji { cursor: default; }
   z-index: 2;
 }
 
+/* ── Drag estilo Teams: mover (cuerpo) y estirar (manija inferior) ───────── */
+.rut-item[data-drag] { cursor: grab; }
+
+/* Atado a León (link puro): borde punteado + 🔗 — no se arrastra, lo sigue */
+.rut-item--fijado { border-left-style: dashed; }
+
+.rut-item-candado {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  opacity: 0.55;
+}
+
+.rut-item.is-arrastrando {
+  opacity: 0.85;
+  cursor: grabbing;
+  z-index: 6;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-texto) 30%, transparent),
+              0 0 0 2px var(--rut-color);
+}
+
+.rut-item-grip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;   /* estirar con el dedo sin pelearse con el scroll */
+}
+
+.rut-item-grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%);
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-borde);
+  background: color-mix(in srgb, var(--rut-color) 40%, var(--color-superficie));
+}
+
 /* Destello al aterrizar desde el emoji de una tarjeta "Ahora" */
 .rut-item, .rut-fila { transition: box-shadow 0.3s; }
 
@@ -6127,10 +6255,12 @@ span.rut-ahora-emoji { cursor: default; }
   z-index: 4;
 }
 
-/* Ítems dur 0 (sueño nocturno / A dormir): final abierto, se desvanecen */
+/* Ítems dur 0 (sueño nocturno / A dormir): se extienden hasta las 00:00
+   (o hasta la primera toma nocturna); apenas se desvanecen en la punta
+   porque el día sigue en la franja Madrugada */
 .rut-item--abierto {
-  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
-  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), rgba(0, 0, 0, 0.25));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), rgba(0, 0, 0, 0.25));
 }
 
 /* Línea "ahora" cruzando todas las columnas */
@@ -6211,6 +6341,18 @@ span.rut-ahora-emoji { cursor: default; }
   color: var(--color-texto-muted);
 }
 
+/* El popover entero cierra/cancela al tocarlo (salvo sus botones) */
+.rut-popover[data-cerrar],
+.rut-popover[data-q-cancelar] { cursor: pointer; }
+
+.rut-popover-cerrar {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-style: italic;
+  color: var(--color-texto-muted);
+  opacity: 0.8;
+}
+
 /* ✕ chiquita de los ítems del lienzo (modo edición) */
 .rut-item-quitar {
   position: absolute;
@@ -6230,7 +6372,8 @@ span.rut-ahora-emoji { cursor: default; }
 }
 
 /* Franja de tomas nocturnas */
-.rut-noche { border-top: 1px solid var(--color-borde); }
+/* Arriba del lienzo (el día arranca con las tomas de madrugada) */
+.rut-noche { border-bottom: 1px solid var(--color-borde); }
 
 .rut-noche-titulo {
   padding: 0.5rem 0.8rem 0.2rem;

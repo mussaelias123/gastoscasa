@@ -48,7 +48,8 @@
 | GET    | `/rutina`                 | `rutina`              | Página del módulo Rutina. Context: `datos=_rut_payload(semana del server)`. |
 | GET    | `/api/rutina`             | `api_rutina`          | JSON `{'ok': True, **_rut_payload(desde, hasta)}`. Query `desde`/`hasta` (fechas locales del CLIENTE; default semana del server). |
 | POST   | `/api/rutina/ajustar`     | `api_rutina_ajustar`  | Upsert de un ajuste de horario. Form `fecha`, `etapa`, `item_id`, `inicio_min` (+ `desde`/`hasta` para la respuesta). Valida con `_rut_leer_form_ajuste`. |
-| POST   | `/api/rutina/reset`       | `api_rutina_reset`    | Borra TODOS los ajustes de `fecha`+`etapa` ("↺ Plan original"). |
+| POST   | `/api/rutina/duracion`    | `api_rutina_duracion` | Estirar/encoger un ítem (drag estilo Teams). Form `fecha`, `etapa`, `item_id`, `dur_min` (5..720). Misma validación de ítems editables que `/ajustar`. |
+| POST   | `/api/rutina/reset`       | `api_rutina_reset`    | Borra TODOS los ajustes de inicio Y duraciones de `fecha`+`etapa` ("↺ Plan original"). |
 | POST   | `/api/rutina/tarea/crear` | `api_rutina_tarea_crear` | Alta de tarea añadida (modo edición). Form `etapa`, `usuario`, `titulo`, `emoji`, `inicio_min` (0..1439), `dur` (5..720), `fecha` (`''` = permanente). Valida con `_rut_leer_form_tarea`. |
 | POST   | `/api/rutina/tarea/borrar` | `api_rutina_tarea_borrar` | Baja definitiva de una tarea añadida (form `id`); limpia también sus ocultos/ajustes `c-<id>`. |
 | POST   | `/api/rutina/ocultar`     | `api_rutina_ocultar`  | Quita un ítem de la rutina. Form `etapa`, `item_id`, `fecha` (`''` = siempre). A diferencia de `/ajustar`, acá SÍ se aceptan ids derivados `mama-*`/`papa-*`. |
@@ -111,7 +112,7 @@ permanente (todos los días). Sin badge de nav ni parámetros de Settings (v1).
 - `_rut_semana_servidor()` → `(desde, hasta)` ISO, domingo..sábado de la semana de hoy. Solo fallback cuando el cliente no manda rango.
 - `_rut_parsear_fecha(valor, campo)` → valida `YYYY-MM-DD` real (strptime); ValueError. `_rut_parsear_fecha_opcional` acepta además `''` (= permanente).
 - `_rut_parsear_rango(fuente)` → lee `desde`/`hasta` de form o query; default semana del server; rechaza rango invertido o >31 días.
-- `_rut_payload(desde, hasta)` → `{'ajustes': {fecha: {etapa: {item_id: min}}}, 'hoy', 'desde', 'hasta', 'tareas': [...], 'ocultos': [...]}`. Fuente de TODAS las respuestas AJAX del módulo.
+- `_rut_payload(desde, hasta)` → `{'ajustes': {fecha: {etapa: {item_id: min}}}, 'duraciones': {misma forma, dur_min}, 'hoy', 'desde', 'hasta', 'tareas': [...], 'ocultos': [...], 'calendario': [...]}`. Fuente de TODAS las respuestas AJAX del módulo. `calendario` = actividades del módulo Calendario (no terminadas) cuya `_act_proxima_fecha()` es HOY, como `{id, nombre, responsable}` — alimenta la tarjeta "Hoy por calendario" de /rutina (ofrece añadirlas a la rutina; NO toca el estado del Calendario).
 - `_rut_leer_form_ajuste(form)` → `(fecha, etapa, item_id, inicio_min)`. Rechaza ids con prefijo `mama-`/`papa-` (derivados de `expandir()` en el front: heredan horario de León, NO editables) e `inicio_min` fuera de 0..2879 (las tomas nocturnas cruzan la medianoche).
 - `_rut_leer_form_tarea(form)` → `(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)`. Título 1..60 chars, emoji ≤8 chars, inicio 0..1439, dur 5..720.
 
