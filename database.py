@@ -243,6 +243,25 @@ def inicializar_db():
     # UNIQUE habilita el upsert (último ajuste gana).
 
     # -------------------------------------------------------------------
+    # Tabla rutina_dur: duraciones ajustadas del módulo Rutina (estirar una
+    # tarea desde su borde en la línea de tiempo, estilo Teams). Espejo de
+    # rutina_ajustes pero para la DURACIÓN: una fila = "el ítem X de la
+    # etapa Y dura N minutos" en una fecha concreta. "↺ Plan original"
+    # las borra junto con los ajustes de inicio.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_dur (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha       TEXT    NOT NULL,
+            etapa       TEXT    NOT NULL,
+            item_id     TEXT    NOT NULL,
+            dur_min     INTEGER NOT NULL,
+            actualizado TEXT,
+            UNIQUE (fecha, etapa, item_id)
+        )
+    ''')
+
+    # -------------------------------------------------------------------
     # Tabla rutina_tareas: tareas AÑADIDAS por el usuario al módulo Rutina
     # (botón "＋ Añadir tarea" del modo edición). Horario fijo (no entran
     # en la cascada). fecha = '' → permanente (todos los días de la etapa);
@@ -1085,12 +1104,43 @@ def guardar_ajuste_rutina(fecha, etapa, item_id, inicio_min):
 
 
 def borrar_ajustes_rutina(fecha, etapa):
-    """Borra todos los ajustes de una fecha+etapa (botón "↺ Plan original")."""
+    """Borra todos los ajustes de inicio Y de duración de una fecha+etapa
+    (botón "↺ Plan original")."""
     conn = conectar()
     conn.execute(
         'DELETE FROM rutina_ajustes WHERE fecha = ? AND etapa = ?',
         (fecha, etapa)
     )
+    conn.execute(
+        'DELETE FROM rutina_dur WHERE fecha = ? AND etapa = ?',
+        (fecha, etapa)
+    )
+    conn.commit()
+    conn.close()
+
+
+def obtener_duraciones_rutina(desde, hasta):
+    """Duraciones ajustadas con fecha en [desde, hasta] (strings YYYY-MM-DD)."""
+    conn = conectar()
+    filas = conn.execute('''
+        SELECT fecha, etapa, item_id, dur_min
+        FROM rutina_dur
+        WHERE fecha BETWEEN ? AND ?
+    ''', (desde, hasta)).fetchall()
+    conn.close()
+    return filas
+
+
+def guardar_duracion_rutina(fecha, etapa, item_id, dur_min):
+    """Inserta o pisa la duración de un ítem (última gana)."""
+    conn = conectar()
+    conn.execute('''
+        INSERT INTO rutina_dur (fecha, etapa, item_id, dur_min, actualizado)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (fecha, etapa, item_id) DO UPDATE SET
+            dur_min     = excluded.dur_min,
+            actualizado = excluded.actualizado
+    ''', (fecha, etapa, item_id, dur_min, _ahora_iso()))
     conn.commit()
     conn.close()
 
@@ -1126,12 +1176,14 @@ def crear_tarea_rutina(etapa, usuario, titulo, emoji, inicio_min, dur, fecha):
 
 
 def borrar_tarea_rutina(tarea_id):
-    """Baja definitiva de una tarea añadida (y sus ocultos/ajustes 'c-<id>')."""
+    """Baja definitiva de una tarea añadida (y sus ocultos/ajustes/duraciones
+    'c-<id>')."""
     conn = conectar()
     conn.execute('DELETE FROM rutina_tareas WHERE id = ?', (tarea_id,))
     item_id = f'c-{tarea_id}'
     conn.execute('DELETE FROM rutina_ocultos WHERE item_id = ?', (item_id,))
     conn.execute('DELETE FROM rutina_ajustes WHERE item_id = ?', (item_id,))
+    conn.execute('DELETE FROM rutina_dur WHERE item_id = ?', (item_id,))
     conn.commit()
     conn.close()
 

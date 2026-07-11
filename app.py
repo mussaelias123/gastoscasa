@@ -1476,16 +1476,30 @@ def _rut_parsear_rango(fuente):
 
 def _rut_payload(desde, hasta):
     """Ajustes del rango como dict anidado: fecha → etapa → item_id → minutos.
-    Incluye también las tareas añadidas y los ítems quitados (modo edición)."""
+    Incluye también las tareas añadidas, los ítems quitados (modo edición) y
+    las actividades del Calendario cuya próxima fecha es HOY (para la tarjeta
+    "Hoy por calendario", que ofrece añadirlas a la rutina)."""
     from datetime import date
+    hoy = date.today().isoformat()
     ajustes = {}
     for fila in database.obtener_ajustes_rutina(desde, hasta):
         ajustes.setdefault(fila['fecha'], {}) \
                .setdefault(fila['etapa'], {})[fila['item_id']] = fila['inicio_min']
-    return {'ajustes': ajustes, 'hoy': date.today().isoformat(),
+    duraciones = {}
+    for fila in database.obtener_duraciones_rutina(desde, hasta):
+        duraciones.setdefault(fila['fecha'], {}) \
+                  .setdefault(fila['etapa'], {})[fila['item_id']] = fila['dur_min']
+    calendario = []
+    for a in database.obtener_actividades(incluir_terminadas=False):
+        act = _act_enriquecer(a)
+        if act['proxima_fecha'] == hoy:
+            calendario.append({'id': act['id'], 'nombre': act['nombre'],
+                               'responsable': act['responsable']})
+    return {'ajustes': ajustes, 'duraciones': duraciones, 'hoy': hoy,
             'desde': desde, 'hasta': hasta,
             'tareas': [dict(f) for f in database.obtener_tareas_rutina(desde, hasta)],
-            'ocultos': [dict(f) for f in database.obtener_ocultos_rutina(desde, hasta)]}
+            'ocultos': [dict(f) for f in database.obtener_ocultos_rutina(desde, hasta)],
+            'calendario': calendario}
 
 
 _RUT_USUARIOS = ('leon', 'mama', 'papa')
@@ -1586,6 +1600,41 @@ def api_rutina_ajustar():
     try:
         fecha, etapa, item_id, inicio_min = _rut_leer_form_ajuste(request.form)
         database.guardar_ajuste_rutina(fecha, etapa, item_id, inicio_min)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/duracion', methods=['POST'])
+def api_rutina_duracion():
+    """Estirar/encoger un ítem en la línea de tiempo (drag estilo Teams).
+    Misma validación que /ajustar (mismos ítems editables); dur 5..720."""
+    try:
+        fecha = _rut_parsear_fecha(request.form.get('fecha'), 'fecha')
+        etapa = (request.form.get('etapa') or '').strip()
+        if etapa not in _RUT_ETAPAS:
+            raise ValueError(f"Etapa inválida: {etapa}")
+        item_id = (request.form.get('item_id') or '').strip()
+        if not _RUT_ITEM_RE.match(item_id):
+            raise ValueError(f"item_id inválido: {item_id}")
+        if item_id.startswith('mama-') or item_id.startswith('papa-'):
+            raise ValueError("Los ítems de adultos vinculados a León no son editables.")
+        try:
+            dur_min = int(request.form.get('dur_min', ''))
+        except ValueError:
+            raise ValueError("dur_min debe ser un entero (minutos).")
+        if not 5 <= dur_min <= 720:
+            raise ValueError(f"dur_min fuera de rango (5..720): {dur_min}")
+        database.guardar_duracion_rutina(fecha, etapa, item_id, dur_min)
         if _es_ajax():
             desde, hasta = _rut_parsear_rango(request.form)
             return jsonify({'ok': True, **_rut_payload(desde, hasta)})

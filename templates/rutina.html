@@ -52,10 +52,11 @@ zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
     </nav>
   </div>
 
-  <!-- ══ 2-4. Selectores de día y etapa + aviso contextual ════════════════ -->
+  <!-- ══ 2-4. Selectores de día y etapa + tarjeta calendario + aviso ══════ -->
   <div class="rut-selectores">
     <div class="rut-dias" id="rut-dias"></div>
     <div class="rut-etapas" id="rut-etapas"></div>
+    <div class="rut-cal" id="rut-cal" hidden></div>
     <div class="rut-aviso" id="rut-aviso" hidden></div>
   </div>
 
@@ -72,9 +73,11 @@ zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
       </span>
     </div>
     <div class="rut-filas" id="rut-filas"></div>
-    <p class="rut-leyenda">Tocá una actividad para ver el detalle o corregir su
-      hora — el resto se reacomoda solo. Con ✎ Editar podés añadir tareas nuevas
-      o quitar las que no usen. La teta va a demanda: los horarios son orientativos.</p>
+    <p class="rut-leyenda">Arrastrá una actividad para moverla, o estirala desde
+      su borde inferior para cambiar su duración (en el teléfono: toque sostenido
+      para mover). Las que tienen 🔗 siguen el horario de León y no se arrastran.
+      Tocá una actividad para ver el detalle. Con ✎ Editar podés añadir o quitar
+      tareas. La teta va a demanda: los horarios son orientativos.</p>
 
     <!-- ══ 7. Card de tips por etapa ══════════════════════════════════════ -->
     <div class="rut-tips" id="rut-tips"></div>
