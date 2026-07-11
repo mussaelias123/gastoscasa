@@ -280,24 +280,26 @@ def _lac_horas_en_heladera(p, ahora):
 
 
 def _lac_freezable(p, params, ahora):
-    """True si una partida de heladera TODAVÍA puede pasar al freezer: debe
-    estar abierta, no vencida, y con menos de `freezar_hasta_horas` de
-    antigüedad en la heladera. Regla de seguridad alimentaria: leche que ya
-    lleva demasiado tiempo refrigerada no se congela. Se valida acá (no solo
-    en el checkbox del front) para que el backend nunca acepte una freezada
-    inválida."""
+    """True si una partida de heladera todavía puede pasar al freezer: debe
+    estar abierta y no vencida. Sin tope de antigüedad — el usuario decide
+    caso a caso (ver `_lac_freezar_reciente` para el default del checkbox)."""
     if p['ubicacion'] != 'heladera' or p.get('motivo_cierre'):
         return False
-    if _lac_estado(p, params, ahora) == 'vencida':
-        return False
+    return _lac_estado(p, params, ahora) != 'vencida'
+
+
+def _lac_freezar_reciente(p, params, ahora):
+    """True si la partida lleva menos de `freezar_hasta_horas` en la heladera.
+    Solo define si el checkbox arranca tildado por defecto — no bloquea nada,
+    una partida más vieja sigue siendo freezable si el usuario la tilda."""
     return _lac_horas_en_heladera(p, ahora) < params['freezar_hasta_horas']
 
 
 def _lac_enriquecer(row, params, ahora):
     """Convierte una fila de `lactancia_partidas` en dict serializable JSON,
     agregando vencimiento (ISO), estado, dias_restantes (solo freezer) y
-    horas_restantes + horas_en_heladera + freezable (solo heladera). Los
-    textos relativos ("vence en 5 h") los arma el JS."""
+    horas_restantes + horas_en_heladera + freezable + freezar_reciente (solo
+    heladera). Los textos relativos ("vence en 5 h") los arma el JS."""
     p = dict(row)
     venc = _lac_vencimiento(p, params)
     p['vencimiento'] = venc.isoformat(timespec='seconds')
@@ -310,6 +312,7 @@ def _lac_enriquecer(row, params, ahora):
         p['horas_restantes'] = int((venc - ahora).total_seconds() // 3600)
         p['horas_en_heladera'] = int(_lac_horas_en_heladera(p, ahora))
         p['freezable'] = _lac_freezable(p, params, ahora)
+        p['freezar_reciente'] = _lac_freezar_reciente(p, params, ahora)
     return p
 
 
@@ -1325,9 +1328,7 @@ def api_lactancia_freezar():
             if p['motivo_cierre']:
                 raise ValueError("Una de las partidas tildadas ya está cerrada.")
             if not _lac_freezable(p, params, ahora):
-                raise ValueError(
-                    f"Una de las partidas tildadas ya no se puede freezar: pasó más de "
-                    f"{params['freezar_hasta_horas']} h en la heladera (o está vencida).")
+                raise ValueError("Una de las partidas tildadas ya está vencida: no se puede freezar.")
             partidas.append(p)
 
         volumen_ml = sum(p['volumen_ml'] for p in partidas)
