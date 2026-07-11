@@ -49,6 +49,10 @@
 | GET    | `/api/rutina`             | `api_rutina`          | JSON `{'ok': True, **_rut_payload(desde, hasta)}`. Query `desde`/`hasta` (fechas locales del CLIENTE; default semana del server). |
 | POST   | `/api/rutina/ajustar`     | `api_rutina_ajustar`  | Upsert de un ajuste de horario. Form `fecha`, `etapa`, `item_id`, `inicio_min` (+ `desde`/`hasta` para la respuesta). Valida con `_rut_leer_form_ajuste`. |
 | POST   | `/api/rutina/reset`       | `api_rutina_reset`    | Borra TODOS los ajustes de `fecha`+`etapa` ("↺ Plan original"). |
+| POST   | `/api/rutina/tarea/crear` | `api_rutina_tarea_crear` | Alta de tarea añadida (modo edición). Form `etapa`, `usuario`, `titulo`, `emoji`, `inicio_min` (0..1439), `dur` (5..720), `fecha` (`''` = permanente). Valida con `_rut_leer_form_tarea`. |
+| POST   | `/api/rutina/tarea/borrar` | `api_rutina_tarea_borrar` | Baja definitiva de una tarea añadida (form `id`); limpia también sus ocultos/ajustes `c-<id>`. |
+| POST   | `/api/rutina/ocultar`     | `api_rutina_ocultar`  | Quita un ítem de la rutina. Form `etapa`, `item_id`, `fecha` (`''` = siempre). A diferencia de `/ajustar`, acá SÍ se aceptan ids derivados `mama-*`/`papa-*`. |
+| POST   | `/api/rutina/restaurar`   | `api_rutina_restaurar` | Deshace TODOS los quitados de un ítem (permanente y fechados). Form `etapa`, `item_id`. |
 
 > **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
@@ -96,17 +100,20 @@ Sin alta directa a freezer en la UI ni traspaso individual.
 Rutina diaria de León + agendas de mamá/papá con horarios en cascada. Las
 DEFINICIONES de rutina por etapa y las actividades de estimulación son
 constantes JS (`static/rutina.js`, `static/rutina-actividades.js`): el backend
-solo persiste los AJUSTES de horario por `(fecha, etapa, item_id)` (tabla
-`rutina_ajustes`) para sincronizar ambos teléfonos. La cascada se calcula en
-el front. **La fecha-clave la define SIEMPRE el cliente** (su fecha local):
-el server solo filtra por rango y hace upsert/delete — así no hay ambigüedad
-de timezone. Sin badge de nav ni parámetros de Settings (v1).
-- `_RUT_ETAPAS = ('actual', 'tres', 'guarderia')`; `_RUT_ITEM_RE = ^[a-z0-9-]{1,40}$`.
+persiste los AJUSTES de horario por `(fecha, etapa, item_id)` (tabla
+`rutina_ajustes`), las TAREAS añadidas por el usuario (`rutina_tareas`) y los
+ítems QUITADOS (`rutina_ocultos`) para sincronizar ambos teléfonos. La cascada
+se calcula en el front. **La fecha-clave la define SIEMPRE el cliente** (su
+fecha local): el server solo filtra por rango y hace upsert/delete — así no
+hay ambigüedad de timezone. Convención `fecha = ''` en tareas/ocultos =
+permanente (todos los días). Sin badge de nav ni parámetros de Settings (v1).
+- `_RUT_ETAPAS = ('actual', 'tres', 'guarderia')`; `_RUT_USUARIOS = ('leon', 'mama', 'papa')`; `_RUT_ITEM_RE = ^[a-z0-9-]{1,40}$`.
 - `_rut_semana_servidor()` → `(desde, hasta)` ISO, domingo..sábado de la semana de hoy. Solo fallback cuando el cliente no manda rango.
-- `_rut_parsear_fecha(valor, campo)` → valida `YYYY-MM-DD` real (strptime); ValueError.
+- `_rut_parsear_fecha(valor, campo)` → valida `YYYY-MM-DD` real (strptime); ValueError. `_rut_parsear_fecha_opcional` acepta además `''` (= permanente).
 - `_rut_parsear_rango(fuente)` → lee `desde`/`hasta` de form o query; default semana del server; rechaza rango invertido o >31 días.
-- `_rut_payload(desde, hasta)` → `{'ajustes': {fecha: {etapa: {item_id: min}}}, 'hoy', 'desde', 'hasta'}`. Fuente de TODAS las respuestas AJAX del módulo.
+- `_rut_payload(desde, hasta)` → `{'ajustes': {fecha: {etapa: {item_id: min}}}, 'hoy', 'desde', 'hasta', 'tareas': [...], 'ocultos': [...]}`. Fuente de TODAS las respuestas AJAX del módulo.
 - `_rut_leer_form_ajuste(form)` → `(fecha, etapa, item_id, inicio_min)`. Rechaza ids con prefijo `mama-`/`papa-` (derivados de `expandir()` en el front: heredan horario de León, NO editables) e `inicio_min` fuera de 0..2879 (las tomas nocturnas cruzan la medianoche).
+- `_rut_leer_form_tarea(form)` → `(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)`. Título 1..60 chars, emoji ≤8 chars, inicio 0..1439, dur 5..720.
 
 ## Schedulers en hilo
 - `iniciar_scheduler_backup()`: chequea cada hora; backup de `gastos.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.

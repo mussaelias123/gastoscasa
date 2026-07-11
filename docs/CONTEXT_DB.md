@@ -98,6 +98,32 @@ Nota: capa PURA — la cascada de horarios (re-encadenar los ítems que siguen a
 un ajuste) se calcula en el FRONT (`static/rutina.js`); las definiciones de
 rutina por etapa son constantes JS, no viven en la DB.
 
+### Tabla `rutina_tareas` (módulo Rutina — tareas añadidas por el usuario)
+| Columna      | Tipo    | Notas                                                        |
+|--------------|---------|--------------------------------------------------------------|
+| `id`         | INTEGER | PK autoincremental. En el front el ítem es `c-<id>`          |
+| `etapa`      | TEXT    | `actual` \| `tres` \| `guarderia`                            |
+| `usuario`    | TEXT    | `leon` \| `mama` \| `papa`                                   |
+| `titulo`     | TEXT    | 1..60 chars                                                  |
+| `emoji`      | TEXT    | Opcional (`''` → el front muestra 📌)                        |
+| `inicio_min` | INTEGER | Minutos desde 00:00 (0..1439). Horario FIJO: NO entra en la cascada |
+| `dur`        | INTEGER | Duración en minutos (5..720)                                 |
+| `fecha`      | TEXT    | `''` = permanente (todos los días de la etapa) \| `YYYY-MM-DD` = solo ese día |
+| `creado`     | TEXT    | Timestamp ISO                                                |
+
+### Tabla `rutina_ocultos` (módulo Rutina — ítems quitados)
+| Columna   | Tipo    | Notas                                                        |
+|-----------|---------|--------------------------------------------------------------|
+| `id`      | INTEGER | PK autoincremental                                           |
+| `etapa`   | TEXT    | Como arriba                                                  |
+| `item_id` | TEXT    | Id del plan base (`siesta2`), derivado (`mama-siesta1`) o tarea añadida (`c-12`) |
+| `fecha`   | TEXT    | `''` = quitado siempre \| `YYYY-MM-DD` = solo ese día        |
+| `creado`  | TEXT    | Timestamp ISO                                                |
+
+`UNIQUE (etapa, item_id, fecha)` con sentinela `''` (no NULL) para que el
+insert-idempotente (`DO NOTHING`) funcione. Un ítem de León quitado sale de
+la cadena ANTES de la cascada (los siguientes se re-encadenan, en el front).
+
 ### Migraciones
 `inicializar_db()` ejecuta `ALTER TABLE ADD COLUMN` en bucle silencioso (try/except). **Nunca borrar columnas**, solo agregar. Migración manual de datos → `TempScripts/`.
 
@@ -140,6 +166,12 @@ rutina por etapa son constantes JS, no viven en la DB.
 | `obtener_ajustes_rutina(desde, hasta)` | `list[Row]`                  | Ajustes con `fecha` en `[desde, hasta]` (strings ISO) |
 | `guardar_ajuste_rutina(fecha, etapa, item_id, inicio_min)` | None       | Upsert (`ON CONFLICT ... DO UPDATE`), refresca `actualizado` |
 | `borrar_ajustes_rutina(fecha, etapa)` | None                           | DELETE de todos los ajustes de esa fecha+etapa ("↺ Plan original") |
+| `obtener_tareas_rutina(desde, hasta)` | `list[Row]`                    | Tareas añadidas: permanentes (`fecha=''`) + fechadas en rango |
+| `crear_tarea_rutina(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)` | id nuevo | `fecha=''` = permanente |
+| `borrar_tarea_rutina(id)`        | None                               | Borra la tarea Y sus ocultos/ajustes `c-<id>` |
+| `obtener_ocultos_rutina(desde, hasta)` | `list[Row]`                   | Quitados: permanentes + fechados en rango |
+| `ocultar_item_rutina(etapa, item_id, fecha)` | None                     | Insert idempotente (`DO NOTHING`) |
+| `restaurar_item_rutina(etapa, item_id)` | None                          | Borra TODOS los ocultos del ítem (permanente y fechados) |
 
 ## `calcular_saldos()` — 8 claves del dict
 - `elias_ars`, `elias_usd`, `mari_ars`, `mari_usd` → saldos en moneda nativa.
