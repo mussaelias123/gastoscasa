@@ -1475,14 +1475,56 @@ def _rut_parsear_rango(fuente):
 
 
 def _rut_payload(desde, hasta):
-    """Ajustes del rango como dict anidado: fecha → etapa → item_id → minutos."""
+    """Ajustes del rango como dict anidado: fecha → etapa → item_id → minutos.
+    Incluye también las tareas añadidas y los ítems quitados (modo edición)."""
     from datetime import date
     ajustes = {}
     for fila in database.obtener_ajustes_rutina(desde, hasta):
         ajustes.setdefault(fila['fecha'], {}) \
                .setdefault(fila['etapa'], {})[fila['item_id']] = fila['inicio_min']
     return {'ajustes': ajustes, 'hoy': date.today().isoformat(),
-            'desde': desde, 'hasta': hasta}
+            'desde': desde, 'hasta': hasta,
+            'tareas': [dict(f) for f in database.obtener_tareas_rutina(desde, hasta)],
+            'ocultos': [dict(f) for f in database.obtener_ocultos_rutina(desde, hasta)]}
+
+
+_RUT_USUARIOS = ('leon', 'mama', 'papa')
+
+
+def _rut_parsear_fecha_opcional(valor, campo):
+    """'' = permanente (todos los días); si no, fecha YYYY-MM-DD válida."""
+    valor = (valor or '').strip()
+    if valor == '':
+        return ''
+    return _rut_parsear_fecha(valor, campo)
+
+
+def _rut_leer_form_tarea(form):
+    """Valida el form de /api/rutina/tarea/crear. Lanza ValueError si falla."""
+    etapa = (form.get('etapa') or '').strip()
+    if etapa not in _RUT_ETAPAS:
+        raise ValueError(f"Etapa inválida: {etapa}")
+    usuario = (form.get('usuario') or '').strip()
+    if usuario not in _RUT_USUARIOS:
+        raise ValueError(f"Usuario inválido: {usuario}")
+    titulo = (form.get('titulo') or '').strip()
+    if not 1 <= len(titulo) <= 60:
+        raise ValueError("El título debe tener entre 1 y 60 caracteres.")
+    emoji = (form.get('emoji') or '').strip()[:8]   # emoji compuestos ocupan varios chars
+    try:
+        inicio_min = int(form.get('inicio_min', ''))
+    except ValueError:
+        raise ValueError("inicio_min debe ser un entero (minutos desde 00:00).")
+    if not 0 <= inicio_min <= 1439:
+        raise ValueError(f"inicio_min fuera de rango (0..1439): {inicio_min}")
+    try:
+        dur = int(form.get('dur', ''))
+    except ValueError:
+        raise ValueError("dur debe ser un entero (minutos).")
+    if not 5 <= dur <= 720:
+        raise ValueError(f"Duración fuera de rango (5..720): {dur}")
+    fecha = _rut_parsear_fecha_opcional(form.get('fecha'), 'fecha')
+    return etapa, usuario, titulo, emoji, inicio_min, dur, fecha
 
 
 def _rut_leer_form_ajuste(form):
@@ -1566,6 +1608,105 @@ def api_rutina_reset():
         if etapa not in _RUT_ETAPAS:
             raise ValueError(f"Etapa inválida: {etapa}")
         database.borrar_ajustes_rutina(fecha, etapa)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+# --- Modo edición: tareas añadidas y quitadas --------------------------------
+# POST /api/rutina/tarea/crear  → alta (fecha '' = permanente, o YYYY-MM-DD)
+# POST /api/rutina/tarea/borrar → baja definitiva de una tarea añadida
+# POST /api/rutina/ocultar      → quita un ítem (base, derivado o añadido)
+# POST /api/rutina/restaurar    → deshace TODOS los quitados de un ítem
+
+@app.route('/api/rutina/tarea/crear', methods=['POST'])
+def api_rutina_tarea_crear():
+    try:
+        etapa, usuario, titulo, emoji, inicio_min, dur, fecha = \
+            _rut_leer_form_tarea(request.form)
+        database.crear_tarea_rutina(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/tarea/borrar', methods=['POST'])
+def api_rutina_tarea_borrar():
+    try:
+        try:
+            tarea_id = int(request.form.get('id', ''))
+        except ValueError:
+            raise ValueError("id de tarea inválido.")
+        database.borrar_tarea_rutina(tarea_id)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/ocultar', methods=['POST'])
+def api_rutina_ocultar():
+    try:
+        etapa = (request.form.get('etapa') or '').strip()
+        if etapa not in _RUT_ETAPAS:
+            raise ValueError(f"Etapa inválida: {etapa}")
+        item_id = (request.form.get('item_id') or '').strip()
+        # A diferencia de /ajustar, acá SÍ se aceptan ids derivados de adultos
+        # ('mama-*'/'papa-*'): quitar una fila vinculada es válido.
+        if not _RUT_ITEM_RE.match(item_id):
+            raise ValueError(f"item_id inválido: {item_id}")
+        fecha = _rut_parsear_fecha_opcional(request.form.get('fecha'), 'fecha')
+        database.ocultar_item_rutina(etapa, item_id, fecha)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/restaurar', methods=['POST'])
+def api_rutina_restaurar():
+    try:
+        etapa = (request.form.get('etapa') or '').strip()
+        if etapa not in _RUT_ETAPAS:
+            raise ValueError(f"Etapa inválida: {etapa}")
+        item_id = (request.form.get('item_id') or '').strip()
+        if not _RUT_ITEM_RE.match(item_id):
+            raise ValueError(f"item_id inválido: {item_id}")
+        database.restaurar_item_rutina(etapa, item_id)
         if _es_ajax():
             desde, hasta = _rut_parsear_rango(request.form)
             return jsonify({'ok': True, **_rut_payload(desde, hasta)})

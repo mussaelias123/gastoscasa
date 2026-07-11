@@ -5649,7 +5649,19 @@ body.has-dev-banner .settings-aside {
 }
 
 .rut-ahora-cuerpo { display: flex; align-items: center; gap: 0.7rem; }
-.rut-ahora-emoji  { font-size: 2rem; line-height: 1; }
+
+/* Puede ser <button> (clickeable: salta al ítem en la línea de tiempo) */
+.rut-ahora-emoji {
+  font-size: 2rem;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+span.rut-ahora-emoji { cursor: default; }
 .rut-ahora-texto  { flex: 1; min-width: 0; }
 .rut-ahora-titulo { font-size: 1.05rem; font-weight: 700; }
 .rut-ahora-sub    { font-size: 0.75rem; color: var(--color-texto-muted); }
@@ -5717,13 +5729,52 @@ body.has-dev-banner .settings-aside {
   overflow: hidden;
 }
 
-/* Base en superficie = fallback si el browser no soporta color-mix */
+/* Base en superficie = fallback si el browser no soporta color-mix.
+   LÍNEA DE TIEMPO VERTICAL: cada fila mide --rut-alto (proporcional a la
+   duración, lo setea rutina.js: 1.2 px/min, piso 44 / techo 280). La espina
+   (::before) es la línea continua que une los puntos; la veta (::after) es
+   el segmento en color de la persona que "ocupa" la duración de la fila.
+   Eje x de ambas = padding .8rem + hora 44px + gap .6rem + centro del dot. */
 .rut-fila {
-  border-bottom: 1px solid var(--color-borde);
+  position: relative;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-borde) 55%, transparent);
   background: var(--color-superficie);
 }
 
 .rut-fila:last-child { border-bottom: none; }
+
+/* Espina: línea vertical continua, neutra */
+.rut-fila::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(0.8rem + 44px + 0.6rem + 3px);
+  width: 2px;
+  background: var(--color-borde);
+}
+
+/* Veta de duración: del punto de inicio hacia abajo, en color de la persona */
+.rut-fila::after {
+  content: '';
+  position: absolute;
+  top: 1.45rem;
+  bottom: 0.45rem;
+  left: calc(0.8rem + 44px + 0.6rem);
+  width: 8px;
+  border-radius: 4px;
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--rut-color) 45%, var(--color-superficie));
+}
+
+/* Filas "abiertas" (dur 0: sueño nocturno, A dormir): sin veta */
+.rut-fila--abierta::after { display: none; }
+
+/* Tomas nocturnas: espina punteada (el eje de tiempo "salta" de madrugada) */
+.rut-fila--noct::before {
+  background: repeating-linear-gradient(to bottom,
+    var(--color-borde) 0 4px, transparent 4px 9px);
+}
 
 /* Tintes por tipo de fila (adultos y juego quedan en superficie plana) */
 .rut-fila--sueno     { background: color-mix(in srgb, var(--color-acento) 8%,        var(--color-superficie)); }
@@ -5736,9 +5787,11 @@ body.has-dev-banner .settings-aside {
 
 .rut-fila-tap {
   display: flex;
-  align-items: center;
+  align-items: flex-start;          /* contenido arriba: la hora de inicio */
   gap: 0.6rem;
   padding: 0.55rem 0.8rem;
+  min-height: var(--rut-alto, 44px);/* alto proporcional a la duración */
+  position: relative;               /* por encima de espina y veta */
 }
 
 .rut-fila-tap[data-tap] { cursor: pointer; }
@@ -5757,15 +5810,23 @@ body.has-dev-banner .settings-aside {
   color: var(--color-acento);
 }
 
+/* Punto de inicio sobre la espina; el aro superficie lo separa de la veta */
 .rut-fila-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  margin-top: 0.25rem;
   background: var(--rut-color);
+  box-shadow: 0 0 0 2px var(--color-superficie);
 }
 
-.rut-fila-emoji { font-size: 1.05rem; flex-shrink: 0; }
+.rut-fila.is-ahora .rut-fila-dot {
+  box-shadow: 0 0 0 2px var(--color-superficie),
+              0 0 0 5px color-mix(in srgb, var(--rut-color) 30%, var(--color-superficie));
+}
+
+.rut-fila-emoji { font-size: 1.05rem; flex-shrink: 0; margin-top: -0.05rem; }
 .rut-fila-cuerpo { flex: 1; min-width: 0; }
 .rut-fila-titulo { font-size: 0.85rem; font-weight: 600; }
 
@@ -5883,4 +5944,528 @@ body.has-dev-banner .settings-aside {
 @keyframes rutinaPulso {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.55; }
+}
+
+/* ── Lienzo de columnas: una línea de tiempo por persona ──────────────────
+      Eje de tiempo real (1.2 px/min, lo calcula rutina.js e inyecta top/
+      height inline). Gutter de 34 px con etiquetas de hora; una .rut-col por
+      persona activa; ítems absolutos con borde en color persona y tinte por
+      tipo; línea "ahora" cruzando todo; popover superpuesto para detalle/
+      editor. Las nocturnas van aparte en la franja .rut-noche (filas
+      .rut-fila clásicas). ─────────────────────────────────────────────────── */
+.rut-canvas-head {
+  display: flex;
+  gap: 4px;
+  padding: 0.45rem 4px 0.35rem 40px;
+  background: var(--color-superficie);
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.rut-col-head {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.32rem 0;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--rut-color);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--rut-color) 10%, var(--color-superficie));
+}
+
+.rut-canvas {
+  position: relative;
+  background: var(--color-superficie);
+}
+
+.rut-gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--color-borde) 55%, transparent);
+}
+
+.rut-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40px;
+}
+
+.rut-hora-label {
+  position: absolute;
+  left: 3px;
+  transform: translateY(-50%);
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: var(--color-texto-muted);
+  background: var(--color-superficie);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.rut-cols {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 40px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+}
+
+.rut-col {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.rut-col + .rut-col {
+  border-left: 1px dashed color-mix(in srgb, var(--color-borde) 70%, transparent);
+}
+
+/* Ítem del lienzo: tarjetita absoluta, alto = duración. Línea principal
+   "07:00 🧸 Título · 1 h 15′" en tipografía estándar de la app; en bloques
+   altos (≥64 px) vuelve el texto descriptivo debajo (clampeado por JS). */
+.rut-item {
+  position: absolute;
+  left: 2px;                 /* rutina.js lo corre 12 px por nivel de solape */
+  right: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  border-left: 3px solid var(--rut-color);
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--color-superficie);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-texto) 10%, transparent);
+}
+
+.rut-item-linea {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.rut-item-hora {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: var(--color-texto-muted);
+  flex-shrink: 0;
+}
+
+.rut-item-emoji { font-size: 1.1rem; line-height: 1; flex-shrink: 0; }
+
+.rut-item-titulo {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rut-item-dur {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: var(--color-texto-muted);
+  flex-shrink: 0;
+}
+
+.rut-item-sub {
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--color-texto-muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;             /* -webkit-line-clamp lo pone rutina.js */
+}
+
+/* Ítems bajitos (< 38 px): línea única bien compacta */
+.rut-item--mini { padding-top: 0.05rem; padding-bottom: 0.05rem; justify-content: center; }
+.rut-item--mini .rut-item-titulo { font-size: 0.85rem; }
+
+/* Columnas angostas (mobile): priorizar hora + título */
+@media (max-width: 767px) {
+  .rut-item { padding-left: 0.35rem; padding-right: 0.35rem; }
+  .rut-item-dur { display: none; }
+  .rut-item-sub { display: none; }
+  .rut-item-titulo { font-size: 0.78rem; }
+  .rut-item-hora { font-size: 0.62rem; }
+}
+
+/* Tintes por tipo (mismos color-mix que las filas) */
+.rut-item--sueno     { background: color-mix(in srgb, var(--color-acento) 8%,        var(--color-superficie)); }
+.rut-item--noche     { background: color-mix(in srgb, var(--color-acento) 14%,       var(--color-superficie)); }
+.rut-item--teta      { background: color-mix(in srgb, var(--color-persona-mari) 8%,  var(--color-superficie)); }
+.rut-item--bano      { background: color-mix(in srgb, var(--color-persona-leon) 12%, var(--color-superficie)); }
+.rut-item--guarderia { background: color-mix(in srgb, var(--color-alerta) 10%,       var(--color-superficie)); }
+.rut-item--custom    { background: color-mix(in srgb, var(--color-exito) 8%,         var(--color-superficie)); }
+
+.rut-item.is-ahora {
+  box-shadow: 0 0 0 2px var(--color-acento);
+  z-index: 2;
+}
+
+/* Destello al aterrizar desde el emoji de una tarjeta "Ahora" */
+.rut-item, .rut-fila { transition: box-shadow 0.3s; }
+
+.rut-item.is-foco,
+.rut-fila.is-foco {
+  box-shadow: 0 0 0 3px var(--rut-color);
+  z-index: 4;
+}
+
+/* Ítems dur 0 (sueño nocturno / A dormir): final abierto, se desvanecen */
+.rut-item--abierto {
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+
+/* Línea "ahora" cruzando todas las columnas */
+.rut-linea-ahora {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-acento);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.rut-linea-ahora span {
+  position: absolute;
+  left: 2px;
+  top: -0.8rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--color-texto-invertido);
+  background: var(--color-acento);
+  padding: 0 5px;
+  border-radius: 4px;
+}
+
+/* Popover de detalle/editor (tap en ítem) y de quitar (✕ en modo edición) */
+.rut-popover {
+  position: absolute;
+  left: 44px;
+  right: 6px;
+  z-index: 10;
+  padding: 0.65rem 0.8rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-left: 4px solid var(--rut-color, var(--color-acento));
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-modal);
+}
+
+.rut-popover-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rut-popover-titulo { font-size: 0.95rem; font-weight: 700; }
+
+.rut-popover-rango {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: var(--color-texto-muted);
+}
+
+.rut-popover-sub {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--color-texto-muted);
+}
+
+.rut-popover-botones {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.rut-popover-botones .rut-editor-hora { flex: 0 0 auto; min-width: 52px; }
+
+.rut-popover-nota {
+  flex: 1;
+  font-size: 0.68rem;
+  font-style: italic;
+  color: var(--color-texto-muted);
+}
+
+/* ✕ chiquita de los ítems del lienzo (modo edición) */
+.rut-item-quitar {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--color-peligro);
+  border-radius: 50%;
+  background: var(--color-superficie);
+  color: var(--color-peligro);
+  font-size: 0.65rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: var(--fuente-principal);
+  z-index: 1;
+}
+
+/* Franja de tomas nocturnas */
+.rut-noche { border-top: 1px solid var(--color-borde); }
+
+.rut-noche-titulo {
+  padding: 0.5rem 0.8rem 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-texto-muted);
+}
+
+.rut-noche-titulo span {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 0.3rem;
+}
+
+.rut-canvas-vacio {
+  padding: 1.2rem 0.8rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
+/* ── Modo edición (✎ Editar: quitar / añadir / restaurar) ─────────────────── */
+.rut-tl-botones { display: flex; gap: 0.4rem; }
+
+.rut-btn-fantasma.activo {
+  border-color: var(--color-acento);
+  color: var(--color-acento);
+  font-weight: 600;
+}
+
+.rut-btn-quitar {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-peligro);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-peligro);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: var(--fuente-principal);
+}
+
+.rut-quitar-bar { flex-wrap: wrap; }
+
+.rut-quitar-txt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+}
+
+.rut-q-btn { width: auto; padding: 0 0.7rem; font-size: 0.75rem; }
+
+.rut-q-siempre {
+  border-color: var(--color-peligro);
+  color: var(--color-peligro);
+}
+
+/* Tinte de las tareas añadidas por el usuario (kind 'custom') */
+.rut-fila--custom { background: color-mix(in srgb, var(--color-exito) 8%, var(--color-superficie)); }
+
+/* Form "＋ Añadir tarea" */
+.rut-add-row { padding: 0.5rem 0.8rem; border-bottom: 1px solid var(--color-borde); }
+
+.rut-add-btn {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px dashed var(--color-deco-3);
+  border-radius: var(--radio-borde);
+  background: transparent;
+  color: var(--color-texto-muted);
+  font-size: 0.8rem;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+}
+
+.rut-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--color-fondo);
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.rut-add-linea { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.rut-add-espacio { flex: 1; }
+
+.rut-add-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 20px;
+  border: 1px solid var(--color-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto-muted);
+  font-size: 0.75rem;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+}
+
+.rut-add-pill.activo {
+  border-color: var(--rut-color, var(--color-acento));
+  color: var(--rut-color, var(--color-acento));
+  font-weight: 700;
+}
+
+.rut-add-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-size: 0.85rem;
+  font-family: var(--fuente-principal);
+}
+
+.rut-add-emoji { flex: 0 0 3.2rem; text-align: center; }
+
+.rut-add-input.rut-add-error { border-color: var(--color-peligro); }
+
+.rut-add-label { font-size: 0.75rem; color: var(--color-texto-muted); }
+
+.rut-add-select {
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-size: 0.85rem;
+  font-family: var(--fuente-principal);
+}
+
+/* Tareas quitadas (restaurables) */
+.rut-quitados { border-top: 1px dashed var(--color-borde); }
+
+.rut-quitados-titulo {
+  padding: 0.5rem 0.8rem 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-texto-muted);
+}
+
+.rut-quitado-fila {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  opacity: 0.65;
+}
+
+.rut-quitado-titulo {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  text-decoration: line-through;
+}
+
+.rut-btn-restaurar {
+  flex-shrink: 0;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 20px;
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-size: 0.72rem;
+  font-family: var(--fuente-principal);
+  cursor: pointer;
+}
+
+/* ── Desktop ≥900px: mismo patrón que cal-body/lac-body (alto = viewport,
+      sin scroll de página; el timeline scrollea solo). Columna izquierda =
+      topbar + selectores + tarjetas "Ahora"; derecha = el día completo. ───── */
+@media (min-width: 900px) {
+  body.rut-body,
+  body:has(.rut-wrap) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.rut-body .contenido-principal,
+  body:has(.rut-wrap) .contenido-principal {
+    display: flex;
+    min-height: 0;
+  }
+
+  .rut-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-width: none;
+    display: grid;
+    grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      'top  tl'
+      'sel  tl'
+      'ahora tl';
+    gap: 0.55rem 1.2rem;
+  }
+
+  /* El topbar deja de ser sticky: la columna izquierda ya no scrollea */
+  .rut-topbar { grid-area: top; position: static; top: auto !important; }
+  .rut-selectores { grid-area: sel; }
+
+  .rut-ahora {
+    grid-area: ahora;
+    min-height: 0;
+    overflow-y: auto;
+    align-content: start;
+  }
+
+  .rut-dia-completo {
+    grid-area: tl;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.3rem;
+  }
+
+  /* El título y los botones quedan a la vista mientras el timeline scrollea */
+  .rut-tl-head {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--color-fondo);
+    margin-bottom: 0;
+    padding: 0.15rem 0 0.5rem;
+  }
 }

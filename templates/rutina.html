@@ -66,11 +66,15 @@ zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
   <section class="rut-dia-completo">
     <div class="rut-tl-head">
       <span class="rut-tl-titulo">📋 El día completo</span>
-      <button type="button" class="rut-btn-fantasma" id="rut-reset">↺ Plan original</button>
+      <span class="rut-tl-botones">
+        <button type="button" class="rut-btn-fantasma" id="rut-editar">✎ Editar</button>
+        <button type="button" class="rut-btn-fantasma" id="rut-reset">↺ Plan original</button>
+      </span>
     </div>
     <div class="rut-filas" id="rut-filas"></div>
-    <p class="rut-leyenda">Tocá una actividad para corregir su hora — el resto se
-      reacomoda solo. La teta va a demanda: los horarios son orientativos.</p>
+    <p class="rut-leyenda">Tocá una actividad para ver el detalle o corregir su
+      hora — el resto se reacomoda solo. Con ✎ Editar podés añadir tareas nuevas
+      o quitar las que no usen. La teta va a demanda: los horarios son orientativos.</p>
 
     <!-- ══ 7. Card de tips por etapa ══════════════════════════════════════ -->
     <div class="rut-tips" id="rut-tips"></div>

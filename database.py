@@ -242,6 +242,45 @@ def inicializar_db():
     #             cruzan la medianoche: noche 19:35 + off 570 = 1745).
     # UNIQUE habilita el upsert (último ajuste gana).
 
+    # -------------------------------------------------------------------
+    # Tabla rutina_tareas: tareas AÑADIDAS por el usuario al módulo Rutina
+    # (botón "＋ Añadir tarea" del modo edición). Horario fijo (no entran
+    # en la cascada). fecha = '' → permanente (todos los días de la etapa);
+    # fecha = YYYY-MM-DD → solo ese día. Sentinela '' (no NULL) para que
+    # los UNIQUE/queries no tengan casos especiales.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_tareas (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            etapa       TEXT    NOT NULL,
+            usuario     TEXT    NOT NULL,
+            titulo      TEXT    NOT NULL,
+            emoji       TEXT    NOT NULL DEFAULT '',
+            inicio_min  INTEGER NOT NULL,
+            dur         INTEGER NOT NULL,
+            fecha       TEXT    NOT NULL DEFAULT '',
+            creado      TEXT
+        )
+    ''')
+    # usuario: 'leon' | 'mama' | 'papa'. inicio_min: 0..1439. dur: minutos.
+
+    # -------------------------------------------------------------------
+    # Tabla rutina_ocultos: ítems QUITADOS de la rutina (botón ✕ del modo
+    # edición). item_id puede ser un id del plan base ('siesta2'), un id
+    # derivado de adulto ('mama-siesta1') o una tarea añadida ('c-12').
+    # fecha = '' → quitado permanente; fecha = YYYY-MM-DD → solo ese día.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_ocultos (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            etapa    TEXT    NOT NULL,
+            item_id  TEXT    NOT NULL,
+            fecha    TEXT    NOT NULL DEFAULT '',
+            creado   TEXT,
+            UNIQUE (etapa, item_id, fecha)
+        )
+    ''')
+
     conn.commit()   # Confirma los cambios (como un "guardar")
     conn.close()    # Cierra la conexión
 
@@ -1051,6 +1090,82 @@ def borrar_ajustes_rutina(fecha, etapa):
     conn.execute(
         'DELETE FROM rutina_ajustes WHERE fecha = ? AND etapa = ?',
         (fecha, etapa)
+    )
+    conn.commit()
+    conn.close()
+
+
+# --- Tareas añadidas y ocultas (modo edición de la rutina) -------------------
+# Convención de fecha: '' = permanente (todos los días); YYYY-MM-DD = solo ese
+# día. Las permanentes se devuelven siempre; las fechadas solo si caen en rango.
+
+def obtener_tareas_rutina(desde, hasta):
+    """Tareas añadidas: permanentes + las fechadas dentro de [desde, hasta]."""
+    conn = conectar()
+    filas = conn.execute('''
+        SELECT id, etapa, usuario, titulo, emoji, inicio_min, dur, fecha
+        FROM rutina_tareas
+        WHERE fecha = '' OR fecha BETWEEN ? AND ?
+        ORDER BY inicio_min
+    ''', (desde, hasta)).fetchall()
+    conn.close()
+    return filas
+
+
+def crear_tarea_rutina(etapa, usuario, titulo, emoji, inicio_min, dur, fecha):
+    """Alta de tarea añadida. fecha '' = permanente. Devuelve el id nuevo."""
+    conn = conectar()
+    cur = conn.execute('''
+        INSERT INTO rutina_tareas (etapa, usuario, titulo, emoji, inicio_min, dur, fecha, creado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (etapa, usuario, titulo, emoji, inicio_min, dur, fecha, _ahora_iso()))
+    tarea_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return tarea_id
+
+
+def borrar_tarea_rutina(tarea_id):
+    """Baja definitiva de una tarea añadida (y sus ocultos/ajustes 'c-<id>')."""
+    conn = conectar()
+    conn.execute('DELETE FROM rutina_tareas WHERE id = ?', (tarea_id,))
+    item_id = f'c-{tarea_id}'
+    conn.execute('DELETE FROM rutina_ocultos WHERE item_id = ?', (item_id,))
+    conn.execute('DELETE FROM rutina_ajustes WHERE item_id = ?', (item_id,))
+    conn.commit()
+    conn.close()
+
+
+def obtener_ocultos_rutina(desde, hasta):
+    """Ítems quitados: permanentes + los fechados dentro de [desde, hasta]."""
+    conn = conectar()
+    filas = conn.execute('''
+        SELECT etapa, item_id, fecha
+        FROM rutina_ocultos
+        WHERE fecha = '' OR fecha BETWEEN ? AND ?
+    ''', (desde, hasta)).fetchall()
+    conn.close()
+    return filas
+
+
+def ocultar_item_rutina(etapa, item_id, fecha):
+    """Marca un ítem como quitado (fecha '' = siempre). Idempotente."""
+    conn = conectar()
+    conn.execute('''
+        INSERT INTO rutina_ocultos (etapa, item_id, fecha, creado)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (etapa, item_id, fecha) DO NOTHING
+    ''', (etapa, item_id, fecha, _ahora_iso()))
+    conn.commit()
+    conn.close()
+
+
+def restaurar_item_rutina(etapa, item_id):
+    """Restaura un ítem quitado: borra TODOS sus ocultos (permanente y fechados)."""
+    conn = conectar()
+    conn.execute(
+        'DELETE FROM rutina_ocultos WHERE etapa = ? AND item_id = ?',
+        (etapa, item_id)
     )
     conn.commit()
     conn.close()
