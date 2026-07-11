@@ -30,5 +30,9 @@ build/dist/
 # Worktrees temporales de Claude Code (agentes con isolation)
 .claude/worktrees/
 
+# Permisos de Claude Code: por máquina, no se comparte.
+# (.claude/agents/ y .claude/launch.json SÍ viajan a propósito — no tocar)
+.claude/settings.local.json
+
 # Logs (NSSM AppStdout/AppStderr → logs/, ver docs/CONTEXT_DEPLOY.md)
 logs/
