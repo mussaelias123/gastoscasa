@@ -68,6 +68,7 @@
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.
 5. **Sesión iniciada**: la cuenta del usuario ya está logueada en ngrok. Si la página pide login, **detenerse y avisar**.
+6. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. Detalle en `docs/METODOLOGIA.md` §5.
 
 ---
 

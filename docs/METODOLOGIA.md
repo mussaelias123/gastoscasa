@@ -5,12 +5,14 @@
 ## Ciclo de cualquier cambio
 
 ```
+0. PREPARAR     → Worktree limpio + main fresco antes de abrir rama (ver §5).
 1. CLARIFICAR  → AskUserQuestion si la tarea no es trivial.
 2. LEER         → Solo el contexto necesario (ver tabla en CLAUDE.md §3).
 3. EJECUTAR     → Cambio mínimo y reversible.
 4. ACTUALIZAR   → CONTEXT_*.md del dominio tocado (ver §1 abajo).
 5. VERIFICAR    → Sub-agente verifier en ngrok.
 6. REPORTAR     → Resumen corto al usuario.
+7. ORDENAR      → Dejar el worktree en buen estado (ver §5).
 ```
 
 ## §1 Qué actualizar después de cambiar el programa (CRÍTICO)
@@ -51,3 +53,19 @@ Reportar siempre:
 1. Archivos tocados.
 2. `CONTEXT_*.md` actualizado (sí/no, y cuál).
 3. Resultado de verificación en ngrok.
+
+## §5 Higiene de git y worktree (reduce conflictos)
+
+**Antes de empezar (quien orquesta la sesión):**
+1. `git status` limpio. Restos de otra sesión → resolverlos ANTES (commitear, descartar o preguntar al usuario). Nunca arrancar una tarea encima de cambios ajenos sin entender qué son.
+2. `git fetch` + main actualizado (`git checkout main && git pull`) **SIEMPRE antes de abrir una rama**. Lección 2026-07-12: una rama cortada de un main local viejo terminó en conflicto al mergear su PR (#33 chocó con los PRs #30-32 que ya estaban en `origin/main`).
+3. Rama nueva desde ese main fresco (`feat/...`, `fix/...`, `docs/...`).
+
+**Al terminar (todos los agentes):**
+1. `git status` sin sorpresas: solo los archivos de la tarea. Nada suelto sin explicar en el reporte.
+2. Temporales al scratchpad (fuera del repo); scripts one-shot a `TempScripts/`; nada nuevo en raíz.
+3. Los sub-agentes NO commitean: editan, reportan, y el orquestador commitea.
+
+**Antes de mergear un PR:**
+1. `git fetch origin`. Si `origin/main` avanzó: mergear `origin/main` EN LA RAMA, resolver conflictos ahí, re-verificar que la app sigue sana (mínimo `python -c "import app"` + smoke en dev) y recién entonces mergear el PR.
+2. Tras el merge: `git checkout main && git pull`, borrar la rama, y al desplegar sincronizar el clon PROD (`E:\Fondo`).
