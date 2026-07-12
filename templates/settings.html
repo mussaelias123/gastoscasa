@@ -263,14 +263,14 @@
       </div>
 
       <div class="settings-campo settings-campo-ultimo">
-        <label for="lactancia_freezar_hasta_horas">Freezar hasta (horas en heladera)</label>
+        <label for="lactancia_freezar_hasta_horas">Tildado automático hasta (horas en heladera)</label>
         <input type="number" id="lactancia_freezar_hasta_horas" name="lactancia_freezar_hasta_horas"
                value="{{ cfg.lactancia_freezar_hasta_horas }}" min="1" max="168" step="1" required
                class="input-corto">
         <span class="settings-ayuda">
-          Una partida solo se puede pasar al freezer dentro de las primeras
-          <strong>N horas</strong> en la heladera (default 24). Pasado ese tiempo,
-          su casilla de freezar se bloquea (seguridad: leche muy refrigerada no se congela).
+          El checkbox de freezar arranca tildado durante las primeras
+          <strong>N horas</strong> en la heladera (default 24). Pasado ese tiempo nace
+          destildado, pero se puede tildar igual: no bloquea el freezado.
         </span>
       </div>
 

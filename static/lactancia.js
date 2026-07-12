@@ -318,14 +318,20 @@ opciones" (⋯) de cada partida.
         return p.notas ? '<div class="lac-item-notas">📝 ' + esc(p.notas) + '</div>' : '';
     }
 
+    // "Extraída 14:30 · 10 jul" — hora primero, fecha después (pedido de Mari
+    // 2026-07-11; si la partida vieja no tiene hora, queda solo la fecha)
+    function extraidaTxt(p) {
+        return 'Extraída ' + (p.hora_extraccion ? p.hora_extraccion + ' · ' : '') +
+            fmtFechaCorta(p.fecha_extraccion);
+    }
+
     function itemFreezer(p) {
         var venc = '<span class="lac-venc t-' + p.estado + '">' + textoVencFreezer(p.dias_restantes) + '</span>' +
                    ' <span class="lac-venc-fecha">(' + fmtFechaCorta(p.vencimiento) + ')</span>';
         return '<div class="lac-item is-' + p.estado + '">' +
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' + pill(p.estado) + '</div>' +
-                '<div class="lac-item-meta">Extraída ' + fmtFechaCorta(p.fecha_extraccion) +
-                    (p.hora_extraccion ? ' · ' + p.hora_extraccion : '') +
+                '<div class="lac-item-meta">' + extraidaTxt(p) +
                     ' <span class="lac-sep">·</span> ' + venc +
                 '</div>' + notasHtml(p) +
             '</div>' +
@@ -339,18 +345,24 @@ opciones" (⋯) de cada partida.
 
     // En heladera JAMÁS se muestra la hora (regla del módulo); el vencimiento
     // va relativo. El checkbox marca qué partidas entran en la próxima freezada
-    // (botón ⬆). Si la partida ya no es freezable (demasiadas horas en heladera
-    // o vencida — p.freezable=false del server), la casilla va destildada y
-    // bloqueada: no se puede pasar leche muy refrigerada al freezer.
+    // (botón ⬆). Solo se bloquea si la partida está vencida (p.freezable=false
+    // del server). Si ya lleva muchas horas en heladera pero sigue freezable,
+    // arranca destildada (p.freezar_reciente=false) — el usuario la puede
+    // tildar igual, el server la acepta.
     function checkHeladera(p) {
-        if (p.freezable) {
+        if (!p.freezable) {
+            return '<label class="lac-check is-off" title="Vencida: no se puede pasar al freezer">' +
+                '<input type="checkbox" class="lac-check-input" value="' + p.id + '" disabled>' +
+            '</label>';
+        }
+        if (p.freezar_reciente) {
             return '<label class="lac-check" title="Entra en la próxima freezada (⬆)">' +
                 '<input type="checkbox" class="lac-check-input" value="' + p.id + '" checked>' +
             '</label>';
         }
-        return '<label class="lac-check is-off" title="Ya lleva ' + p.horas_en_heladera +
-                ' h en la heladera: no se puede pasar al freezer">' +
-            '<input type="checkbox" class="lac-check-input" value="' + p.id + '" disabled>' +
+        return '<label class="lac-check" title="Ya lleva ' + p.horas_en_heladera +
+                ' h en la heladera. No entra por defecto, pero se puede tildar igual.">' +
+            '<input type="checkbox" class="lac-check-input" value="' + p.id + '">' +
         '</label>';
     }
 
@@ -358,7 +370,7 @@ opciones" (⋯) de cada partida.
         return '<div class="lac-item is-' + p.estado + '">' +
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' + pill(p.estado) + '</div>' +
-                '<div class="lac-item-meta">Extraída ' + fmtFechaCorta(p.fecha_extraccion) +
+                '<div class="lac-item-meta">' + extraidaTxt(p) +
                     ' <span class="lac-sep">·</span> <span class="lac-venc t-' + p.estado + '">' +
                     textoVencHeladera(p.horas_restantes) + '</span>' +
                 '</div>' + notasHtml(p) +
@@ -381,7 +393,7 @@ opciones" (⋯) de cada partida.
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' +
                     pill(p.estado) + ' <span class="lac-hist-ubi" title="' + (p.ubicacion === 'freezer' ? 'Freezer' : 'Heladera') + '">' + ubi + '</span></div>' +
-                '<div class="lac-item-meta">Extraída ' + fmtFechaCorta(p.fecha_extraccion) +
+                '<div class="lac-item-meta">' + extraidaTxt(p) +
                     ' <span class="lac-sep">·</span> ' + verbo + ' ' + fmtFechaCorta(p.fecha_cierre) +
                 '</div>' + notasHtml(p) +
             '</div>' +
@@ -639,14 +651,17 @@ opciones" (⋯) de cada partida.
             locale: 'es', dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
             allowInput: true, maxDate: 'today'
         });
-        // Hora en 24h (evita el time picker nativo de iOS: 12h AM/PM y desbordante)
+        // Hora en 24h. disableMobile es CLAVE: sin él, flatpickr en celulares
+        // se reemplaza solo por el <input type="time"> NATIVO ("modo mobile"),
+        // que en iOS es 12h AM/PM y desborda la tarjeta "+Cargar" — justo lo
+        // que este picker vino a evitar.
         fpExHora = flatpickr($('lac-ex-hora'), {
             enableTime: true, noCalendar: true, dateFormat: 'H:i',
-            time_24hr: true, allowInput: true
+            time_24hr: true, allowInput: true, disableMobile: true
         });
         fpEdHora = flatpickr($('lac-ed-hora'), {
             enableTime: true, noCalendar: true, dateFormat: 'H:i',
-            time_24hr: true, allowInput: true
+            time_24hr: true, allowInput: true, disableMobile: true
         });
     }
 
