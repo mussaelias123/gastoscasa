@@ -93,6 +93,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 { link: 'desp', emoji: '🤱🏻', t: 'Teta ancla a León', sub: 'arranca el día con él' },
                 { id: 'm-desayuno', link: 'siesta1', emoji: '🍳', t: 'Desayuno y tareas', sub: 'mientras León duerme 😴 (la ducha pasa a la noche)' },
                 { link: 'teta2', emoji: '🤱🏻', t: 'Teta a León' },
+                { link: 'juego2', emoji: '🚶', t: 'Paseo con León', sub: 'papá trabaja: lo lleva mamá' },
                 { id: 'm-gym', link: 'siesta2', emoji: '🏋️', t: 'Gimnasia', sub: 'mientras León duerme 😴' },
                 { link: 'teta3', emoji: '🤱🏻', t: 'Teta a León' },
                 { id: 'm-alm', link: 'siesta3', emoji: '🍽️', t: 'Almuerzo + descanso', sub: 'mientras León duerme 😴' },
@@ -100,6 +101,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 { id: 'm-estudio', link: 'siesta4', emoji: '📚', t: 'Estudio / proyecto', sub: 'mientras León duerme 😴' },
                 { link: 'teta5', emoji: '🤱🏻', t: 'Teta a León' },
                 { id: 'm-ext', link: 'siesta5', emoji: '🍼', t: 'Extracción (banco de leche)', sub: 'mientras León duerme 😴' },
+                { link: 'bano', emoji: '🛁', t: 'Baño de León', sub: 'y sigue con el ritual de la noche' },
                 { link: 'ultimateta', emoji: '🤱🏻', t: 'Teta + arrullo a León', sub: 'luz baja' },
                 { id: 'm-ducha', link: 'noche', emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León ya dormido' },
                 { id: 'm-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Elías', dur: 45 },
@@ -163,12 +165,14 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 { link: 't-desp', emoji: '🤱🏻', t: 'Teta ancla a León', sub: 'arranca el día con él' },
                 { id: 'tm-desayuno', link: 't-siesta1', emoji: '🍳', t: 'Desayuno y tareas', sub: 'mientras León duerme 😴 (la ducha pasa a la noche)' },
                 { link: 't-teta2', emoji: '🤱🏻', t: 'Teta a León' },
+                { link: 't-juego2', emoji: '🚶', t: 'Paseo con León', sub: 'papá trabaja: lo lleva mamá' },
                 { id: 'tm-gym', link: 't-siesta2', emoji: '🏋️', t: 'Gimnasia', sub: 'mientras León duerme 😴' },
                 { link: 't-teta3', emoji: '🤱🏻', t: 'Teta a León' },
                 { id: 'tm-alm', link: 't-siesta3', emoji: '🍽️', t: 'Almuerzo + estudio', sub: 'mientras León duerme 😴' },
                 { link: 't-teta4', emoji: '🤱🏻', t: 'Teta a León' },
                 { id: 'tm-ext', link: 't-siesta4', emoji: '🍼', t: 'Extracción (banco de leche)', sub: 'stock para la guardería' },
                 { link: 't-teta5', emoji: '🤱🏻', t: 'Teta a León' },
+                { link: 't-bano', emoji: '🛁', t: 'Baño de León', sub: 'y sigue con el ritual de la noche' },
                 { link: 't-teta6', emoji: '🤱🏻', t: 'Teta + arrullo a León' },
                 { id: 'tm-ducha', link: 't-noche', emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León ya dormido' },
                 { id: 'tm-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Elías', dur: 45 },
@@ -225,6 +229,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 { id: 'gm-pm', clock: 795, emoji: '💼', t: 'Trabajo', dur: 195 },
                 { id: 'gm-vuelta', clock: 990, emoji: '🚗', t: 'Vuelta a Villa María', dur: 50 },
                 { link: 'g-teta1', emoji: '🤱🏻', t: 'Teta del reencuentro' },
+                { link: 'g-bano', emoji: '🛁', t: 'Baño de León', sub: 'y sigue con el ritual de la noche' },
                 { link: 'g-teta2', emoji: '🤱🏻', t: 'Teta + arrullo a León' },
                 { id: 'gm-ducha', link: 'g-noche', emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León ya dormido' },
                 { id: 'gm-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Elías', dur: 45 },
@@ -238,6 +243,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 { id: 'gmf-gym', link: 'f-siesta2', emoji: '🏋️', t: 'Gimnasia / descanso', sub: 'mientras León duerme 😴' },
                 { link: 'f-teta3', emoji: '🤱🏻', t: 'Teta a León' },
                 { id: 'gmf-ext', link: 'f-siesta3', emoji: '🍼', t: 'Extracción (banco de leche)' },
+                { link: 'f-bano', emoji: '🛁', t: 'Baño de León', sub: 'y sigue con el ritual de la noche' },
                 { link: 'f-teta4', emoji: '🤱🏻', t: 'Teta + arrullo a León' },
                 { id: 'gmf-ducha', link: 'f-noche', emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León ya dormido' },
                 { id: 'gmf-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Elías', dur: 45 },
@@ -285,6 +291,17 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             ],
         },
     };
+
+    // Findes de 2 y 3 meses: el paseo es FAMILIAR (los tres juntos, mismo
+    // bloque de León que linkea papá). La agenda de finde de mamá se deriva
+    // de la de semana cambiando SOLO ese ítem — sin duplicar la lista.
+    ['actual', 'tres'].forEach(function (e) {
+        ETAPAS[e].mamaFinde = ETAPAS[e].mama.map(function (d) {
+            return d.t === 'Paseo con León'
+                ? Object.assign({}, d, { t: 'Paseo familiar', sub: 'con León y papá' })
+                : d;
+        });
+    });
 
     var NACIMIENTO = new Date(2026, 4, 14);   // León, 14/05/2026
     var NOMBRES = { leon: 'León', mama: 'Mamá', papa: 'Papá' };
