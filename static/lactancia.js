@@ -345,18 +345,24 @@ opciones" (⋯) de cada partida.
 
     // En heladera JAMÁS se muestra la hora (regla del módulo); el vencimiento
     // va relativo. El checkbox marca qué partidas entran en la próxima freezada
-    // (botón ⬆). Si la partida ya no es freezable (demasiadas horas en heladera
-    // o vencida — p.freezable=false del server), la casilla va destildada y
-    // bloqueada: no se puede pasar leche muy refrigerada al freezer.
+    // (botón ⬆). Solo se bloquea si la partida está vencida (p.freezable=false
+    // del server). Si ya lleva muchas horas en heladera pero sigue freezable,
+    // arranca destildada (p.freezar_reciente=false) — el usuario la puede
+    // tildar igual, el server la acepta.
     function checkHeladera(p) {
-        if (p.freezable) {
+        if (!p.freezable) {
+            return '<label class="lac-check is-off" title="Vencida: no se puede pasar al freezer">' +
+                '<input type="checkbox" class="lac-check-input" value="' + p.id + '" disabled>' +
+            '</label>';
+        }
+        if (p.freezar_reciente) {
             return '<label class="lac-check" title="Entra en la próxima freezada (⬆)">' +
                 '<input type="checkbox" class="lac-check-input" value="' + p.id + '" checked>' +
             '</label>';
         }
-        return '<label class="lac-check is-off" title="Ya lleva ' + p.horas_en_heladera +
-                ' h en la heladera: no se puede pasar al freezer">' +
-            '<input type="checkbox" class="lac-check-input" value="' + p.id + '" disabled>' +
+        return '<label class="lac-check" title="Ya lleva ' + p.horas_en_heladera +
+                ' h en la heladera. No entra por defecto, pero se puede tildar igual.">' +
+            '<input type="checkbox" class="lac-check-input" value="' + p.id + '">' +
         '</label>';
     }
 
