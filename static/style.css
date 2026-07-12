@@ -4916,7 +4916,8 @@ body.has-dev-banner .settings-aside {
 
 .lac-campo input[type="text"],
 .lac-campo input[type="number"],
-.lac-campo input[type="time"] {
+.lac-campo input[type="time"],
+.lac-campo input.flatpickr-mobile {
   width: 100%;
   box-sizing: border-box;
   padding: 0.4rem 0.55rem;
@@ -4926,6 +4927,16 @@ body.has-dev-banner .settings-aside {
   font-family: var(--fuente-principal);
   color: var(--color-texto);
   background: var(--color-superficie);
+}
+
+/* Inputs NATIVOS que flatpickr crea en celulares (modo mobile, hoy solo los
+   de fecha; las horas usan disableMobile): los date/time de iOS tienen ancho
+   intrínseco propio y desbordan la tarjeta si no se les quita el chrome */
+.lac-campo input.flatpickr-mobile {
+  max-width: 100%;
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .lac-campo input:focus {

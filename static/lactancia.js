@@ -318,14 +318,20 @@ opciones" (⋯) de cada partida.
         return p.notas ? '<div class="lac-item-notas">📝 ' + esc(p.notas) + '</div>' : '';
     }
 
+    // "Extraída 14:30 · 10 jul" — hora primero, fecha después (pedido de Mari
+    // 2026-07-11; si la partida vieja no tiene hora, queda solo la fecha)
+    function extraidaTxt(p) {
+        return 'Extraída ' + (p.hora_extraccion ? p.hora_extraccion + ' · ' : '') +
+            fmtFechaCorta(p.fecha_extraccion);
+    }
+
     function itemFreezer(p) {
         var venc = '<span class="lac-venc t-' + p.estado + '">' + textoVencFreezer(p.dias_restantes) + '</span>' +
                    ' <span class="lac-venc-fecha">(' + fmtFechaCorta(p.vencimiento) + ')</span>';
         return '<div class="lac-item is-' + p.estado + '">' +
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' + pill(p.estado) + '</div>' +
-                '<div class="lac-item-meta">Extraída ' + fmtFechaCorta(p.fecha_extraccion) +
-                    (p.hora_extraccion ? ' · ' + p.hora_extraccion : '') +
+                '<div class="lac-item-meta">' + extraidaTxt(p) +
                     ' <span class="lac-sep">·</span> ' + venc +
                 '</div>' + notasHtml(p) +
             '</div>' +
@@ -364,7 +370,7 @@ opciones" (⋯) de cada partida.
         return '<div class="lac-item is-' + p.estado + '">' +
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' + pill(p.estado) + '</div>' +
-                '<div class="lac-item-meta">Extraída ' + fmtFechaCorta(p.fecha_extraccion) +
+                '<div class="lac-item-meta">' + extraidaTxt(p) +
                     ' <span class="lac-sep">·</span> <span class="lac-venc t-' + p.estado + '">' +
                     textoVencHeladera(p.horas_restantes) + '</span>' +
                 '</div>' + notasHtml(p) +
@@ -387,7 +393,7 @@ opciones" (⋯) de cada partida.
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' +
                     pill(p.estado) + ' <span class="lac-hist-ubi" title="' + (p.ubicacion === 'freezer' ? 'Freezer' : 'Heladera') + '">' + ubi + '</span></div>' +
-                '<div class="lac-item-meta">Extraída ' + fmtFechaCorta(p.fecha_extraccion) +
+                '<div class="lac-item-meta">' + extraidaTxt(p) +
                     ' <span class="lac-sep">·</span> ' + verbo + ' ' + fmtFechaCorta(p.fecha_cierre) +
                 '</div>' + notasHtml(p) +
             '</div>' +
@@ -660,14 +666,17 @@ opciones" (⋯) de cada partida.
             locale: 'es', dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
             allowInput: true, maxDate: 'today'
         });
-        // Hora en 24h (evita el time picker nativo de iOS: 12h AM/PM y desbordante)
+        // Hora en 24h. disableMobile es CLAVE: sin él, flatpickr en celulares
+        // se reemplaza solo por el <input type="time"> NATIVO ("modo mobile"),
+        // que en iOS es 12h AM/PM y desborda la tarjeta "+Cargar" — justo lo
+        // que este picker vino a evitar.
         fpExHora = flatpickr($('lac-ex-hora'), {
             enableTime: true, noCalendar: true, dateFormat: 'H:i',
-            time_24hr: true, allowInput: true
+            time_24hr: true, allowInput: true, disableMobile: true
         });
         fpEdHora = flatpickr($('lac-ed-hora'), {
             enableTime: true, noCalendar: true, dateFormat: 'H:i',
-            time_24hr: true, allowInput: true
+            time_24hr: true, allowInput: true, disableMobile: true
         });
     }
 
