@@ -203,12 +203,19 @@ body {
 
 
 /* ============================================================================
-   TOPBAR FIJA (header + nav siempre visibles, como celdas fijadas en Excel)
+   TOPBAR FIJA (solo el header; siempre visible al scrollear, como celda fijada)
+   Jerarquía z-index de la app: contenido < rut-topbar 400 < backdrop 800 <
+   topbar 805 < drawers (sidebar/notif) 810 < modales 1000 < dev-banner/toasts 9999.
+   El header va ARRIBA del backdrop a propósito: con un drawer abierto, sus
+   botones (☰, tema, 🔔) tienen que seguir siendo clickeables sin que un primer
+   click quede "perdido" cerrando el drawer. La sidebar (810) sigue tapando el
+   header en su franja izquierda porque está por encima; initDrawers() en
+   app.js hace el resto (toggle/exclusión mutua) vía JS, no vía z-index.
    ============================================================================ */
 .site-topbar {
   position: sticky;
   top: 0;
-  z-index: 500;            /* Sobre el contenido; bajo el modal (1000) y el dev-banner (9999) */
+  z-index: 805;            /* Sobre el backdrop (800): header clickeable con un drawer abierto. Bajo drawers (810), modal (1000) y dev-banner (9999) */
   box-shadow: var(--sombra-card);
 }
 /* En modo DEV, el banner fijo ocupa los 24px superiores: la topbar se pega debajo. */
@@ -240,31 +247,12 @@ body.has-dev-banner .site-topbar {
   font-size: 0.72rem;
 }
 
-/* ── Usuario logueado (header) ─────────────────────────────────────────── */
-.header-user {
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-}
-
+/* ── Usuario logueado (header) — avatar + Salir viven en .header-acciones ── */
 .header-user-photo {
   width: 28px;
   height: 28px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.4);
-}
-
-.header-user-name {
-  opacity: 0.9;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .header-logout-btn {
@@ -283,24 +271,22 @@ body.has-dev-banner .site-topbar {
   background: rgba(255, 255, 255, 0.1);
 }
 
-@media (max-width: 600px) {
-  .header-user-name { display: none; }
-  .header-user { gap: 0.35rem; }
-}
-
-/* ── Toggle de tema Light/Dark ─────────────────────────────────────────── */
-.header-theme-btn {
-  position: absolute;
-  left: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
+/* ── Botón-icono circular del header (☰, tema, 🔔) ──────────────────────────
+   Botón-icono reutilizable: mismo look que el toggle de tema previo, SIN
+   position absolute (ahora viven en flex — ☰ suelto a la izq, tema/campana
+   en `.header-acciones`).
+   `position: relative` = ancla del `.notif-badge`. El layout está al final del
+   archivo (sección HEADER ACCIONES). */
+.header-icon-btn {
+  position: relative;
   width: 32px;
   height: 32px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: var(--color-superficie);
+  color: var(--color-texto-invertido);   /* glifo blanco sobre el deco oscuro del header */
   border: 1px solid var(--color-borde);
   border-radius: 50%;
   cursor: pointer;
@@ -310,12 +296,12 @@ body.has-dev-banner .site-topbar {
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.header-theme-btn:hover {
+.header-icon-btn:hover {
   background: var(--color-deco-3);
   border-color: var(--color-superficie);
 }
 
-.header-theme-btn:focus {
+.header-icon-btn:focus {
   outline: none;
   box-shadow: var(--sombra-focus);
 }
@@ -326,74 +312,9 @@ body.has-dev-banner .site-topbar {
 }
 
 
-/* ============================================================================
-   NAVEGACIÓN (barra de menú)
-   ============================================================================ */
-.site-nav {
-  background-color: var(--color-deco-2);  /* Gris oscuro decorativo */
-  padding: 0 1rem;
-}
-
-.site-nav ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  gap: 0.5rem;
-  max-width: 1280px;
-  margin: 0 auto;
-}
-
-.site-nav li a {
-  display: block;
-  color: rgba(255, 255, 255, 0.85);
-  padding: 0.5rem 1rem;
-  border-radius: var(--radio-borde) var(--radio-borde) 0 0;
-  /* Radio solo arriba: para efecto de "pestaña" */
-  transition: background-color 0.2s, color 0.2s;
-  /* transition: animación suave al cambiar propiedades */
-}
-
-.site-nav li a:hover {
-  background-color: rgba(255, 255, 255, 0.15);
-  color: white;
-  text-decoration: none;
-}
-
-/* Clase agregada por app.js para resaltar el enlace de la página actual */
-.site-nav li a.nav-activo {
-  background-color: rgba(255, 255, 255, 0.25);
-  color: white;
-  font-weight: 600;
-  border-bottom: 3px solid white;
-}
-
-/* Contador rojo en un ítem de nav (hoy lo usa Lactancia: vencidas + por
-   vencer). Lo renderiza base.html server-side y lo actualiza lactancia.js. */
-.site-nav li a .nav-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  margin-left: 0.35rem;
-  border-radius: 999px;
-  background: var(--color-peligro);
-  color: var(--color-texto-invertido);
-  font-size: 0.68rem;
-  font-weight: 700;
-  line-height: 1;
-  vertical-align: middle;
-}
-
-/* Mobile: con 5 ítems la nav ya no entra en 375px → scroll horizontal
-   (patrón tabs; el ítem activo lo resalta app.js igual que siempre). */
-@media (max-width: 767px) {
-  .site-nav { overflow-x: auto; }
-  .site-nav ul { width: max-content; }
-  .site-nav li a { white-space: nowrap; }
-}
+/* La navegación por pestañas fue reemplazada por la sidebar desplegable + la
+   campana de notificaciones. Estilos nuevos al final del archivo:
+   HEADER ACCIONES / SIDEBAR / DRAWERS / PANEL NOTIFICACIONES. */
 
 
 /* ============================================================================
@@ -3538,11 +3459,11 @@ a.btn-filtro {
 .settings-aside {
   flex: 0 0 300px;
   position: sticky;
-  top: 6rem;            /* queda por debajo de la topbar fija (~header+nav) */
+  top: 4.5rem;          /* la topbar ahora es solo header (sin nav) → más baja */
 }
 
 body.has-dev-banner .settings-aside {
-  top: calc(6rem + 24px);   /* el banner DEV ocupa 24px arriba */
+  top: calc(4.5rem + 24px);   /* el banner DEV ocupa 24px arriba */
 }
 
 @media (max-width: 900px) {
@@ -5474,7 +5395,7 @@ body.has-dev-banner .settings-aside {
 .rut-topbar {
   position: sticky;
   top: 0;                    /* fallback; rutina.js lo ajusta */
-  z-index: 400;              /* bajo el .site-topbar (500) */
+  z-index: 400;              /* bajo el .site-topbar (805) */
   box-shadow: var(--sombra-card);
   border-radius: var(--radio-borde);
   overflow: hidden;
@@ -6611,4 +6532,267 @@ span.rut-ahora-emoji { cursor: default; }
     margin-bottom: 0;
     padding: 0.15rem 0 0.5rem;
   }
+}
+
+
+/* ============================================================================
+   HEADER ACCIONES — botón de menú (☰) + cluster derecho (tema · Salir ·
+   avatar · 🔔). Reemplaza los dos `position:absolute` viejos (toggle de tema a
+   la izq, usuario a la der). La marca (.header-content) sigue centrada por
+   text-align; ☰ y el cluster se anclan a los costados con absolute para no
+   descentrarla.
+   ============================================================================ */
+#menu-toggle {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.header-acciones {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Badge de la campana: pill roja arriba-derecha del botón (misma receta que el
+   viejo contador de Lactancia en la nav). El botón es position:relative — ver
+   `.header-icon-btn`. Lo renderiza base.html server-side y lo mantiene Notif. */
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-peligro);
+  color: var(--color-texto-invertido);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* En ~375px el cluster derecho choca con el slogan: se oculta (el h1
+   "💰 Fondo" solo entra cómodo). Gap más chico para dar aire al título. */
+@media (max-width: 480px) {
+  .site-header .subtitulo { display: none; }
+  .header-acciones { gap: 0.35rem; }
+}
+
+
+/* ============================================================================
+   SIDEBAR — navegación desplegable (overlay izquierdo, mobile Y desktop)
+   Cerrada = fuera de pantalla (translateX -100%); `.is-abierto` la trae.
+   Fondo deco-1 (chrome estructural). La controla initDrawers() en app.js.
+   ============================================================================ */
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 260px;
+  max-width: 85vw;
+  z-index: 810;
+  background: var(--color-deco-1);
+  box-shadow: var(--sombra-modal);
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar.is-abierto { transform: translateX(0); }
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-texto-invertido);
+  border-bottom: 1px solid var(--color-deco-3);
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+.sidebar-nav li a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;               /* área táctil cómoda */
+  padding: 0.7rem 1.15rem;
+  color: var(--color-texto-invertido);
+  font-size: 0.95rem;
+  border-left: 3px solid transparent;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-nav li a:hover {
+  background: var(--color-deco-2);
+  text-decoration: none;
+}
+
+/* Ítem de la página actual (lo marca app.js → resaltarNavActual): tinte de
+   acento sobre el fondo del sidebar + borde izquierdo. Fallback deco-2 para
+   browsers sin color-mix. Solo var() adentro del mix (ver sección Paleta). */
+.sidebar-nav li a.nav-activo {
+  background: var(--color-deco-2);
+  background: color-mix(in srgb, var(--color-acento) 30%, var(--color-deco-1));
+  border-left-color: var(--color-acento);
+  font-weight: 600;
+}
+
+
+/* ============================================================================
+   DRAWERS — piezas compartidas por la sidebar y el panel de notificaciones
+   Backdrop único semitransparente detrás de cualquiera de los dos; abrir uno
+   cierra el otro (exclusión mutua, la maneja initDrawers en app.js).
+   ============================================================================ */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: var(--overlay-modal);
+}
+.drawer-backdrop[hidden] { display: none; }
+
+/* Botón ✕ de la cabecera de cada drawer. Hereda el color del head (blanco en
+   la sidebar oscura, texto normal en el panel claro) vía `color: inherit`. */
+.drawer-cerrar {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radio-borde);
+  transition: opacity 0.15s ease;
+}
+.drawer-cerrar:hover { opacity: 0.6; }
+
+/* En modo DEV el banner fijo ocupa 24px arriba: los drawers arrancan debajo. */
+body.has-dev-banner .sidebar,
+body.has-dev-banner .notif-panel { top: 24px; }
+
+
+/* ============================================================================
+   PANEL DE NOTIFICACIONES — drawer derecho (mismo patrón que la sidebar)
+   Fondo superficie (contenido informativo, no chrome). Lo llena
+   Notif.refrescar() (app.js) con los ítems de /api/notificaciones. Severidad
+   → borde izquierdo 3px + tinte de fondo por color-mix (ver sección Paleta).
+   ============================================================================ */
+.notif-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 320px;
+  max-width: 85vw;
+  z-index: 810;
+  background: var(--color-superficie);
+  box-shadow: var(--sombra-modal);
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-panel.is-abierto { transform: translateX(0); }
+
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-texto);
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.notif-lista {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Ítem: <a> que arma Notif.refrescar() con createElement (nunca innerHTML). */
+.notif-item {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-borde);
+  border-left: 3px solid var(--color-deco-3);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+}
+
+.notif-item:hover { text-decoration: none; }
+
+.notif-item-icono { font-size: 1.15rem; line-height: 1.3; flex-shrink: 0; }
+.notif-item-cuerpo { flex: 1; min-width: 0; }
+
+.notif-item-modulo {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-texto-muted);
+}
+
+.notif-item-titulo {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-texto);
+}
+
+.notif-item-detalle {
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+  line-height: 1.35;
+}
+
+/* Severidad → borde izquierdo + tinte de fondo. Línea previa `background:
+   var(--color-superficie)` = fallback para browsers sin color-mix. */
+.notif-item.is-peligro {
+  border-left-color: var(--color-peligro);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-peligro) 10%, var(--color-superficie));
+}
+.notif-item.is-alerta {
+  border-left-color: var(--color-alerta);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-alerta) 10%, var(--color-superficie));
+}
+.notif-item.is-info {
+  border-left-color: var(--color-acento);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-acento) 10%, var(--color-superficie));
+}
+
+.notif-vacio {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--color-texto-muted);
+  font-size: 0.9rem;
 }

@@ -3,7 +3,7 @@
 > Leer junto con `CLAUDE.md`. Este doc es para tareas que tocan `app.py`.
 
 ## Archivos del dominio
-- `app.py` (~2200 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulos Calendario, Lactancia y Rutina.
+- `app.py` (~2500 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulos Calendario, Lactancia, Rutina y Notificaciones.
 - Imports clave: `database`, `auth`, `cotizacion`, `config`.
 
 ## Patrón general de ruta
@@ -23,6 +23,7 @@
 | GET    | `/resumen`                | `resumen`             | Dashboard con métricas mensuales.                |
 | POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD.               |
 | GET    | `/api/metrics`            | `metrics`             | JSON con métricas (CPU, RAM, etc.).              |
+| GET    | `/api/notificaciones`     | `api_notificaciones`  | JSON `{ok, total, items}`. Agrega todos los `NOTIF_PROVIDERS`. Ver `docs/CONTEXT_NOTIFICATIONS.md`. |
 | GET    | `/api/saldos`             | `api_saldos`          | JSON `{saldos, gauges, historico, fecha}`. `?hasta=YYYY-MM-DD` = saldos a esa fecha; sin `hasta` = toda la DB. |
 | GET/POST | `/settings`             | `settings`            | Ajustes. POST general guarda **solo** `app_name` y `factor_sueldo` (merge parcial; NO toca ngrok/OAuth/puerto). Otras acciones (form `accion`): `agregar_fijo`, `editar_fijo`, `eliminar_fijo`, `guardar_backup_dir`, `marcar_configurado`. |
 | POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
@@ -94,7 +95,7 @@ Sin alta directa a freezer en la UI ni traspaso individual.
 - `_lac_horas_en_heladera(p, ahora)` / `_lac_freezable(p, params, ahora)` → antigüedad en heladera (desde `cargada`) y si la partida TODAVÍA puede pasar al freezer (abierta, no vencida, y con menos de `freezar_hasta_horas` de antigüedad). Regla de seguridad: leche muy refrigerada no se congela. `_lac_freezable` espera dict (no `sqlite3.Row`).
 - `_lac_enriquecer(row, params, ahora)` → dict + `vencimiento` (ISO), `estado`, `dias_restantes` (freezer) / `horas_restantes` + `horas_en_heladera` + `freezable` (heladera).
 - `_lac_payload()` → `{'freezer': [FIFO], 'heladera': [FIFO], 'historial': [cerradas DESC], 'tablero': {...}, 'params': {...}, 'badge': int}`. FIFO = vencimiento asc, desempate por hora de extracción y luego id. Tablero: usables = disponible+vence_pronto (vencidas NO suman); trasladadas no cuentan como usadas ni descartadas; heladera separada del freezer. Fuente de TODAS las respuestas AJAX del módulo.
-- `_lac_badge_count()` → abiertas vencidas + vence_pronto (ambas ubicaciones). Lo usa `inject_lactancia_badge` (context_processor con try/except → 0: expone `lac_badge` a todos los templates para el contador del nav; jamás rompe un render).
+- Badge de nav propio (`_lac_badge_count()` / `inject_lactancia_badge` / `lac_badge`) **eliminado**: lo reemplaza el sistema genérico de notificaciones (`NOTIF_PROVIDERS`, `_notificaciones()`, `inject_notif_badge` → `notif_badge`). Ver `docs/CONTEXT_NOTIFICATIONS.md`. Provider de este módulo: `_notif_lactancia()`, definido junto a los demás helpers `_lac_*`.
 - `_lac_parsear_volumen(valor)` / `_lac_parsear_extraccion(form)` / `_lac_parsear_fecha_cierre(valor)` / `_lac_leer_form_alta(form)`: validaciones (ValueError). Volumen int 1..2000; fechas no futuras; ambas ubicaciones exigen fecha/hora de extracción (el momento real de carga lo pone el server en `cargada`, base del vencimiento de heladera).
 
 ## Módulo Rutina — helpers
