@@ -361,20 +361,6 @@ def _lac_payload():
             'tablero': tablero, 'params': params, 'badge': badge}
 
 
-def _lac_badge_count():
-    """Contador del badge de nav: partidas abiertas vencidas o por vencer
-    (ambas ubicaciones). Usado por inject_lactancia_badge en cada render."""
-    params = _lac_params()
-    ahora = datetime.now()
-    total = 0
-    for fila in database.obtener_partidas_lactancia():
-        if fila['motivo_cierre']:
-            continue
-        if _lac_estado(dict(fila), params, ahora) in ('vencida', 'vence_pronto'):
-            total += 1
-    return total
-
-
 def _lac_parsear_volumen(valor):
     """Valida el volumen en ml: entero 1..2000 (las bolsas Lansinoh son de
     180 ml; el tope generoso cubre cualquier contenedor). Lanza ValueError."""
@@ -442,6 +428,83 @@ def _lac_leer_form_alta(form):
 
 
 # =============================================================================
+# MÓDULO NOTIFICACIONES — helpers y registry de providers
+# Propósito: campana de notificaciones genérica en el header (reemplaza los
+# badges de nav por módulo). Cada módulo de negocio expone un "provider":
+# una función sin argumentos que devuelve una lista de ítems con el contrato
+# CERRADO documentado en docs/CONTEXT_NOTIFICATIONS.md (claves: modulo,
+# modulo_nombre, icono, titulo, detalle, url, severidad). _notificaciones()
+# agrega los providers de NOTIF_PROVIDERS; un provider roto NUNCA tumba la
+# campana (try/except individual, logueado con AVISO). Para sumar un módulo
+# nuevo: escribir su función `_notif_<modulo>()` y agregarla a
+# NOTIF_PROVIDERS — nada más (ver checklist en CONTEXT_NOTIFICATIONS.md).
+# =============================================================================
+
+def _notif_lactancia():
+    """Provider de notificaciones del módulo Lactancia: 1 ítem por partida
+    ABIERTA (sin motivo_cierre) cuyo estado sea 'vencida' o 'vence_pronto'.
+    Reusa _lac_params()/_lac_enriquecer() tal cual — el cálculo de
+    vencimiento/estado vive únicamente en los helpers _lac_* (NUNCA se
+    reimplementa acá). Orden interno: vencidas primero, luego por vencer;
+    dentro de cada grupo, por vencimiento ascendente."""
+    params = _lac_params()
+    ahora = datetime.now()
+    partidas = [_lac_enriquecer(f, params, ahora)
+                for f in database.obtener_partidas_lactancia()
+                if not f['motivo_cierre']]
+    relevantes = [p for p in partidas if p['estado'] in ('vencida', 'vence_pronto')]
+    relevantes.sort(key=lambda p: (0 if p['estado'] == 'vencida' else 1, p['vencimiento']))
+
+    def _dias_texto(n):
+        return f"{n} día" if n == 1 else f"{n} días"
+
+    items = []
+    for p in relevantes:
+        vencida = p['estado'] == 'vencida'
+        if p['ubicacion'] == 'freezer':
+            dias = abs(p['dias_restantes'])
+            if vencida:
+                tiempo = 'venció hoy' if dias == 0 else f'venció hace {_dias_texto(dias)}'
+            else:
+                tiempo = 'vence hoy' if dias == 0 else f'vence en {_dias_texto(dias)}'
+            ubicacion_txt = 'Freezer'
+        else:
+            tiempo = 'venció' if vencida else f"vence en {p['horas_restantes']} h"
+            ubicacion_txt = 'Heladera'
+        items.append({
+            'modulo':        'lactancia',
+            'modulo_nombre': 'Lactancia',
+            'icono':         '🍼',
+            'titulo':        'Partida vencida' if vencida else 'Partida por vencer',
+            'detalle':       f"{ubicacion_txt} · {p['volumen_ml']} ml · {tiempo}",
+            'url':           '/lactancia',
+            'severidad':     'peligro' if vencida else 'alerta',
+        })
+    return items
+
+
+NOTIF_PROVIDERS = [_notif_lactancia]
+
+
+def _notificaciones():
+    """Agrega los ítems de TODOS los providers de NOTIF_PROVIDERS. Cada
+    provider corre aislado: si uno falla, se loguea (AVISO) y se sigue con
+    los demás — un módulo roto nunca tumba la campana. Orden final: peligro
+    → alerta → info; el sort es estable, así que respeta el orden interno de
+    cada provider y el orden de NOTIF_PROVIDERS entre módulos distintos con
+    la misma severidad."""
+    items = []
+    for provider in NOTIF_PROVIDERS:
+        try:
+            items.extend(provider())
+        except Exception as e:
+            log(f"AVISO: provider de notificaciones '{provider.__name__}' falló: {e}")
+    orden_severidad = {'peligro': 0, 'alerta': 1, 'info': 2}
+    items.sort(key=lambda it: orden_severidad.get(it['severidad'], 3))
+    return items
+
+
+# =============================================================================
 # HELPER: _calcular_monto_usd(monto, moneda, cfg)
 # Propósito: Centraliza la conversión ARS→USD al insertar/editar movimientos.
 # =============================================================================
@@ -499,14 +562,15 @@ def inject_config():
 
 
 @app.context_processor
-def inject_lactancia_badge():
-    """Expone `lac_badge` (partidas vencidas + por vencer) a todos los
-    templates para el contador del ítem de nav Lactancia. Con red de
-    seguridad: un fallo acá jamás debe romper el render de una página."""
+def inject_notif_badge():
+    """Expone `notif_badge` (cantidad total de notificaciones activas de
+    TODOS los módulos, vía _notificaciones()) a todos los templates, para el
+    contador de la campana en el header. Con red de seguridad: un fallo acá
+    jamás debe romper el render de una página."""
     try:
-        return {'lac_badge': _lac_badge_count()}
+        return {'notif_badge': len(_notificaciones())}
     except Exception:
-        return {'lac_badge': 0}
+        return {'notif_badge': 0}
 
 
 def _static_version():
@@ -1835,6 +1899,20 @@ def metrics():
             "memoria_percent":   round(host_mem.percent, 1)
         }
     })
+
+
+# =============================================================================
+# RUTA: Notificaciones (campana genérica del header)
+# URL: GET http://localhost:5000/api/notificaciones
+# =============================================================================
+#
+# Agrega los ítems de TODOS los providers registrados en NOTIF_PROVIDERS (ver
+# docs/CONTEXT_NOTIFICATIONS.md). Solo lectura, sin parámetros.
+#
+@app.route('/api/notificaciones')
+def api_notificaciones():
+    items = _notificaciones()
+    return jsonify({'ok': True, 'total': len(items), 'items': items})
 
 
 # =============================================================================
