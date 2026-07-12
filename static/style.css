@@ -4916,7 +4916,8 @@ body.has-dev-banner .settings-aside {
 
 .lac-campo input[type="text"],
 .lac-campo input[type="number"],
-.lac-campo input[type="time"] {
+.lac-campo input[type="time"],
+.lac-campo input.flatpickr-mobile {
   width: 100%;
   box-sizing: border-box;
   padding: 0.4rem 0.55rem;
@@ -4926,6 +4927,16 @@ body.has-dev-banner .settings-aside {
   font-family: var(--fuente-principal);
   color: var(--color-texto);
   background: var(--color-superficie);
+}
+
+/* Inputs NATIVOS que flatpickr crea en celulares (modo mobile, hoy solo los
+   de fecha; las horas usan disableMobile): los date/time de iOS tienen ancho
+   intrínseco propio y desbordan la tarjeta si no se les quita el chrome */
+.lac-campo input.flatpickr-mobile {
+  max-width: 100%;
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .lac-campo input:focus {
@@ -4956,7 +4967,7 @@ body.has-dev-banner .settings-aside {
 .lac-btn-freezar:disabled { opacity: 0.55; cursor: default; transform: none; }
 
 /* Checkbox por partida de heladera: qué entra en la próxima freezada (⬆).
-   Tildado por defecto; alineado al borde derecho de la fila. */
+   Tildado por defecto solo si es reciente; alineado al borde derecho de la fila. */
 .lac-check {
   display: grid;
   place-items: center;
@@ -4973,8 +4984,8 @@ body.has-dev-banner .settings-aside {
   accent-color: var(--color-acento);
 }
 
-/* Partida que ya no se puede freezar (demasiadas horas en heladera): casilla
-   bloqueada. Se ve tenue y no acepta click. */
+/* Partida vencida: ya no se puede freezar, casilla bloqueada. Se ve tenue y
+   no acepta click. */
 .lac-check.is-off { cursor: not-allowed; }
 .lac-check .lac-check-input:disabled { cursor: not-allowed; opacity: 0.4; }
 
