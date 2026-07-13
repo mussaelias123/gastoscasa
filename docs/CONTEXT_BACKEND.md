@@ -15,7 +15,7 @@
 
 | Método | URL                       | Función               | Propósito                                        |
 |--------|---------------------------|-----------------------|--------------------------------------------------|
-| GET    | `/`                       | `index`               | Página Inicio (home): saldos + form movimiento (partials compartidos con /gastos) + tarjetas de módulos (Rutina/Lactancia/Calendario placeholder). |
+| GET    | `/`                       | `index`               | Página Inicio (home): tarjeta Gastos (saldos + form movimiento, partials compartidos con /gastos) + tarjeta Lactancia (`lac_home=_home_lactancia_payload()`, form compartido `_form_lactancia.html`) + placeholders Rutina/Calendario. |
 | GET    | `/gastos`                 | `gastos`              | Pantalla del módulo Gastos: saldos, formulario, tabla (ex `/`). |
 | POST   | `/agregar`                | `agregar`             | Inserta movimiento (ingreso/gasto/cambio).       |
 | POST   | `/eliminar/<id>`          | `eliminar`            | Borra movimiento por id.                         |
@@ -96,6 +96,7 @@ Sin alta directa a freezer en la UI ni traspaso individual.
 - `_lac_horas_en_heladera(p, ahora)` / `_lac_freezable(p, params, ahora)` / `_lac_freezar_reciente(p, params, ahora)` → antigüedad en heladera (desde `cargada`); si la partida TODAVÍA puede pasar al freezer (abierta, no vencida — sin tope de horas, el usuario decide); y si lleva menos de `freezar_hasta_horas` (solo define el tildado por defecto del checkbox, no bloquea nada). `_lac_freezable` espera dict (no `sqlite3.Row`).
 - `_lac_enriquecer(row, params, ahora)` → dict + `vencimiento` (ISO), `estado`, `dias_restantes` (freezer) / `horas_restantes` + `horas_en_heladera` + `freezable` + `freezar_reciente` (heladera).
 - `_lac_payload()` → `{'freezer': [FIFO], 'heladera': [FIFO], 'historial': [cerradas DESC], 'tablero': {...}, 'params': {...}, 'badge': int}`. FIFO = vencimiento asc, desempate por hora de extracción y luego id. Tablero: usables = disponible+vence_pronto (vencidas NO suman); trasladadas no cuentan como usadas ni descartadas; heladera separada del freezer. Fuente de TODAS las respuestas AJAX del módulo.
+- `_home_lactancia_payload()` → `{'heladera': [...], 'freezer_primera': dict|None}`. Proyección de `_lac_payload()` para la tarjeta Lactancia del Inicio (todas las de heladera + la primera del freezer, FIFO). Solo recorta — JAMÁS reimplementa vencimientos/estados. La consume `index()` (`lac_home` → `window.LAC_HOME`).
 - Badge de nav propio (`_lac_badge_count()` / `inject_lactancia_badge` / `lac_badge`) **eliminado**: lo reemplaza el sistema genérico de notificaciones (`NOTIF_PROVIDERS`, `_notificaciones()`, `inject_notif_badge` → `notif_badge`). Ver `docs/CONTEXT_NOTIFICATIONS.md`. Provider de este módulo: `_notif_lactancia()`, definido junto a los demás helpers `_lac_*`.
 - `_lac_parsear_volumen(valor)` / `_lac_parsear_extraccion(form)` / `_lac_parsear_fecha_cierre(valor)` / `_lac_leer_form_alta(form)`: validaciones (ValueError). Volumen int 1..2000; fechas no futuras; ambas ubicaciones exigen fecha/hora de extracción (el momento real de carga lo pone el server en `cargada`, base del vencimiento de heladera).
 

@@ -361,6 +361,16 @@ def _lac_payload():
             'tablero': tablero, 'params': params, 'badge': badge}
 
 
+def _home_lactancia_payload():
+    """Proyección de _lac_payload() para la tarjeta Lactancia del Inicio:
+    TODAS las partidas de heladera + la PRIMERA del freezer (FIFO: la que se
+    consumiría a continuación). Solo recorta el payload completo — JAMÁS
+    reimplementa vencimientos/estados (viven en los helpers _lac_*)."""
+    datos = _lac_payload()
+    return {'heladera': datos['heladera'],
+            'freezer_primera': datos['freezer'][0] if datos['freezer'] else None}
+
+
 def _lac_parsear_volumen(valor):
     """Valida el volumen en ml: entero 1..2000 (las bolsas Lansinoh son de
     180 ml; el tope generoso cubre cualquier contenedor). Lanza ValueError."""
@@ -753,13 +763,15 @@ def _gastos_fijos_json():
 
 @app.route('/')
 def index():
-    """Inicio: home de la app. Tarjeta Gastos funcional (saldos mini + form
-    de movimiento) + tarjetas placeholder de Lactancia/Calendario/Rutina
-    (llegan en etapas siguientes). `cfg` llega vía inject_config."""
+    """Inicio: home de la app. Tarjetas Gastos (saldos mini + form de
+    movimiento) y Lactancia (consumir partidas + cargar extracción)
+    funcionales + placeholders de Calendario/Rutina (llegan en etapas
+    siguientes). `cfg` llega vía inject_config."""
     saldos = database.calcular_saldos()
     return render_template('index.html',
                            saldos=saldos,
-                           gastos_fijos_json=_gastos_fijos_json())
+                           gastos_fijos_json=_gastos_fijos_json(),
+                           lac_home=_home_lactancia_payload())
 
 
 # =============================================================================
