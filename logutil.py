@@ -8,7 +8,7 @@
 #
 # CONVENCIÓN (ver docs/CONTEXT_DEPLOY.md → "Convención de logs"):
 #   AA/MM/DD-HH:MM:SS | OK:/AVISO:/ERROR: mensaje
-#   Ejemplo: 26/06/11-14:30:55 | OK: Backup de DB (manual): gastos_2026-06-11_14-30.db
+#   Ejemplo: 26/06/11-14:30:55 | OK: Backup de DB (manual): fondo_2026-06-11_14-30.db
 #
 #   - El timestamp lo agrega log(); el mensaje NO debe traer fecha/hora propia.
 #   - NO usar print() directo para logs: siempre log() de este módulo.

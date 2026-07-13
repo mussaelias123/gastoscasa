@@ -4,7 +4,9 @@ config.json
 # Variables de entorno
 .env
 
-# Base de datos local
+# Base de datos local (fondo.db desde el rename 2026-07; gastos.db = nombre
+# legacy, se mantiene ignorado por si algún entorno todavía no migró)
+fondo.db
 gastos.db
 
 # Backups automáticos de la DB (no van en Git, son datos)

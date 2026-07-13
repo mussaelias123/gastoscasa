@@ -2173,10 +2173,15 @@ def api_paleta():
 # =============================================================================
 #
 # - GET  /api/backups            → lista los backups .db de la carpeta.
-# - POST /api/backups/crear      → crea un backup manual de gastos.db.
-# - POST /api/backups/restaurar  → restaura un backup elegido sobre gastos.db,
+# - POST /api/backups/crear      → crea un backup manual de fondo.db.
+# - POST /api/backups/restaurar  → restaura un backup elegido sobre fondo.db,
 #                                   guardando antes una copia de seguridad del
-#                                   estado actual (gastos_<fecha>_pre-restore.db).
+#                                   estado actual (fondo_<fecha>_pre-restore.db).
+#
+# Compat: los backups viejos, de antes del rename 2026-07 (gastos.db →
+# fondo.db), tienen prefijo `gastos_` en vez de `fondo_`. Se listan, rotan y
+# reconocen igual que los nuevos — ver _listar_backups/_limpiar_backups_antiguos/
+# _fecha_de_backup, todos con el patrón `(?:fondo|gastos)_`.
 
 def _listar_backups():
     """Lista los backups .db de la carpeta configurada, del más nuevo al más viejo."""
@@ -2185,7 +2190,7 @@ def _listar_backups():
     items = []
     try:
         for f in os.listdir(backup_dir):
-            if not (f.startswith('gastos_') and f.endswith('.db')):
+            if not (f.startswith(('fondo_', 'gastos_')) and f.endswith('.db')):
                 continue
             ruta = os.path.join(backup_dir, f)
             try:
@@ -2197,8 +2202,9 @@ def _listar_backups():
             if '_pre-restore' in f:
                 etiqueta += ' (previo a un restore)'
             else:
-                # Descripción de backup manual: lo que sigue a gastos_FECHA_HORA_
-                m = re.match(r'^gastos_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_(.+)\.db$', f)
+                # Descripción de backup manual: lo que sigue a fondo_FECHA_HORA_
+                # (o gastos_FECHA_HORA_ en backups viejos pre-rename).
+                m = re.match(r'^(?:fondo|gastos)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_(.+)\.db$', f)
                 if m:
                     etiqueta += f' — {m.group(1)}'
             items.append({'archivo': f, 'etiqueta': etiqueta, 'size_mb': size_mb, '_mtime': mtime})
@@ -2244,7 +2250,7 @@ def api_backups_restaurar():
         # 1) Copia de seguridad del estado actual antes de pisar nada.
         if os.path.isfile(_DB_PATH):
             sello  = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            seguro = os.path.join(backup_dir, f'gastos_{sello}_pre-restore.db')
+            seguro = os.path.join(backup_dir, f'fondo_{sello}_pre-restore.db')
             src = sqlite3.connect(_DB_PATH)
             dst = sqlite3.connect(seguro)
             src.backup(dst)
@@ -2252,7 +2258,7 @@ def api_backups_restaurar():
             dst.close()
             log(f"OK: Backup de seguridad pre-restore: {os.path.basename(seguro)}")
 
-        # 2) Restaurar: copiar el backup elegido sobre gastos.db (API SQLite).
+        # 2) Restaurar: copiar el backup elegido sobre fondo.db (API SQLite).
         src = sqlite3.connect(origen)
         dst = sqlite3.connect(_DB_PATH)
         src.backup(dst)
@@ -2282,7 +2288,7 @@ def api_backups_restaurar():
 # - Usa la API nativa de SQLite para copiar en caliente (sin cerrar la DB).
 
 _BASE_DIR_BACKUP = os.path.dirname(os.path.abspath(__file__))
-_DB_PATH         = os.path.join(_BASE_DIR_BACKUP, 'gastos.db')
+_DB_PATH         = database.DB_PATH
 _MAX_BACKUPS     = 10
 
 
@@ -2345,14 +2351,14 @@ def hacer_backup_db(motivo='programado', descripcion=None):
     """Copia la base de datos al directorio de backups usando la API de SQLite.
 
     Si viene descripción (backup manual), se agrega al final del nombre:
-    gastos_<fecha>_<descripcion>.db. Devuelve el nombre creado, o None si falló."""
+    fondo_<fecha>_<descripcion>.db. Devuelve el nombre creado, o None si falló."""
     import sqlite3
     backup_dir = _get_backup_dir()
     try:
         os.makedirs(backup_dir, exist_ok=True)
         ahora     = datetime.now().strftime('%Y-%m-%d_%H-%M')
         slug      = _slug_descripcion(descripcion)
-        dest      = os.path.join(backup_dir, f"gastos_{ahora}{('_' + slug) if slug else ''}.db")
+        dest      = os.path.join(backup_dir, f"fondo_{ahora}{('_' + slug) if slug else ''}.db")
         origen    = sqlite3.connect(_DB_PATH)
         respaldo  = sqlite3.connect(dest)
         origen.backup(respaldo)
@@ -2380,12 +2386,25 @@ def hacer_backup_db(motivo='programado', descripcion=None):
 def _limpiar_backups_antiguos():
     """Elimina los backups fechados más viejos si hay más de _MAX_BACKUPS.
 
-    Los archivos sin fecha en el nombre quedan fuera de la rotación."""
+    Los archivos sin fecha en el nombre quedan fuera de la rotación.
+    fondo_ y gastos_ (backups viejos pre-rename) rotan juntos por fecha.
+
+    IMPORTANTE: NO ordenar por el nombre crudo del archivo. Con prefijos
+    mixtos, 'fondo_...' es lexicográficamente MENOR que 'gastos_...' (f < g),
+    así que un `sorted()` directo pone TODOS los fondo_* antes que TODOS los
+    gastos_*, sin importar la fecha real — el backup más nuevo puede leerse
+    como "el más viejo" y la rotación lo borra (bug real visto en vivo:
+    fondo_2026-07-13_15-18_post-rename-fondo.db borrado al crearse, con 10
+    gastos_* de fechas viejas todavía en la carpeta). Por eso se ordena por
+    una CLAVE sin el prefijo: el resto del nombre (YYYY-MM-DD_HH-MM...) sí
+    ordena cronológicamente como string, prefijo aparte."""
+    import re
     backup_dir = _get_backup_dir()
     try:
         archivos = sorted(
-            f for f in os.listdir(backup_dir)
-            if f.startswith('gastos_') and f.endswith('.db') and _fecha_de_backup(f) is not None
+            (f for f in os.listdir(backup_dir)
+             if f.startswith(('fondo_', 'gastos_')) and f.endswith('.db') and _fecha_de_backup(f) is not None),
+            key=lambda f: re.sub(r'^(?:fondo|gastos)_', '', f)
         )
         while len(archivos) > _MAX_BACKUPS:
             os.remove(os.path.join(backup_dir, archivos.pop(0)))
@@ -2394,12 +2413,19 @@ def _limpiar_backups_antiguos():
 
 
 def _fecha_de_backup(nombre):
-    """Extrae la fecha de un nombre gastos_YYYY-MM-DD*.db, o None si no la tiene.
+    """Extrae la fecha de un nombre fondo_YYYY-MM-DD*.db o gastos_YYYY-MM-DD*.db
+    (compat backups viejos pre-rename 2026-07), o None si no la tiene.
 
-    Archivos renombrados a mano (ej. gastos_PreGitHub.db) devuelven None:
-    no cuentan como backup programado ni entran en la rotación."""
+    Usa regex en vez de slicing de largo fijo, porque el prefijo ya no mide
+    siempre lo mismo ('fondo_' vs 'gastos_'). Archivos renombrados a mano
+    (ej. gastos_PreGitHub.db) devuelven None: no cuentan como backup
+    programado ni entran en la rotación."""
+    import re
+    m = re.match(r'^(?:fondo|gastos)_(\d{4}-\d{2}-\d{2})', nombre)
+    if not m:
+        return None
     try:
-        return datetime.strptime(nombre[len('gastos_'):len('gastos_') + 10], '%Y-%m-%d').date()
+        return datetime.strptime(m.group(1), '%Y-%m-%d').date()
     except ValueError:
         return None
 
@@ -2411,7 +2437,7 @@ def _ultimo_backup_fecha():
         fechas = [
             _fecha_de_backup(f)
             for f in os.listdir(backup_dir)
-            if f.startswith('gastos_') and f.endswith('.db')
+            if f.startswith(('fondo_', 'gastos_')) and f.endswith('.db')
         ]
         fechas = [f for f in fechas if f is not None]
         return max(fechas) if fechas else None
@@ -2594,7 +2620,7 @@ def run_flask():
         modo = 'red local'
 
     horas_str = ', '.join(f"{h:02d}:00" for h in HORAS_REFRESH_COTIZACION)
-    log(f"OK: App iniciada — DB gastos.db lista; backup automático diario; "
+    log(f"OK: App iniciada — DB {os.path.basename(database.DB_PATH)} lista; backup automático diario; "
           f"cotización al inicio + diario a {horas_str}; "
           f"servidor en http://localhost:{port} (modo {modo}).")
 

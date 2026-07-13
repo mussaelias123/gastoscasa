@@ -28,8 +28,8 @@
 | GET/POST | `/settings`             | `settings`            | Ajustes. POST general guarda **solo** `app_name` y `factor_sueldo` (merge parcial; NO toca ngrok/OAuth/puerto). Otras acciones (form `accion`): `agregar_fijo`, `editar_fijo`, `eliminar_fijo`, `guardar_backup_dir`, `marcar_configurado`. |
 | POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
 | GET    | `/api/backups`            | `api_backups`         | JSON `{backups:[{archivo,etiqueta,size_mb}], carpeta}`. Lista backups `.db`. |
-| POST   | `/api/backups/crear`      | `api_backups_crear`   | Crea backup manual de `gastos.db`. Form `descripcion` (opcional) → sufijo en el nombre. Devuelve `{ok,mensaje,backups}`. |
-| POST   | `/api/backups/restaurar`  | `api_backups_restaurar` | Restaura `gastos.db` desde `archivo` (form). Hace copia `..._pre-restore.db` antes. |
+| POST   | `/api/backups/crear`      | `api_backups_crear`   | Crea backup manual de `fondo.db`. Form `descripcion` (opcional) → sufijo en el nombre. Devuelve `{ok,mensaje,backups}`. |
+| POST   | `/api/backups/restaurar`  | `api_backups_restaurar` | Restaura `fondo.db` desde `archivo` (form). Hace copia `..._pre-restore.db` antes. |
 | GET    | `/login`, `/auth/google`, `/auth/google/callback`, `/logout` | (blueprint `auth`) | OAuth Google. Ver `CONTEXT_AUTH.md`. |
 | GET    | `/calendario`             | `calendario`          | Página del módulo Calendario (tareas del hogar). Context: `datos=_act_payload()`, `cal_areas=CAL_AREAS`, `cal_responsables=CAL_RESPONSABLES`. |
 | GET    | `/api/actividades`        | `api_actividades`     | JSON `{'ok': True, **_act_payload()}`. |
@@ -121,17 +121,19 @@ permanente (todos los días). Sin badge de nav ni parámetros de Settings (v1).
 - `_rut_leer_form_tarea(form)` → `(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)`. Título 1..60 chars, emoji ≤8 chars, inicio 0..1439, dur 5..720.
 
 ## Schedulers en hilo
-- `iniciar_scheduler_backup()`: chequea cada hora; backup de `gastos.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.
+- `iniciar_scheduler_backup()`: chequea cada hora; backup de `fondo.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.
 - `iniciar_scheduler_cotizacion()`: refresh cotización USD a horarios fijos.
 - Ambos se inician en `run_flask()`. NO bloquean request loop.
 
 ## Helpers de backup
+- `_DB_PATH = database.DB_PATH` (fuente única; ya no hay join hardcodeado a `gastos.db` en `app.py`).
 - `_get_backup_dir()`: lee `backup_dir` de config en caliente (sin reiniciar). Si es ruta relativa, la resuelve contra la carpeta del proyecto. Si es vacía, usa `backups/`.
-- `hacer_backup_db(motivo, descripcion=None)`: copia `gastos.db` → `gastos_<fecha>[_descripcion].db` y registra hash en `ultimo_backup.json`. Devuelve el nombre del archivo o `None` si falló.
+- `hacer_backup_db(motivo, descripcion=None)`: copia `fondo.db` → `fondo_<fecha>[_descripcion].db` y registra hash en `ultimo_backup.json`. Devuelve el nombre del archivo o `None` si falló.
 - `_hash_datos_db(ruta)` / `_leer_estado_backup()` / `_guardar_estado_backup()`: detección de cambios (SHA-256 del dump lógico + json de estado).
 - `_listar_backups()`: lista los `.db` de la carpeta (más nuevo primero) con `archivo`, `etiqueta` (incluye descripción si la hay), `size_mb`.
-- Restore (`api_backups_restaurar`): valida nombre (anti path-traversal), guarda `gastos_<fecha>_pre-restore.db`, luego copia el backup elegido sobre `gastos.db` (API SQLite).
+- Restore (`api_backups_restaurar`): valida nombre (anti path-traversal), guarda `fondo_<fecha>_pre-restore.db`, luego copia el backup elegido sobre `fondo.db` (API SQLite).
 - Carpeta de backups editable desde Settings vía `accion='guardar_backup_dir'` (POST `/settings`).
+- **Compat rename 2026-07** (`gastos.db` → `fondo.db`): `_listar_backups`, `_limpiar_backups_antiguos` y `_ultimo_backup_fecha` filtran por `('fondo_', 'gastos_')` (los dos prefijos rotan juntos por fecha). `_fecha_de_backup` usa regex `^(?:fondo|gastos)_(\d{4}-\d{2}-\d{2})` (ya no slicing de largo fijo, porque el prefijo cambió de longitud) — mismo contrato: `None` si el nombre no matchea.
 
 ## Modo servicio (Windows)
 `app.py` no tiene comandos de servicio propios. En producción NSSM envuelve
