@@ -1587,6 +1587,54 @@ function initFormAjax() {
         .then(function(data) {
             if (!data.ok) throw new Error('El servidor devolvió ok=false');
 
+            // ── Modo inline (home /): sin navegación — refrescar en el lugar ──
+            // El form del Inicio lleva data-modo="inline" (partial
+            // _form_movimiento.html): se actualizan los saldos mini, se
+            // muestra el toast y el form queda listo para otra carga.
+            if (form.dataset.modo === 'inline') {
+                if (data.saldos) actualizarSaldos(data.saldos);
+                // En tipo=cambio el server devuelve movimiento (salida) y
+                // movimiento2 (entrada): el toast usa el principal, que trae
+                // todos los campos que mostrarToast necesita.
+                if (data.movimiento) mostrarToast(data.movimiento);
+
+                form.reset();
+
+                // reset() NO limpia el hidden #monto: en inputs hidden .value
+                // escribe el atributo (defaultValue), así que reset lo deja.
+                var hiddenMonto = document.getElementById('monto');
+                if (hiddenMonto) hiddenMonto.value = '';
+
+                // reset() vació el hidden de flatpickr → re-fijar hoy por la
+                // instancia (mismo formato que inicializarFechaHoy)
+                var campoFecha = document.getElementById('fecha');
+                if (campoFecha && campoFecha._flatpickr) {
+                    var t = new Date();
+                    var hoy = t.getFullYear() + '-' +
+                              String(t.getMonth() + 1).padStart(2, '0') + '-' +
+                              String(t.getDate()).padStart(2, '0');
+                    campoFecha._flatpickr.setDate(hoy, false);
+                }
+
+                // reset() volvió persona al default → restaurar la última
+                // usada (mismo criterio que inicializarPersona al cargar)
+                var selPersona = document.getElementById('persona');
+                var ultimaPersona = localStorage.getItem('ultima_persona');
+                if (selPersona && ultimaPersona) selPersona.value = ultimaPersona;
+
+                // Re-sincronizar categorías y secciones (envío/cuotas/cambio)
+                // según el tipo por defecto
+                var selTipo = document.getElementById('tipo');
+                if (selTipo) selTipo.dispatchEvent(new Event('change'));
+
+                // Re-pintar los colores de los selects de persona/moneda
+                if (window._refrescarColoresSelects) window._refrescarColoresSelects();
+
+                // En mobile el form vive en el bottom-sheet → cerrarlo
+                if (window.cerrarHomeSheet) window.cerrarHomeSheet('gastos');
+                return;
+            }
+
             // Redirigir a /gastos preservando el mes activo
             var mes = new URLSearchParams(window.location.search).get('mes') || '';
             window.location.href = mes ? '/gastos?mes=' + mes : '/gastos';

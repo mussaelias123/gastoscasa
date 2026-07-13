@@ -1,0 +1,87 @@
+{# Página Inicio (/): home de la app, sin scroll de página en desktop NI mobile.
+   Grid de 4 tarjetas .home-card — Gastos funcional (saldos mini + form de
+   movimiento), Rutina/Lactancia/Calendario placeholder (llegan en etapas
+   siguientes). El form existe UNA sola vez en el DOM (.home-sheet): bloque
+   normal en desktop ≥900px, bottom-sheet fijo en mobile (<900px, lo abre el
+   botón ＋ vía home.js). #}
+
+{% extends 'base.html' %}
+
+{% block titulo %}Inicio{% endblock %}
+
+{% block contenido %}
+
+<div class="home-page">
+
+  {# ── GASTOS — funcional: saldos mini + form de movimiento ──────────────── #}
+  <section class="home-card home-card--gastos">
+    <div class="home-card-head">
+      <span class="home-card-titulo">💸 Gastos</span>
+      <a class="home-card-link" href="{{ url_for('gastos') }}">Ver módulo →</a>
+    </div>
+    <div class="home-card-body">
+      {% include '_tarjeta_saldos_mini.html' %}
+
+      {# Solo mobile: abre el bottom-sheet con el form #}
+      <button type="button" class="btn btn-acento home-btn-nuevo" data-sheet="gastos">＋ Nuevo movimiento</button>
+
+      {# Sheet del form: bloque normal en desktop, bottom-sheet en mobile #}
+      <div class="home-sheet" id="home-sheet-gastos">
+        <div class="home-sheet-head">
+          <span class="home-sheet-titulo">➕ Nuevo movimiento</span>
+          <button type="button" class="home-sheet-cerrar" data-sheet-cerrar aria-label="Cerrar">✕</button>
+        </div>
+        {% with form_modo = 'inline' %}{% include '_form_movimiento.html' %}{% endwith %}
+      </div>
+    </div>
+  </section>
+
+  {# ── RUTINA — placeholder ──────────────────────────────────────────────── #}
+  <section class="home-card home-card--rutina">
+    <div class="home-card-head">
+      <span class="home-card-titulo">⏰ Rutina</span>
+      <a class="home-card-link" href="{{ url_for('rutina') }}">Ver módulo →</a>
+    </div>
+    <div class="home-card-body">
+      <p class="home-placeholder">Próximamente en el Inicio.</p>
+    </div>
+  </section>
+
+  {# ── LACTANCIA — placeholder ───────────────────────────────────────────── #}
+  <section class="home-card home-card--lactancia">
+    <div class="home-card-head">
+      <span class="home-card-titulo">🍼 Lactancia</span>
+      <a class="home-card-link" href="{{ url_for('lactancia') }}">Ver módulo →</a>
+    </div>
+    <div class="home-card-body">
+      <p class="home-placeholder">Próximamente en el Inicio.</p>
+    </div>
+  </section>
+
+  {# ── CALENDARIO — placeholder ──────────────────────────────────────────── #}
+  <section class="home-card home-card--calendario">
+    <div class="home-card-head">
+      <span class="home-card-titulo">📅 Calendario</span>
+      <a class="home-card-link" href="{{ url_for('calendario') }}">Ver módulo →</a>
+    </div>
+    <div class="home-card-body">
+      <p class="home-placeholder">Próximamente en el Inicio.</p>
+    </div>
+  </section>
+
+</div>{# /home-page #}
+
+{# Overlay del bottom-sheet (solo mobile; lo maneja home.js) #}
+<div class="home-overlay" id="home-overlay"></div>
+
+{# Contenedor de notificaciones toast — los agrega JS dinámicamente #}
+<div class="toast-container" id="toast-container"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var GASTOS_FIJOS = {{ gastos_fijos_json | safe }};
+</script>
+<script src="{{ url_for('static', filename='home.js') }}?v={{ static_version }}"></script>
+{% endblock %}
