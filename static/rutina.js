@@ -761,6 +761,26 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         el.innerHTML = partes.map(escapeHtml).join('<br>');
     }
 
+    // Selección "actual / siguiente" de un usuario. Extraída de renderAhora()
+    // tal cual (cut-paste, con las variables de closure como parámetros) para
+    // reusarla desde hoyAhora() — la lógica NO cambió.
+    function _seleccionAhora(propios, now, esHoy, nocheActiva, nocheItem, u, enCurso) {
+        var cur = null;
+        propios.forEach(function (i) { if (!cur && enCurso(i)) cur = i; });
+        if (!cur && u === 'leon' && nocheActiva) cur = nocheItem;
+        // Durmiendo: el último ítem "abierto" (dur 0: A dormir / Sueño
+        // nocturno) ya empezó → la tarjeta se mantiene toda la noche
+        // (hasta las 05:00 si cruza la medianoche), para los 3 usuarios.
+        if (!cur && esHoy) {
+            var abierto = null;
+            propios.forEach(function (i) { if (!i.dur) abierto = i; });
+            if (abierto && (now >= abierto.start || now < 300)) cur = abierto;
+        }
+        var sig = null;
+        propios.forEach(function (i) { if (!sig && i.start > now) sig = i; });
+        return { cur: cur, sig: sig };
+    }
+
     function renderAhora(items, leon, esHoy, now, nocheItem, nocheActiva, enCurso) {
         var cont = $('rut-ahora');
         if (!esHoy) { cont.innerHTML = ''; return; }
@@ -768,19 +788,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         ['leon', 'mama', 'papa'].forEach(function (u) {
             if (!UI.sel[u]) return;
             var propios = items.filter(function (i) { return i.user === u; });
-            var cur = null;
-            propios.forEach(function (i) { if (!cur && enCurso(i)) cur = i; });
-            if (!cur && u === 'leon' && nocheActiva) cur = nocheItem;
-            // Durmiendo: el último ítem "abierto" (dur 0: A dormir / Sueño
-            // nocturno) ya empezó → la tarjeta se mantiene toda la noche
-            // (hasta las 05:00 si cruza la medianoche), para los 3 usuarios.
-            if (!cur && esHoy) {
-                var abierto = null;
-                propios.forEach(function (i) { if (!i.dur) abierto = i; });
-                if (abierto && (now >= abierto.start || now < 300)) cur = abierto;
-            }
-            var sig = null;
-            propios.forEach(function (i) { if (!sig && i.start > now) sig = i; });
+            var sel = _seleccionAhora(propios, now, esHoy, nocheActiva, nocheItem, u, enCurso);
+            var cur = sel.cur, sig = sel.sig;
             if (!cur && !sig) return;
             var el = cur || { emoji: '⏳', t: 'Tiempo libre', start: now, end: sig ? sig.start : now + 30, sub: '', dur: 1, editable: false };
             var pct = Math.round(Math.min(100, Math.max(3, ((now - el.start) / Math.max(1, (el.end - el.start))) * 100)));
@@ -1282,6 +1291,19 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         '</div>';
     }
 
+    // Cálculo de noche + predicado "en curso". Extraído de renderTodo() tal
+    // cual (cut-paste) para reusarlo desde hoyAhora() — la lógica NO cambió.
+    function _nocheInfo(calc, esHoy, now) {
+        var nocheItem = null;
+        calc.leon.forEach(function (i) { if (!nocheItem && i.kind === 'noche') nocheItem = i; });
+        function enCurso(it) {
+            return esHoy && it.kind !== 'noche' && now >= it.start && now < Math.max(it.end, it.start + 1);
+        }
+        // La noche queda activa desde su inicio hasta las 05:00 (cruza medianoche)
+        var nocheActiva = esHoy && nocheItem && (now >= nocheItem.start || now < 300);
+        return { nocheItem: nocheItem, nocheActiva: nocheActiva, enCurso: enCurso };
+    }
+
     function renderTodo() {
         ajustarSticky();   // remedir siempre: el alto del topbar global puede variar
         capturarFormAdd(); // preservar lo tipeado en el form de añadir
@@ -1298,13 +1320,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             return a.start - b.start || (a.user === 'leon' ? -1 : 1);
         });
 
-        var nocheItem = null;
-        calc.leon.forEach(function (i) { if (!nocheItem && i.kind === 'noche') nocheItem = i; });
-        function enCurso(it) {
-            return esHoy && it.kind !== 'noche' && now >= it.start && now < Math.max(it.end, it.start + 1);
-        }
-        // La noche queda activa desde su inicio hasta las 05:00 (cruza medianoche)
-        var nocheActiva = esHoy && nocheItem && (now >= nocheItem.start || now < 300);
+        var ni = _nocheInfo(calc, esHoy, now);
+        var nocheItem = ni.nocheItem, nocheActiva = ni.nocheActiva, enCurso = ni.enCurso;
 
         renderHeader();
         renderChips();
@@ -1322,6 +1339,55 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             btnEditar.classList.toggle('activo', modoEdicion);
         }
     }
+
+    // ── API pública para la tarjeta Rutina del Inicio (window.Rutina) ───────
+    // Fuerza "hoy real + etapa actual" con save/restore síncrono de UI.dia y
+    // UI.etapa (try/finally, SIN persistir: jamás toca localStorage — UI.sel
+    // no afecta a calcular() ni a la selección, no hace falta tocarlo) y
+    // devuelve, por usuario, qué está haciendo AHORA y qué viene después:
+    //   [{ user, nombre, emoji,
+    //      actual:    { titulo, emoji, desde, hasta|null },   // null = abierto (dur 0)
+    //      siguiente: { titulo, emoji, hora } | null }]
+    // Sin actividad en curso pero con siguiente → mismo "Tiempo libre" (⏳)
+    // sintético que usan las tarjetas "Ahora". Usuario sin actual ni
+    // siguiente → se omite. Requiere window.RUT_DATOS inyectado ANTES de
+    // cargar este script (igual que en /rutina): el estado del módulo se
+    // popula al evaluar la IIFE, no en init().
+    function hoyAhora() {
+        var diaOrig = UI.dia, etapaOrig = UI.etapa;
+        try {
+            UI.dia = new Date().getDay();   // fechaVista() pasa a ser HOY real
+            UI.etapa = 'actual';
+            var calc = calcular();
+            var now = ahoraMin();
+            var ni = _nocheInfo(calc, true, now);
+            var out = [];
+            ['leon', 'mama', 'papa'].forEach(function (u) {
+                // calc[u] ya viene ordenado por inicio (mismo orden que los
+                // `propios` que renderAhora filtra de la lista combinada)
+                var sel = _seleccionAhora(calc[u], now, true, ni.nocheActiva, ni.nocheItem, u, ni.enCurso);
+                if (!sel.cur && !sel.sig) return;
+                var el = sel.cur || { emoji: '⏳', t: 'Tiempo libre', start: now, end: sel.sig ? sel.sig.start : now + 30, dur: 1 };
+                out.push({
+                    user: u, nombre: NOMBRES[u], emoji: EMOJIS[u],
+                    actual: {
+                        titulo: el.t, emoji: el.emoji,
+                        desde: fmt(el.start),
+                        hasta: el.dur === 0 ? null : fmt(el.end)
+                    },
+                    siguiente: sel.sig
+                        ? { titulo: sel.sig.t, emoji: sel.sig.emoji, hora: fmt(sel.sig.start) }
+                        : null
+                });
+            });
+            return out;
+        } finally {
+            UI.dia = diaOrig;
+            UI.etapa = etapaOrig;
+        }
+    }
+
+    window.Rutina = { hoyAhora: hoyAhora };
 
     // ── Topbar sticky: se pega justo debajo del topbar global de la app.
     //    El .site-topbar puede estar corrido (banner DEV: top 24px), así que

@@ -829,16 +829,21 @@ def _gastos_fijos_json():
 @app.route('/')
 def index():
     """Inicio: home de la app. Tarjetas Gastos (saldos mini + form de
-    movimiento), Lactancia (consumir partidas + cargar extracción) y
-    Calendario (mini mes + pendientes, 100% server-render) funcionales +
-    placeholder de Rutina (llega en la etapa siguiente). `cfg` llega vía
-    inject_config."""
+    movimiento), Lactancia (consumir partidas + cargar extracción),
+    Calendario (mini mes + pendientes, 100% server-render) y Rutina (qué
+    hace cada uno AHORA + qué viene después: rut_home = _rut_payload de
+    HOY, rango de 1 día — mismo helper que /rutina; lo consume rutina.js
+    vía window.RUT_DATOS y lo renderiza home.js con window.Rutina.hoyAhora).
+    `cfg` llega vía inject_config."""
+    from datetime import date
     saldos = database.calcular_saldos()
+    hoy_iso = date.today().isoformat()
     return render_template('index.html',
                            saldos=saldos,
                            gastos_fijos_json=_gastos_fijos_json(),
                            lac_home=_home_lactancia_payload(),
-                           cal_home=_home_calendario_payload())
+                           cal_home=_home_calendario_payload(),
+                           rut_home=_rut_payload(hoy_iso, hoy_iso))
 
 
 # =============================================================================

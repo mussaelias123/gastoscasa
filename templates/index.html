@@ -1,11 +1,12 @@
 {# Página Inicio (/): home de la app, sin scroll de página en desktop NI mobile.
-   Grid de 4 tarjetas .home-card — Gastos funcional (saldos mini + form de
-   movimiento), Lactancia funcional (listas heladera/freezer-primera con
-   "✓ Usada" + form de extracción compartido vía _form_lactancia.html),
-   Rutina/Calendario placeholder (llegan en etapas siguientes). Cada form
-   existe UNA sola vez en el DOM (.home-sheet): bloque normal en desktop
-   ≥900px, bottom-sheet fijo en mobile (<900px, lo abre el botón ＋ vía
-   home.js). #}
+   Grid de 4 tarjetas .home-card, TODAS funcionales — Gastos (saldos mini +
+   form de movimiento), Rutina (qué hace cada uno AHORA + qué viene después,
+   vía window.Rutina.hoyAhora() de rutina.js), Lactancia (listas
+   heladera/freezer-primera con "✓ Usada" + form de extracción compartido vía
+   _form_lactancia.html) y Calendario (mini mes + pendientes, 100%
+   server-render). Cada form existe UNA sola vez en el DOM (.home-sheet):
+   bloque normal en desktop ≥900px, bottom-sheet fijo en mobile (<900px, lo
+   abre el botón ＋ vía home.js). #}
 
 {% extends 'base.html' %}
 
@@ -38,14 +39,18 @@
     </div>
   </section>
 
-  {# ── RUTINA — placeholder ──────────────────────────────────────────────── #}
+  {# ── RUTINA — funcional: qué hace cada uno AHORA + qué viene después ────── #}
+  {# Contenedor vacío: lo llena initRutina() de home.js con los datos de
+     window.Rutina.hoyAhora() (rutina.js, cargado abajo con window.RUT_DATOS
+     = _rut_payload de HOY — mismo helper y mismo orden de scripts que
+     /rutina). Se re-renderiza cada 30 s (reloj vivo). #}
   <section class="home-card home-card--rutina">
     <div class="home-card-head">
       <span class="home-card-titulo">⏰ Rutina</span>
       <a class="home-card-link" href="{{ url_for('rutina') }}">Ver módulo →</a>
     </div>
     <div class="home-card-body">
-      <p class="home-placeholder">Próximamente en el Inicio.</p>
+      <div id="home-rut-lista"></div>
     </div>
   </section>
 
@@ -202,6 +207,13 @@
 <script>
   var GASTOS_FIJOS = {{ gastos_fijos_json | safe }};
   window.LAC_HOME = {{ lac_home | tojson }};
+  window.RUT_DATOS = {{ rut_home | tojson }};
 </script>
+{# Rutina: MISMO orden que rutina.html (datos → actividades → rutina.js).
+   rutina.js popula su estado al evaluarse (necesita RUT_DATOS ya inyectado)
+   y expone window.Rutina; su init() corta solo (acá no hay #rut-filas).
+   home.js va al final: initRutina() usa window.Rutina. #}
+<script src="{{ url_for('static', filename='rutina-actividades.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='rutina.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='home.js') }}?v={{ static_version }}"></script>
 {% endblock %}

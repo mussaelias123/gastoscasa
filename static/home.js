@@ -21,6 +21,12 @@
    del server (horas_restantes/dias_restantes): acá solo se formatean.
    En el Inicio lactancia.js NO se carga: los helpers de formato y la config
    de flatpickr son copias mínimas de ese archivo.
+   (3) Tarjeta Rutina (initRutina): qué está haciendo AHORA cada uno
+   (León/Mamá/Papá) y qué viene después. Los datos los da
+   window.Rutina.hoyAhora() (rutina.js SÍ se carga en el Inicio, con
+   window.RUT_DATOS + rutina-actividades.js antes, mismo orden que /rutina).
+   Render con createElement/textContent (títulos = texto libre del usuario);
+   tick de 30 s re-llama hoyAhora() (se saltea con la pestaña oculta).
    ============================================================================= */
 
 (function () {
@@ -79,6 +85,75 @@
         });
 
         initLactancia();
+        initRutina();
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       TARJETA RUTINA — qué hace cada uno AHORA + qué viene después
+       Fuente: window.Rutina.hoyAhora() (rutina.js), que fuerza "hoy real +
+       etapa actual" y devuelve [{user, nombre, emoji, actual, siguiente}].
+       Color por persona: clases home-rut--<user> → var(--color-persona-*)
+       con el MISMO mapeo que /rutina (León=leon, mamá=mari, papá=elias).
+       Solo createElement/textContent: los títulos pueden ser texto libre
+       (tareas añadidas por el usuario).
+       ════════════════════════════════════════════════════════════════════════ */
+
+    function initRutina() {
+        var cont = document.getElementById('home-rut-lista');
+        if (!cont || !window.Rutina) return;   // no-op si rutina.js no cargó
+
+        function filaRut(p) {
+            var el = document.createElement('div');
+            el.className = 'home-rut-item home-rut--' + p.user;
+
+            // "{emoji persona} {nombre}: {emoji act} {titulo} · desde–hasta"
+            var linea = document.createElement('div');
+            linea.className = 'home-rut-linea';
+            var quien = document.createElement('span');
+            quien.className = 'home-rut-quien';
+            quien.textContent = p.emoji + ' ' + p.nombre + ':';
+            var act = document.createElement('span');
+            act.className = 'home-rut-act';
+            act.textContent = p.actual.emoji + ' ' + p.actual.titulo;
+            var horas = document.createElement('span');
+            horas.className = 'home-rut-horas';
+            // hasta null = actividad abierta (dur 0: sueño nocturno / a dormir)
+            horas.textContent = p.actual.desde + '–' + (p.actual.hasta || '…');
+            linea.appendChild(quien);
+            linea.appendChild(act);
+            linea.appendChild(horas);
+            el.appendChild(linea);
+
+            if (p.siguiente) {
+                var desp = document.createElement('div');
+                desp.className = 'home-rut-despues';
+                desp.textContent = 'Después: ' + p.siguiente.emoji + ' ' +
+                    p.siguiente.titulo + ' · ' + p.siguiente.hora;
+                el.appendChild(desp);
+            }
+            return el;
+        }
+
+        function renderRutHome() {
+            var lista;
+            try { lista = window.Rutina.hoyAhora(); }
+            catch (e) { console.error('Error rutina (home):', e); return; }
+            cont.textContent = '';   // vaciar
+            if (!lista.length) {
+                var v = document.createElement('p');
+                v.className = 'home-rut-vacio';
+                v.textContent = 'Sin actividades ahora.';
+                cont.appendChild(v);
+                return;
+            }
+            lista.forEach(function (p) { cont.appendChild(filaRut(p)); });
+        }
+
+        renderRutHome();
+        // Reloj vivo: mismo ritmo que /rutina (30 s), sin trabajo en background
+        setInterval(function () {
+            if (!document.hidden) renderRutHome();
+        }, 30000);
     }
 
     /* ════════════════════════════════════════════════════════════════════════
