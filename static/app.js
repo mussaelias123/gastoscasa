@@ -1587,9 +1587,9 @@ function initFormAjax() {
         .then(function(data) {
             if (!data.ok) throw new Error('El servidor devolvió ok=false');
 
-            // Redirigir preservando el mes activo
+            // Redirigir a /gastos preservando el mes activo
             var mes = new URLSearchParams(window.location.search).get('mes') || '';
-            window.location.href = mes ? '/?mes=' + mes : '/';
+            window.location.href = mes ? '/gastos?mes=' + mes : '/gastos';
         })
         .catch(function(err) {
             console.error('Error AJAX al agregar:', err);

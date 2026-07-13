@@ -2,7 +2,7 @@
 
 {% extends 'base.html' %}
 
-{% block titulo %}Inicio{% endblock %}
+{% block titulo %}Gastos{% endblock %}
 
 {% block contenido %}
 
@@ -314,9 +314,9 @@
   <div class="movimientos-card-header">
     <span class="movimientos-card-titulo">📋 Movimientos</span>
     <div class="mes-nav-inline">
-      <a class="btn-mes-nav" href="/?mes={{ mes_prev }}" title="Mes anterior">&#8592;</a>
+      <a class="btn-mes-nav" href="/gastos?mes={{ mes_prev }}" title="Mes anterior">&#8592;</a>
       <span class="mes-titulo">{{ mes_nombre }}</span>
-      <a class="btn-mes-nav" href="/?mes={{ mes_next }}" title="Mes siguiente">&#8594;</a>
+      <a class="btn-mes-nav" href="/gastos?mes={{ mes_next }}" title="Mes siguiente">&#8594;</a>
     </div>
     <span class="movimientos-card-contador">{{ total_movimientos }} movimiento{% if total_movimientos != 1 %}s{% endif %}</span>
   </div>

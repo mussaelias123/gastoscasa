@@ -9,14 +9,14 @@
 ## Patrón general de ruta
 1. Leer parámetros de `request.form` / `request.args`.
 2. Si AJAX (`X-Requested-With: XMLHttpRequest`) → retornar `jsonify(...)`.
-3. Si no → `redirect(url_for('index', mes=...))`.
+3. Si no → `redirect(url_for('gastos', mes=...))`.
 4. Validar excepciones → en AJAX retornar `{'ok': False, 'error': str(e)}`, status 500.
-
 ## Mapa de rutas (actualizar al agregar/eliminar)
 
 | Método | URL                       | Función               | Propósito                                        |
 |--------|---------------------------|-----------------------|--------------------------------------------------|
-| GET    | `/`                       | `index`               | Pantalla principal: saldos, formulario, tabla.   |
+| GET    | `/`                       | `index`               | Redirect provisorio a `/gastos` (será el home de la app). |
+| GET    | `/gastos`                 | `gastos`              | Pantalla del módulo Gastos: saldos, formulario, tabla (ex `/`). |
 | POST   | `/agregar`                | `agregar`             | Inserta movimiento (ingreso/gasto/cambio).       |
 | POST   | `/eliminar/<id>`          | `eliminar`            | Borra movimiento por id.                         |
 | GET/POST | `/editar/<id>`          | `editar`              | Edición completa de movimiento.                  |
@@ -60,7 +60,7 @@
 
 ## Helpers internos clave
 - `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
-- `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `index` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
+- `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `gastos` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
 - `PALETA_META`: lista `(key, nombre, uso)` con las 23 variables de paleta (incluye `texto-invertido` y `persona-leon`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
