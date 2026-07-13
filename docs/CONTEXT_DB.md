@@ -3,8 +3,14 @@
 > Leer junto con `CLAUDE.md`. Para cambios de esquema, queries o saldos.
 
 ## Archivo
-- `database.py` (~1056 líneas). Capa de datos pura. SQLite vía `sqlite3` stdlib.
-- Archivo físico: `gastos.db` en raíz (gitignored). Backups en `backups/` (gitignored).
+- `database.py` (~1090 líneas). Capa de datos pura. SQLite vía `sqlite3` stdlib.
+- Archivo físico: `fondo.db` en raíz (gitignored). Backups en `backups/` (gitignored).
+- **Rename 2026-07** (`gastos.db` → `fondo.db`): `DB_PATH` apunta a `fondo.db`. Red de
+  seguridad `_migrar_nombre_db_si_hace_falta()` (corre a nivel módulo, antes de cualquier
+  `conectar()`): si un entorno todavía tiene `gastos.db` y NO `fondo.db`, lo renombra solo
+  y loguea `OK:`. Si existen los dos a la vez, no toca nada y loguea `AVISO:` (hay que
+  resolverlo a mano). En el flujo normal (rename ya hecho a mano) es no-op. Los backups
+  viejos con prefijo `gastos_*` siguen siendo válidos — ver `docs/CONTEXT_BACKEND.md`.
 
 ## Esquema (actualizar al migrar)
 
@@ -207,7 +213,7 @@ Cálculo de próxima fecha y estado (vencida/próxima/al día) vive en `app.py`,
 2. **Migraciones** = `ALTER TABLE ADD COLUMN` en `inicializar_db()`. Cada nueva columna agregar también al diccionario de la sección "Esquema" arriba.
 3. **Backfill** de datos viejos → script en `TempScripts/`. Ejemplo: `TempScripts/backfill_monto_usd.py`.
 4. **Cierre de conexiones**: cada función abre y cierra. No reusar.
-5. **Antes de cualquier migración** que modifique datos, hacer backup manual: `cp gastos.db backups/gastos_pre_<motivo>_<fecha>.db`.
+5. **Antes de cualquier migración** que modifique datos, hacer backup manual: `cp fondo.db backups/fondo_pre_<motivo>_<fecha>.db`.
 
 ## Al modificar este dominio, actualizar:
 - Sección "Esquema" si cambia tabla.

@@ -22,7 +22,7 @@
 | Dominio       | Archivos principales                                  | Doc de contexto                  |
 |---------------|--------------------------------------------------------|----------------------------------|
 | Backend rutas | `app.py`                                               | `docs/CONTEXT_BACKEND.md`        |
-| Base de datos | `database.py`, `gastos.db`                             | `docs/CONTEXT_DB.md`             |
+| Base de datos | `database.py`, `fondo.db` (legacy: `gastos.db`)        | `docs/CONTEXT_DB.md`             |
 | Cotización    | `cotizacion.py`, `tests/test_cotizacion.py`            | `docs/CONTEXT_COTIZACION.md`     |
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |

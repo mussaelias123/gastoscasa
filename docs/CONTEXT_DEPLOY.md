@@ -9,6 +9,7 @@
 - Servicio Windows: NSSM (`E:\Fondo\nssm.exe`, raíz del clon PROD, binario fuera de git; no existe en DEV).
 - Túnel público: ngrok con dominio fijo.
 - Backups DB: diario via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings. Archivos sin fecha en el nombre (ej. `gastos_PreGitHub.db`) no cuentan como backup ni entran en la rotación.
+- **Rename 2026-07**: la base pasó de `gastos.db` a `fondo.db` (ver `docs/CONTEXT_DB.md`). Los backups nuevos usan prefijo `fondo_`; los viejos con prefijo `gastos_` se mantienen para siempre y siguen contando (listado, rotación y fecha-de-backup reconocen ambos prefijos — no hace falta migrarlos).
 
 ## Entornos dev / prod
 - **Prod**: `E:\Fondo` → servicio Windows `GastosCasa` vía NSSM (arranca solo).
@@ -43,13 +44,14 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - Si `ngrok_enabled=False` o falta token → no se levanta (solo localhost).
 
 ## Backups (de la base de datos)
-- Son copias de `gastos.db`, NO de código. Gestionados desde Settings → "Backup de la base de datos".
+- Son copias de `fondo.db`, NO de código. Gestionados desde Settings → "Backup de la base de datos".
 - Carpeta configurable: campo "Ruta de guardado" (`backup_dir` en `config.json`). Default `backups/` relativo; acepta rutas absolutas. Se aplica sin reiniciar.
 - Automático: uno por día (scheduler interno `_scheduler_backup`, chequea cada hora). La primera vuelta corre al arrancar, cubre días con el servicio apagado.
 - Solo si cambió algo: antes de backupear compara SHA-256 del dump lógico contra `ultimo_backup.json` (vive junto a los backups: archivo, fecha, hash). Sin cambios → no crea archivo (loguea "Backup omitido hoy" 1 vez/día). El backup manual desde Settings siempre crea archivo.
 - Manual: campo "Descripción" (opcional) + botón "Crear backup" → `POST /api/backups/crear` (form `descripcion`). Siempre crea archivo, aunque no haya cambios.
-- Restore: elegir backup en el desplegable → `POST /api/backups/restaurar`. Antes guarda `gastos_<fecha>_pre-restore.db` (deshacer posible).
-- Formato: `gastos_YYYY-MM-DD_HH-MM[_descripcion].db` (descripción saneada a `[\w-]`, máx 40 chars; se muestra en la etiqueta del desplegable). Máximo 10 archivos fechados; los más viejos se borran solos (los descriptos también rotan: para conservar uno para siempre, renombrarlo sin fecha, ej. `gastos_PreGitHub.db`).
+- Restore: elegir backup en el desplegable → `POST /api/backups/restaurar`. Antes guarda `fondo_<fecha>_pre-restore.db` (deshacer posible).
+- Formato: `fondo_YYYY-MM-DD_HH-MM[_descripcion].db` (descripción saneada a `[\w-]`, máx 40 chars; se muestra en la etiqueta del desplegable). Máximo 10 archivos fechados; los más viejos se borran solos (los descriptos también rotan: para conservar uno para siempre, renombrarlo sin fecha, ej. `gastos_PreGitHub.db`).
+- **Compat backups viejos**: los `.db` con prefijo `gastos_` (de antes del rename 2026-07) se listan, rotan y reconocen exactamente igual que los nuevos `fondo_` — mismo formato de fecha, mismo desplegable, misma rotación de a 10.
 - **Importante**: las viejas rutas `/git/*` se eliminaron. El "restore" anterior revertía código, no datos.
 
 ## Convención de logs
@@ -70,7 +72,7 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 1. **Verificación obligatoria** post-cambio en la URL del entorno correcto (ver "URLs de verificación": dev → `http://localhost:5050/`, prod → ngrok), salvo que el usuario diga lo contrario.
 2. **Restart del servicio** es operación con permisos elevados. Confirmar con usuario antes.
 3. **Backups antes de migrar datos** (manual desde Settings con descripción, no confiar solo en el automático diario).
-4. **No commitear** `build/dist/`, `*.exe`, `gastos.db`, `backups/`.
+4. **No commitear** `build/dist/`, `*.exe`, `fondo.db` (ni el legacy `gastos.db`), `backups/`.
 
 ## Al modificar este dominio, actualizar:
 - URL pública si cambia el dominio ngrok.
