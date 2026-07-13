@@ -1,9 +1,11 @@
 {# Página Inicio (/): home de la app, sin scroll de página en desktop NI mobile.
    Grid de 4 tarjetas .home-card — Gastos funcional (saldos mini + form de
-   movimiento), Rutina/Lactancia/Calendario placeholder (llegan en etapas
-   siguientes). El form existe UNA sola vez en el DOM (.home-sheet): bloque
-   normal en desktop ≥900px, bottom-sheet fijo en mobile (<900px, lo abre el
-   botón ＋ vía home.js). #}
+   movimiento), Lactancia funcional (listas heladera/freezer-primera con
+   "✓ Usada" + form de extracción compartido vía _form_lactancia.html),
+   Rutina/Calendario placeholder (llegan en etapas siguientes). Cada form
+   existe UNA sola vez en el DOM (.home-sheet): bloque normal en desktop
+   ≥900px, bottom-sheet fijo en mobile (<900px, lo abre el botón ＋ vía
+   home.js). #}
 
 {% extends 'base.html' %}
 
@@ -47,14 +49,85 @@
     </div>
   </section>
 
-  {# ── LACTANCIA — placeholder ───────────────────────────────────────────── #}
+  {# ── LACTANCIA — funcional: consumir partidas + cargar extracción ───────── #}
+  {# Listas server-rendered (primer paint) desde lac_home; tras cada mutación
+     AJAX home.js las re-renderiza espejando ESTE markup (window.LAC_HOME).
+     Convenciones del módulo: "Extraída HH:MM · fecha" (hora primero),
+     vencimiento relativo (heladera en horas, freezer en días — los valores
+     vienen calculados del server, acá solo se formatean) y estados→paleta
+     (vencida=peligro, vence_pronto=alerta, disponible/en_heladera=exito). #}
   <section class="home-card home-card--lactancia">
     <div class="home-card-head">
       <span class="home-card-titulo">🍼 Lactancia</span>
       <a class="home-card-link" href="{{ url_for('lactancia') }}">Ver módulo →</a>
     </div>
     <div class="home-card-body">
-      <p class="home-placeholder">Próximamente en el Inicio.</p>
+
+      {% set lac_meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+                          'jul', 'ago', 'sep', 'oct', 'nov', 'dic'] %}
+      <div id="home-lac-listas">
+
+        <div class="home-lac-sec">🥛 Heladera</div>
+        {% for p in lac_home.heladera %}
+        <div class="home-lac-item is-{{ p.estado }}">
+          <div class="home-lac-info">
+            <div class="home-lac-top">
+              <span class="home-lac-vol">{{ p.volumen_ml }} ml</span>
+              <span class="home-lac-venc t-{{ p.estado }}">
+                {%- if p.horas_restantes < 0 -%}
+                  {%- set h = -p.horas_restantes -%}
+                  {%- if h < 24 %}Venció hace {{ h }} h{% elif h < 48 %}Venció hace {{ h // 24 }} día{% else %}Venció hace {{ h // 24 }} días{% endif -%}
+                {%- elif p.horas_restantes == 0 %}Vence dentro de 1 h
+                {%- elif p.horas_restantes == 1 %}Vence en 1 h
+                {%- else %}Vence en {{ p.horas_restantes }} h{% endif -%}
+              </span>
+            </div>
+            <div class="home-lac-meta">Extraída {% if p.hora_extraccion %}{{ p.hora_extraccion }} · {% endif %}{{ p.fecha_extraccion[8:10] | int }} {{ lac_meses[p.fecha_extraccion[5:7] | int - 1] }}</div>
+          </div>
+          <button type="button" class="home-lac-usar" data-lac-usar="{{ p.id }}" title="Se le dio a León (fecha de hoy)">✓ Usada</button>
+        </div>
+        {% else %}
+        <p class="home-lac-vacio">Nada en la heladera.</p>
+        {% endfor %}
+
+        <div class="home-lac-sec">🧊 Freezer · próxima a usar</div>
+        {% if lac_home.freezer_primera %}
+        {% set p = lac_home.freezer_primera %}
+        <div class="home-lac-item is-{{ p.estado }}">
+          <div class="home-lac-info">
+            <div class="home-lac-top">
+              <span class="home-lac-vol">{{ p.volumen_ml }} ml</span>
+              <span class="home-lac-venc t-{{ p.estado }}">
+                {%- if p.dias_restantes == 0 %}Vence hoy
+                {%- elif p.dias_restantes == 1 %}Vence mañana
+                {%- elif p.dias_restantes > 1 %}Vence en {{ p.dias_restantes }} días
+                {%- elif p.dias_restantes == -1 %}Venció ayer
+                {%- else %}Venció hace {{ -p.dias_restantes }} días{% endif -%}
+              </span>
+            </div>
+            <div class="home-lac-meta">Extraída {% if p.hora_extraccion %}{{ p.hora_extraccion }} · {% endif %}{{ p.fecha_extraccion[8:10] | int }} {{ lac_meses[p.fecha_extraccion[5:7] | int - 1] }}</div>
+          </div>
+          <button type="button" class="home-lac-usar" data-lac-usar="{{ p.id }}" title="Se le dio a León (fecha de hoy)">✓ Usada</button>
+        </div>
+        {% else %}
+        <p class="home-lac-vacio">Sin partidas en el freezer.</p>
+        {% endif %}
+
+      </div>{# /home-lac-listas #}
+
+      {# Solo mobile: abre el bottom-sheet con el form de extracción #}
+      <button type="button" class="btn btn-acento home-btn-nuevo" data-sheet="lactancia">＋ Cargar</button>
+
+      {# Sheet del form: bloque normal en desktop, bottom-sheet en mobile.
+         El título interno del form (.lac-form-titulo) se oculta por CSS:
+         acá lo da .home-sheet-head. #}
+      <div class="home-sheet" id="home-sheet-lactancia">
+        <div class="home-sheet-head">
+          <span class="home-sheet-titulo">🥛 Nueva extracción</span>
+          <button type="button" class="home-sheet-cerrar" data-sheet-cerrar aria-label="Cerrar">✕</button>
+        </div>
+        {% include '_form_lactancia.html' %}
+      </div>
     </div>
   </section>
 
@@ -82,6 +155,7 @@
 {% block scripts %}
 <script>
   var GASTOS_FIJOS = {{ gastos_fijos_json | safe }};
+  window.LAC_HOME = {{ lac_home | tojson }};
 </script>
 <script src="{{ url_for('static', filename='home.js') }}?v={{ static_version }}"></script>
 {% endblock %}

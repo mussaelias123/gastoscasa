@@ -6972,6 +6972,110 @@ body:has(.home-page) .contenido-principal {
 
 .home-sheet-cerrar:hover { color: var(--color-texto); }
 
+/* ── Tarjeta Lactancia: listas Heladera / Freezer (próxima a usar) ── */
+/* Ítems compactos espejo de los .lac-item del módulo. Misma correspondencia
+   estado→paleta que /lactancia (vencida=peligro, vence_pronto=alerta,
+   disponible y en_heladera=exito — SIN variables nuevas de paleta): borde
+   izquierdo 3px + tinte de fondo color-mix SOLO con var() adentro (fallback
+   previo background: var(--color-superficie) para browsers sin soporte). */
+.home-lac-sec {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.home-lac-sec:first-child { margin-top: 0; }
+
+.home-lac-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  padding: 0.4rem 0.55rem;
+  margin-bottom: 0.4rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-left-width: 3px;
+  border-radius: var(--radio-borde);
+}
+
+.home-lac-item.is-en_heladera,
+.home-lac-item.is-disponible {
+  border-left-color: var(--color-exito);
+  background: color-mix(in srgb, var(--color-exito) 6%, var(--color-superficie));
+}
+
+.home-lac-item.is-vence_pronto {
+  border-left-color: var(--color-alerta);
+  background: color-mix(in srgb, var(--color-alerta) 8%, var(--color-superficie));
+}
+
+.home-lac-item.is-vencida {
+  border-left-color: var(--color-peligro);
+  background: color-mix(in srgb, var(--color-peligro) 8%, var(--color-superficie));
+}
+
+.home-lac-info { min-width: 0; }
+
+.home-lac-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.home-lac-vol {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--color-texto);
+}
+
+.home-lac-venc {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+.home-lac-venc.t-vencida { color: var(--color-peligro); }
+.home-lac-venc.t-vence_pronto { color: var(--color-alerta); }
+
+.home-lac-meta {
+  margin-top: 0.1rem;
+  font-size: 0.74rem;
+  color: var(--color-texto-muted);
+}
+
+/* Botón de acción semántico (mismo criterio que .lac-btn-usar del módulo) */
+.home-lac-usar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-exito);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  padding: 0.32rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.home-lac-usar:hover { filter: brightness(1.08); }
+
+.home-lac-vacio {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
+/* El form del partial trae su propio título (.lac-form-titulo, necesario en
+   /lactancia); en el home el título lo da .home-sheet-head → se oculta */
+.home-sheet .lac-form-titulo { display: none; }
+
 /* ── Desktop ≥900px: grid 3 columnas × 2 filas, form inline ── */
 @media (min-width: 900px) {
   /* col A: Gastos arriba / Rutina abajo; col B: Lactancia (2 filas);
