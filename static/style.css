@@ -6839,9 +6839,12 @@ body:has(.home-page) .contenido-principal {
 
 /* ── Grid de tarjetas ── */
 /* Mobile (default): 2 columnas compactas — Gastos (span 2), Rutina (span 2),
-   Lactancia | Calendario. Filas 1-2 toman su alto natural si entra
-   (minmax(0,max-content) las deja comprimirse en pantallas bajas); la fila 3
-   absorbe el resto. */
+   Lactancia | Calendario. Fila 1 (Gastos) = alto exacto de su contenido (la
+   tabla compacta + botón entran hasta en 375×667); filas 2-3 se reparten el
+   resto 1 : 1.2 (Rutina scrollea adentro; la fila de Lactancia|Calendario
+   lleva algo más para que el mini-mes no quede aplastado). Con dos filas
+   max-content el grid repartía el sobrante en partes IGUALES y aplastaba la
+   fila 3 (body de 71px en iPhone SE). */
 .home-page {
   flex: 1 1 auto;
   min-width: 0;
@@ -6849,7 +6852,7 @@ body:has(.home-page) .contenido-principal {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: minmax(0, max-content) minmax(0, max-content) minmax(140px, 1fr);
+  grid-template-rows: max-content minmax(110px, 1fr) minmax(150px, 1.35fr);
 }
 
 .home-card--gastos { grid-column: span 2; }
@@ -6883,6 +6886,7 @@ body:has(.home-page) .contenido-principal {
   font-weight: 700;
   font-size: 0.95rem;
   color: var(--color-texto);
+  white-space: nowrap;   /* que "📅 Calendario" no parta el head en 2 líneas */
 }
 
 .home-card-link {
@@ -6895,6 +6899,48 @@ body:has(.home-page) .contenido-principal {
 .home-card-link:hover {
   color: var(--color-acento);
   text-decoration: none;
+}
+
+/* En pantallas angostas las tarjetas de media columna miden ~164px: "Ver
+   módulo →" no entra (el head desbordaba la tarjeta). Se oculta la palabra
+   "módulo" (span del template) y queda "Ver →" en las 4 tarjetas. */
+@media (max-width: 479px) {
+  .home-card-link-modulo { display: none; }
+}
+
+/* ── Tabla de saldos compacta (tarjeta Gastos) ── */
+/* El partial _tarjeta_saldos_mini.html llega SIN el wrapper .tarjeta-saldos
+   (eso es de /gastos): sin esto caía al estilo global de .tabla-saldos
+   (paddings de 1rem, fuente 1.1rem → 401px de ancho natural, desbordaba el
+   body en mobile). Misma receta que .tarjeta-saldos: table-layout fixed +
+   ancho fijo solo en la columna de nombres. */
+.home-card--gastos .tabla-saldos {
+  width: 100%;
+  table-layout: fixed;
+  margin-bottom: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.home-card--gastos .tabla-saldos col.col-saldo-label { width: 3.4rem; }
+
+.home-card--gastos .tabla-saldos thead th {
+  padding: 0.3rem 0.35rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.home-card--gastos .tabla-saldos tbody th.saldo-persona-label {
+  padding: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.home-card--gastos .tabla-saldos tbody td.saldo-monto {
+  padding: 0.4rem 0.45rem;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;          /* valor extremo: no empuja la celda */
+  text-overflow: ellipsis;
 }
 
 /* Cuerpo: única zona que scrollea si el contenido no entra */
@@ -6915,6 +6961,7 @@ body:has(.home-page) .contenido-principal {
   display: block;
   width: 100%;
   margin-top: 0.6rem;
+  min-height: 44px;   /* touch target (solo existe <900px) */
 }
 
 /* ── Overlay del bottom-sheet (solo mobile) ── */
@@ -7066,6 +7113,12 @@ body:has(.home-page) .contenido-principal {
 
 .home-lac-usar:hover { filter: brightness(1.08); }
 
+/* Touch target en mobile/tablet (<900px = capa táctil): el botón medía 26px
+   de alto. En desktop queda compacto (puntero fino). */
+@media (max-width: 899px) {
+  .home-lac-usar { min-height: 40px; }
+}
+
 .home-lac-vacio {
   margin: 0 0 0.4rem;
   font-size: 0.8rem;
@@ -7075,6 +7128,19 @@ body:has(.home-page) .contenido-principal {
 /* El form del partial trae su propio título (.lac-form-titulo, necesario en
    /lactancia); en el home el título lo da .home-sheet-head → se oculta */
 .home-sheet .lac-form-titulo { display: none; }
+
+/* La fila de extras del form de movimiento (envío + cuotas) es nowrap fuera
+   del mobile de /gastos: en la columna del home (~300px) desbordaba la
+   tarjeta → mismo tratamiento que el responsive de /gastos. */
+.home-sheet .form-rapido-extras { flex-wrap: wrap; }
+
+.home-sheet .extra-cuotas-grupo {
+  border-left: none;
+  padding-left: 0;
+  border-top: 1px solid var(--color-borde);
+  padding-top: 0.5rem;
+  width: 100%;
+}
 
 /* ── Tarjeta Calendario: mini mes + pendientes (server-render, sin JS) ── */
 /* Puntos: MISMO mapeo estado→paleta que la grilla de /calendario
@@ -7277,10 +7343,14 @@ body:has(.home-page) .contenido-principal {
 /* ── Desktop ≥900px: grid 3 columnas × 2 filas, form inline ── */
 @media (min-width: 900px) {
   /* col A: Gastos arriba / Rutina abajo; col B: Lactancia (2 filas);
-     col C: Calendario (2 filas) */
+     col C: Calendario (2 filas). OJO con los mínimos: 320+280+280 + gaps +
+     padding del main sumaba 936px → scroll horizontal justo en el
+     breakpoint (900-935px). Con 300+260+260 entra desde 900. */
   .home-page {
-    grid-template-columns: minmax(320px, 380px) minmax(280px, 1fr) minmax(280px, 1fr);
-    grid-template-rows: minmax(0, max-content) minmax(140px, 1fr);
+    grid-template-columns: minmax(300px, 380px) minmax(260px, 1fr) minmax(260px, 1fr);
+    /* Fila 2 con piso de 180px: Rutina muestra ~2 personas aunque el form de
+       Gastos (fila 1, max-content) quiera todo el alto en pantallas bajas. */
+    grid-template-rows: minmax(0, max-content) minmax(180px, 1fr);
   }
 
   .home-card--gastos     { grid-column: 1; grid-row: 1; }

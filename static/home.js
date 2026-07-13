@@ -100,7 +100,16 @@
 
     function initRutina() {
         var cont = document.getElementById('home-rut-lista');
-        if (!cont || !window.Rutina) return;   // no-op si rutina.js no cargó
+        if (!cont) return;
+
+        // rutina.js no cargó: dejar un texto muted en vez de tarjeta en blanco
+        if (!window.Rutina) {
+            var sin = document.createElement('p');
+            sin.className = 'home-rut-vacio';
+            sin.textContent = 'Sin actividades ahora.';
+            cont.appendChild(sin);
+            return;
+        }
 
         function filaRut(p) {
             var el = document.createElement('div');
@@ -137,7 +146,10 @@
         function renderRutHome() {
             var lista;
             try { lista = window.Rutina.hoyAhora(); }
-            catch (e) { console.error('Error rutina (home):', e); return; }
+            catch (e) {
+                console.error('Error rutina (home):', e);
+                lista = [];   // render igual: nunca tarjeta en blanco
+            }
             cont.textContent = '';   // vaciar
             if (!lista.length) {
                 var v = document.createElement('p');
