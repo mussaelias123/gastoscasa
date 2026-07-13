@@ -724,12 +724,23 @@ def _calcular_gauges(saldos, cotizacion_valor, historico=False):
 
 
 # =============================================================================
-# RUTA: Página principal — Saldos + formulario + tabla de movimientos
+# RUTA: Home provisorio — redirige al módulo Gastos
 # URL: http://localhost:5000/
 # =============================================================================
 
 @app.route('/')
 def index():
+    """Provisorio: el home real llega en la próxima etapa."""
+    return redirect(url_for('gastos'))
+
+
+# =============================================================================
+# RUTA: Módulo Gastos — Saldos + formulario + tabla de movimientos (ex /)
+# URL: http://localhost:5000/gastos
+# =============================================================================
+
+@app.route('/gastos')
+def gastos():
     import re
     from datetime import date
 
@@ -781,7 +792,7 @@ def index():
         for f in fijos_activos
     ])
 
-    return render_template('index.html',
+    return render_template('gastos.html',
         saldos=saldos,
         movimientos=movimientos,
         cfg=cfg,
@@ -896,7 +907,7 @@ def agregar():
                 })
 
             mes = request.form.get('mes', '')
-            return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+            return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
         # ── Tipo "gasto" o "ingreso": flujo existente ──
         categoria   = request.form.get('categoria') or None
@@ -962,13 +973,13 @@ def agregar():
             })
 
         mes = request.form.get('mes', '')
-        return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+        return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
     except Exception as e:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'ok': False, 'error': str(e)}), 500
         mes = request.form.get('mes', '')
-        return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+        return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
 
 # =============================================================================
@@ -981,7 +992,7 @@ def agregar():
 def eliminar(id):
     database.eliminar_movimiento(id)
     mes = request.args.get('mes', '')
-    return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+    return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
 
 # =============================================================================
@@ -1009,11 +1020,11 @@ def editar(id):
 
         database.editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_aplicada)
         mes = request.form.get('mes', '') or request.args.get('mes', '')
-        return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+        return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
     else:
         mov = database.obtener_movimiento(id)
         if mov is None:
-            return redirect(url_for('index'))
+            return redirect(url_for('gastos'))
         return render_template('editar.html', mov=mov)
 
 

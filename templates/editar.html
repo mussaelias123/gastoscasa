@@ -8,7 +8,7 @@
 
 <div class="pagina-header">
   <h2>✏️ Editar Movimiento</h2>
-  <a href="{{ url_for('index') }}" class="btn btn-secundario">← Volver</a>
+  <a href="{{ url_for('gastos') }}" class="btn btn-secundario">← Volver</a>
 </div>
 
 <form method="POST"
@@ -91,7 +91,7 @@
   <div class="campo campo-botones">
     <button type="submit" class="btn btn-primario">💾 Guardar Cambios</button>
     <button type="button"
-            onclick="window.location.href='{{ url_for('index') }}'"
+            onclick="window.location.href='{{ url_for('gastos') }}'"
             class="btn btn-secundario">
       ✖ Cancelar
     </button>
