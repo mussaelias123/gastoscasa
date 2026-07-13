@@ -6807,3 +6807,202 @@ body.has-dev-banner .notif-panel { top: 24px; }
   color: var(--color-texto-muted);
   font-size: 0.9rem;
 }
+
+
+/* ============================================================================
+   HOME (Inicio) — página / (prefijo home-)
+   Grid de tarjetas de módulos. A diferencia de los módulos (que solo fijan el
+   alto en desktop ≥900px), el Inicio NUNCA scrollea la página: ni en desktop
+   ni en mobile. Una tarjeta individual puede scrollear adentro
+   (.home-card-body). El form de movimiento existe UNA sola vez en el DOM
+   (.home-sheet): bloque normal en desktop, bottom-sheet fijo en mobile que
+   abre home.js con .is-abierta + overlay.
+   z-index: home-overlay 900 / home-sheet 910 — sobre los drawers (810), bajo
+   los modales (1000). Ver jerarquía documentada en la sección TOPBAR.
+   ============================================================================ */
+
+/* Página sin scroll SIEMPRE (sin gate de media query). body.home-body la pone
+   home.js; :has(.home-page) cubre el primer paint. Con banner DEV el body ya
+   trae padding-top:24px y border-box: el alto útil se descuenta solo. */
+body.home-body,
+body:has(.home-page) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.home-body .contenido-principal,
+body:has(.home-page) .contenido-principal {
+  display: flex;
+  min-height: 0;
+}
+
+/* ── Grid de tarjetas ── */
+/* Mobile (default): 2 columnas compactas — Gastos (span 2), Rutina (span 2),
+   Lactancia | Calendario. Filas 1-2 toman su alto natural si entra
+   (minmax(0,max-content) las deja comprimirse en pantallas bajas); la fila 3
+   absorbe el resto. */
+.home-page {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, max-content) minmax(0, max-content) minmax(140px, 1fr);
+}
+
+.home-card--gastos { grid-column: span 2; }
+.home-card--rutina { grid-column: span 2; }
+
+/* ── Tarjeta de módulo ── */
+.home-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+}
+
+/* Header compacto: emoji + nombre del módulo + link al módulo completo */
+.home-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.home-card-titulo {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-texto);
+}
+
+.home-card-link {
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.home-card-link:hover {
+  color: var(--color-acento);
+  text-decoration: none;
+}
+
+/* Cuerpo: única zona que scrollea si el contenido no entra */
+.home-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.7rem 0.8rem;
+}
+
+.home-placeholder {
+  color: var(--color-texto-muted);
+  font-size: 0.85rem;
+}
+
+/* ── Botón mobile "＋ Nuevo movimiento" (abre el bottom-sheet) ── */
+.home-btn-nuevo {
+  display: block;
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
+/* ── Overlay del bottom-sheet (solo mobile) ── */
+.home-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: var(--overlay-modal);
+}
+
+.home-overlay.is-abierta { display: block; }
+
+/* ── Sheet del form: bottom-sheet en mobile, bloque normal en desktop ── */
+.home-sheet {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 910;
+  max-height: 85dvh;
+  overflow-y: auto;
+  padding: 0.8rem 1rem 1rem;
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde) var(--radio-borde) 0 0;
+  box-shadow: var(--sombra-modal);
+}
+
+.home-sheet.is-abierta { display: block; }
+
+.home-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.home-sheet-titulo {
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+.home-sheet-cerrar {
+  background: transparent;
+  border: none;
+  color: var(--color-texto-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radio-borde);
+}
+
+.home-sheet-cerrar:hover { color: var(--color-texto); }
+
+/* ── Desktop ≥900px: grid 3 columnas × 2 filas, form inline ── */
+@media (min-width: 900px) {
+  /* col A: Gastos arriba / Rutina abajo; col B: Lactancia (2 filas);
+     col C: Calendario (2 filas) */
+  .home-page {
+    grid-template-columns: minmax(320px, 380px) minmax(280px, 1fr) minmax(280px, 1fr);
+    grid-template-rows: minmax(0, max-content) minmax(140px, 1fr);
+  }
+
+  .home-card--gastos     { grid-column: 1; grid-row: 1; }
+  .home-card--rutina     { grid-column: 1; grid-row: 2; }
+  .home-card--lactancia  { grid-column: 2; grid-row: 1 / span 2; }
+  .home-card--calendario { grid-column: 3; grid-row: 1 / span 2; }
+
+  /* El form va inline dentro de la tarjeta: sin botón, sin overlay */
+  .home-btn-nuevo { display: none; }
+
+  .home-overlay { display: none !important; }
+
+  .home-sheet {
+    display: block;
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 0.6rem 0 0;
+    border-radius: 0;
+    box-shadow: none;
+    border-top: 1px solid var(--color-borde);
+    margin-top: 0.7rem;
+  }
+
+  /* El ✕ solo tiene sentido como bottom-sheet */
+  .home-sheet-cerrar { display: none; }
+}

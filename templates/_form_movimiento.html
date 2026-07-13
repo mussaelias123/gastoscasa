@@ -1,0 +1,130 @@
+{# ── PARTIAL: form rápido de movimiento ─────────────────────────────────────
+   ÚNICA definición del form (ids únicos en el DOM: se incluye una sola vez
+   por página). Lo usan /gastos (inline en la col izquierda) y / (Inicio,
+   dentro del bottom-sheet de la tarjeta Gastos).
+   Variables opcionales del contexto:
+   - `mes`       → solo /gastos: hidden que preserva el mes tras el POST.
+   - `form_modo` → el home lo define ('inline'): initFormAjax (app.js) no
+                   navega tras el alta, refresca saldos/toast en el lugar. #}
+  <form action="{{ url_for('agregar') }}" method="POST" class="form-rapido"{% if form_modo is defined %} data-modo="{{ form_modo }}"{% endif %}>
+
+    {# Mes actual — se preserva al volver después del POST (el home no pasa mes) #}
+    {% if mes is defined %}<input type="hidden" name="mes" value="{{ mes }}">{% endif %}
+
+    {# Fila 1: Descripción — full-width #}
+    <div class="form-fila">
+      <div class="campo-rapido campo-rapido-descripcion">
+        <label for="descripcion">Descripción</label>
+        <input type="text" id="descripcion" name="descripcion"
+               placeholder="Ej: Sueldo, Supermercado..." maxlength="200" required>
+        <select id="descripcion-fijo" name="descripcion" disabled style="display:none"></select>
+      </div>
+    </div>
+
+    {# Fila 2: Monto + Tipo #}
+    <div class="form-fila">
+      <div class="campo-rapido campo-rapido-monto">
+        <label for="monto-display">Monto</label>
+        <input type="text" id="monto-display"
+               placeholder="0" maxlength="16"
+               inputmode="numeric" autocomplete="off" required>
+        <input type="hidden" id="monto" name="monto">
+      </div>
+      <div class="campo-rapido campo-rapido-tipo">
+        <label for="tipo">Tipo</label>
+        <select id="tipo" name="tipo" required>
+          <option value="gasto" selected>Gasto</option>
+          <option value="ingreso">Ingreso</option>
+          <option value="cambio">Cambio</option>
+        </select>
+      </div>
+    </div>
+
+    {# Fila 3: Persona + Moneda (con colores dinámicos via JS) #}
+    <div class="form-fila">
+      <div class="campo-rapido campo-rapido-persona">
+        <label for="persona">Persona</label>
+        <select id="persona" name="persona" required>
+          <option value="elias">Elías</option>
+          <option value="mari">Mari</option>
+        </select>
+      </div>
+      <div class="campo-rapido campo-rapido-moneda">
+        <label for="moneda">Moneda</label>
+        <select id="moneda" name="moneda" required>
+          <option value="ars">AR$</option>
+          <option value="usd">USD</option>
+        </select>
+      </div>
+    </div>
+
+    {# Fila 3b: Flecha indicadora (solo Cambio) #}
+    <div class="form-fila form-fila-cambio" id="fila-flecha-cambio" style="display:none">
+      <div class="cambio-flecha-indicador">↓</div>
+    </div>
+
+    {# Fila 3c: Persona final + Moneda final (solo Cambio) #}
+    <div class="form-fila form-fila-cambio" id="fila-cambio-destino" style="display:none">
+      <div class="campo-rapido campo-rapido-persona">
+        <label for="persona_final">Persona final</label>
+        <select id="persona_final" name="persona_final">
+          <option value="elias">Elías</option>
+          <option value="mari">Mari</option>
+        </select>
+      </div>
+      <div class="campo-rapido campo-rapido-moneda">
+        <label for="moneda_final">Moneda final</label>
+        <select id="moneda_final" name="moneda_final">
+          <option value="ars">AR$</option>
+          <option value="usd">USD</option>
+        </select>
+      </div>
+    </div>
+
+    {# Fila 3d: Monto final (solo si monedas son diferentes) #}
+    <div class="form-fila form-fila-cambio" id="fila-monto-final" style="display:none">
+      <div class="campo-rapido" style="flex:1">
+        <label for="monto_final">Monto final</label>
+        <input type="number" id="monto_final" name="monto_final"
+               placeholder="Monto en moneda destino" step="0.01" min="0">
+      </div>
+    </div>
+
+    {# Fila 4: Categoría + Fecha #}
+    <div class="form-fila">
+      <div class="campo-rapido campo-rapido-categoria">
+        <label for="categoria">Categoría</label>
+        <select id="categoria" name="categoria"></select>
+      </div>
+      <div class="campo-rapido campo-rapido-fecha">
+        <label for="fecha">Fecha</label>
+        <input type="date" id="fecha" name="fecha" min="2000-01-01" required>
+      </div>
+    </div>
+
+    {# Extras: Envío y Cuotas en una sola fila inline — visible solo para gastos #}
+    <div class="form-rapido-extras" id="seccion-envio">
+      <label class="checkbox-envio">
+        <input type="checkbox" id="incluye-envio"> Incluye envío
+      </label>
+      <div id="campo-costo-envio" style="visibility:hidden;" class="campo-extra-inline">
+        <input type="number" id="costo_envio" name="costo_envio"
+               step="0.01" min="0" placeholder="$ envío">
+      </div>
+      <div id="seccion-cuotas" style="display:none;" class="extra-cuotas-grupo">
+        <label class="checkbox-envio">
+          <input type="checkbox" id="incluye-cuotas" name="cuotas_checkbox" value="1"> En cuotas
+        </label>
+        <div id="campo-total-cuotas" style="visibility:hidden;" class="campo-extra-inline">
+          <input type="number" id="total_cuotas" name="total_cuotas"
+                 step="1" min="2" max="999" placeholder="# cuotas">
+        </div>
+      </div>
+    </div>
+
+    {# Botón Agregar — full-width, último elemento #}
+    <button type="submit" class="btn btn-primario btn-guardar-rapido">
+      Agregar
+    </button>
+
+  </form>

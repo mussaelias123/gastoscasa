@@ -26,7 +26,7 @@
 | Cotización    | `cotizacion.py`, `tests/test_cotizacion.py`            | `docs/CONTEXT_COTIZACION.md`     |
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
-| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/rutina.js`, `static/rutina-actividades.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
+| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/rutina.js`, `static/rutina-actividades.js`, `static/home.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
 | Notificaciones| `app.py` (providers + `/api/notificaciones`), `static/app.js` (`window.Notif`), `templates/base.html` (campana/panel) | `docs/CONTEXT_NOTIFICATIONS.md`  |
 | Deploy/serv   | NSSM (`E:\Fondo\nssm.exe`, fuera de git), ngrok, `logs/`, `logutil.py` | `docs/CONTEXT_DEPLOY.md` |
 | Scripts ad-hoc| `TempScripts/`                                         | (one-shot, no producción)        |

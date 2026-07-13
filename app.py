@@ -583,6 +583,7 @@ def _static_version():
             os.path.join(app.static_folder, 'lactancia.js'),
             os.path.join(app.static_folder, 'rutina.js'),
             os.path.join(app.static_folder, 'rutina-actividades.js'),
+            os.path.join(app.static_folder, 'home.js'),
         ]
         return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))
     except Exception:
@@ -724,14 +725,41 @@ def _calcular_gauges(saldos, cotizacion_valor, historico=False):
 
 
 # =============================================================================
-# RUTA: Home provisorio — redirige al módulo Gastos
+# HELPER: gastos fijos activos → JSON para el form rápido (window.GASTOS_FIJOS)
+# Compartido por /gastos y / (Inicio): ambos renderizan el form de movimiento.
+# =============================================================================
+
+def _gastos_fijos_json():
+    """JSON con los gastos fijos activos (descripcion + datos de cuota) que
+    el frontend usa para poblar el select de descripciones cuando la
+    categoría es 'Fijo' (variable global GASTOS_FIJOS en app.js)."""
+    import json
+    fijos_activos = database.obtener_gastos_fijos(solo_activos=True)
+    return json.dumps([
+        {
+            'descripcion': f['descripcion'],
+            'es_cuota':    f['es_cuota'] or 0,
+            'cuota_actual': f['cuota_actual'] or 0,
+            'total_cuotas': f['total_cuotas'],
+        }
+        for f in fijos_activos
+    ])
+
+
+# =============================================================================
+# RUTA: Inicio — home de la app con lo más usado de cada módulo
 # URL: http://localhost:5000/
 # =============================================================================
 
 @app.route('/')
 def index():
-    """Provisorio: el home real llega en la próxima etapa."""
-    return redirect(url_for('gastos'))
+    """Inicio: home de la app. Tarjeta Gastos funcional (saldos mini + form
+    de movimiento) + tarjetas placeholder de Lactancia/Calendario/Rutina
+    (llegan en etapas siguientes). `cfg` llega vía inject_config."""
+    saldos = database.calcular_saldos()
+    return render_template('index.html',
+                           saldos=saldos,
+                           gastos_fijos_json=_gastos_fijos_json())
 
 
 # =============================================================================
@@ -780,17 +808,7 @@ def gastos():
 
     checklist = database.verificar_gastos_fijos(mes)
 
-    fijos_activos = database.obtener_gastos_fijos(solo_activos=True)
-    import json
-    gastos_fijos_json = json.dumps([
-        {
-            'descripcion': f['descripcion'],
-            'es_cuota':    f['es_cuota'] or 0,
-            'cuota_actual': f['cuota_actual'] or 0,
-            'total_cuotas': f['total_cuotas'],
-        }
-        for f in fijos_activos
-    ])
+    gastos_fijos_json = _gastos_fijos_json()
 
     return render_template('gastos.html',
         saldos=saldos,
