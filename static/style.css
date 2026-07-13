@@ -7076,6 +7076,123 @@ body:has(.home-page) .contenido-principal {
    /lactancia); en el home el título lo da .home-sheet-head → se oculta */
 .home-sheet .lac-form-titulo { display: none; }
 
+/* ── Tarjeta Calendario: mini mes + pendientes (server-render, sin JS) ── */
+/* Puntos: MISMO mapeo estado→paleta que la grilla de /calendario
+   (.cal-dot .cal-d-*): vencida=peligro, proxima=alerta, hecha=exito,
+   aldia=deco-3. Clases propias home-cal-* porque las cal-* del módulo
+   están acopladas a su grilla grande (posicionamiento absoluto, día
+   seleccionable); acá solo se replican las variables de color. */
+.home-cal-mes {
+  margin-bottom: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+.home-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.home-cal-dow {
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+.home-cal-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 0 3px;
+  border-radius: var(--radio-borde);
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: var(--color-texto);
+}
+
+.home-cal-day.is-hoy {
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-acento) 14%, var(--color-superficie));
+  box-shadow: inset 0 0 0 1px var(--color-acento);
+  font-weight: 800;
+}
+
+/* El contenedor de puntos existe SIEMPRE: filas parejas con o sin puntos */
+.home-cal-dots {
+  display: flex;
+  gap: 2px;
+  min-height: 5px;
+}
+
+.home-cal-dot { width: 5px; height: 5px; border-radius: 50%; }
+.home-cal-dot.home-cal-d-vencida { background: var(--color-peligro); }
+.home-cal-dot.home-cal-d-proxima { background: var(--color-alerta); }
+.home-cal-dot.home-cal-d-hecha   { background: var(--color-exito); }
+.home-cal-dot.home-cal-d-aldia   { background: var(--color-deco-3); }
+
+/* Lista de pendientes: mismo patrón visual que .home-lac-item */
+.home-cal-sec {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.home-cal-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  padding: 0.35rem 0.55rem;
+  margin-bottom: 0.35rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-left-width: 3px;
+  border-radius: var(--radio-borde);
+}
+
+.home-cal-item.is-vencida {
+  border-left-color: var(--color-peligro);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-peligro) 8%, var(--color-superficie));
+}
+
+.home-cal-item.is-proxima {
+  border-left-color: var(--color-alerta);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-alerta) 8%, var(--color-superficie));
+}
+
+.home-cal-nombre {
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-texto);
+}
+
+.home-cal-venc {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+.home-cal-venc.t-vencida { color: var(--color-peligro); }
+.home-cal-venc.t-proxima { color: var(--color-alerta); }
+
+.home-cal-vacio {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
 /* ── Desktop ≥900px: grid 3 columnas × 2 filas, form inline ── */
 @media (min-width: 900px) {
   /* col A: Gastos arriba / Rutina abajo; col B: Lactancia (2 filas);

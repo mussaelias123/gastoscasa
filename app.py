@@ -208,6 +208,71 @@ def _act_payload():
     return {'actividades': actividades, 'historial': historial}
 
 
+def _home_calendario_payload():
+    """Proyección de _act_payload() para la tarjeta Calendario del Inicio
+    (mini mes con puntitos + lista de pendientes, 100% server-render).
+
+    JAMÁS recalcula estado/próxima fecha: _act_enriquecer/_act_estado son la
+    única fuente. Devuelve:
+      - mes_nombre: 'Julio 2026' (es-AR, como fmtMesAnio del módulo).
+      - hoy: día del mes (int).
+      - semanas: monthdayscalendar del mes actual (lunes primero, 0 = celda
+        vacía) — mismo arranque de semana que la grilla de /calendario.
+      - dias: {dia_int: [estados]} — espejo de mapaPorDia() + dotsDelDia()
+        de calendario.js: próxima fecha de actividades activas (estado
+        vencida|proxima|aldia) + 'hecha' del historial; por día se dedupe
+        con prioridad vencida → proxima → hecha → aldia y tope de 3 puntos.
+      - pendientes: no terminadas con estado vencida|proxima, vencidas
+        primero y luego proxima_fecha asc (mismo orden que renderAgenda),
+        cap 6. Ítems: id, nombre, estado, proxima_fecha, dias_restantes."""
+    import calendar as _calendar   # alias: no pisar la función de ruta `calendario`
+    from datetime import date
+
+    hoy = date.today()
+    datos = _act_payload()
+    prefijo_mes = hoy.strftime('%Y-%m')
+
+    crudos = {}   # dia_int → [estados sin dedup]
+    def _sumar(iso, estado):
+        if iso and str(iso)[:7] == prefijo_mes:
+            crudos.setdefault(int(str(iso)[8:10]), []).append(estado)
+
+    pendientes = []
+    for a in datos['actividades']:
+        if a.get('terminada'):
+            continue
+        if a.get('proxima_fecha'):
+            _sumar(a['proxima_fecha'], a['estado'])
+        if a['estado'] in ('vencida', 'proxima'):
+            pendientes.append({
+                'id':             a['id'],
+                'nombre':         a['nombre'],
+                'estado':         a['estado'],
+                'proxima_fecha':  a['proxima_fecha'],
+                'dias_restantes': a['dias_restantes'],
+            })
+    for h in datos['historial']:
+        _sumar(h.get('fecha_hecha'), 'hecha')
+
+    ORDEN_PUNTOS = ('vencida', 'proxima', 'hecha', 'aldia')
+    dias = {d: [e for e in ORDEN_PUNTOS if e in ests][:3]
+            for d, ests in crudos.items()}
+
+    pendientes.sort(key=lambda p: (0 if p['estado'] == 'vencida' else 1,
+                                   p['proxima_fecha'] or ''))
+    pendientes = pendientes[:6]
+
+    MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    return {
+        'mes_nombre': f"{MESES_ES[hoy.month - 1]} {hoy.year}",
+        'hoy':        hoy.day,
+        'semanas':    _calendar.Calendar(firstweekday=0).monthdayscalendar(hoy.year, hoy.month),
+        'dias':       dias,
+        'pendientes': pendientes,
+    }
+
+
 # =============================================================================
 # MÓDULO LACTANCIA — constantes y helpers de vencimiento/estado
 # Propósito: banco de leche materna (partidas de freezer y heladera). La capa
@@ -764,14 +829,16 @@ def _gastos_fijos_json():
 @app.route('/')
 def index():
     """Inicio: home de la app. Tarjetas Gastos (saldos mini + form de
-    movimiento) y Lactancia (consumir partidas + cargar extracción)
-    funcionales + placeholders de Calendario/Rutina (llegan en etapas
-    siguientes). `cfg` llega vía inject_config."""
+    movimiento), Lactancia (consumir partidas + cargar extracción) y
+    Calendario (mini mes + pendientes, 100% server-render) funcionales +
+    placeholder de Rutina (llega en la etapa siguiente). `cfg` llega vía
+    inject_config."""
     saldos = database.calcular_saldos()
     return render_template('index.html',
                            saldos=saldos,
                            gastos_fijos_json=_gastos_fijos_json(),
-                           lac_home=_home_lactancia_payload())
+                           lac_home=_home_lactancia_payload(),
+                           cal_home=_home_calendario_payload())
 
 
 # =============================================================================

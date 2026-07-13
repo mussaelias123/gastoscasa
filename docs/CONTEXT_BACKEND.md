@@ -15,7 +15,7 @@
 
 | Método | URL                       | Función               | Propósito                                        |
 |--------|---------------------------|-----------------------|--------------------------------------------------|
-| GET    | `/`                       | `index`               | Página Inicio (home): tarjeta Gastos (saldos + form movimiento, partials compartidos con /gastos) + tarjeta Lactancia (`lac_home=_home_lactancia_payload()`, form compartido `_form_lactancia.html`) + placeholders Rutina/Calendario. |
+| GET    | `/`                       | `index`               | Página Inicio (home): tarjeta Gastos (saldos + form movimiento, partials compartidos con /gastos) + tarjeta Lactancia (`lac_home=_home_lactancia_payload()`, form compartido `_form_lactancia.html`) + tarjeta Calendario (`cal_home=_home_calendario_payload()`, 100% server-render) + placeholder Rutina. |
 | GET    | `/gastos`                 | `gastos`              | Pantalla del módulo Gastos: saldos, formulario, tabla (ex `/`). |
 | POST   | `/agregar`                | `agregar`             | Inserta movimiento (ingreso/gasto/cambio).       |
 | POST   | `/eliminar/<id>`          | `eliminar`            | Borra movimiento por id.                         |
@@ -77,6 +77,7 @@ Convención de datos: `intervalo_u` ∈ `dias|semanas|meses|anios`. Fechas TEXT 
 - `_act_estado(act)` → `str`. `terminada` > sin próxima → `aldia` > `dias<0` → `vencida` > (`avisar` y `dias<=lead_dias`) → `proxima` > `aldia`.
 - `_act_enriquecer(row)` → dict JSON-serializable: todos los campos de la fila + `proxima_fecha` (ISO/None) + `estado` + `dias_restantes` (int/None).
 - `_act_payload()` → `{'actividades': [...enriquecidas], 'historial': [{'actividad_id','fecha_hecha'}...]}`. Fuente de TODAS las respuestas AJAX del módulo (fresco tras cada mutación).
+- `_home_calendario_payload()` → `{'mes_nombre', 'hoy' (día int), 'semanas' (monthdayscalendar lunes-primero, 0 = celda vacía), 'dias' {dia: [estados]} con prioridad/dedup/tope-3 espejo de dotsDelDia() de calendario.js, 'pendientes' (vencida|proxima, vencidas primero + fecha asc, cap 6)}`. Proyección de `_act_payload()` para la tarjeta Calendario del Inicio — JAMÁS recalcula estado/próxima fecha. La consume `index()` (`cal_home`, render 100% Jinja sin JS).
 - `_act_leer_form_comun(form)`: valida y arma kwargs para `database.agregar_actividad` / `editar_actividad`. Compartido por crear/editar.
 - `_act_parsear_fecha_opcional(valor, campo)`: valida `''` o `YYYY-MM-DD`; lanza `ValueError` si es inválida.
 - `_es_ajax()`: `request.headers.get('X-Requested-With') == 'XMLHttpRequest'`.

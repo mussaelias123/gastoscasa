@@ -131,14 +131,60 @@
     </div>
   </section>
 
-  {# ── CALENDARIO — placeholder ──────────────────────────────────────────── #}
+  {# ── CALENDARIO — mini mes + pendientes (100% server-render, SIN JS) ────── #}
+  {# Todo viene armado de _home_calendario_payload() (app.py): semanas del mes
+     (monthdayscalendar, 0 = celda vacía), dias = {dia: [estados]} ya con la
+     prioridad/tope de dotsDelDia() del módulo, y pendientes ordenadas como la
+     agenda de /calendario. Sin navegación de mes ni celdas clickeables (v1):
+     "Ver módulo →" cubre profundizar. home.js NO toca esta tarjeta. #}
   <section class="home-card home-card--calendario">
     <div class="home-card-head">
       <span class="home-card-titulo">📅 Calendario</span>
       <a class="home-card-link" href="{{ url_for('calendario') }}">Ver módulo →</a>
     </div>
     <div class="home-card-body">
-      <p class="home-placeholder">Próximamente en el Inicio.</p>
+
+      <div class="home-cal-mes">{{ cal_home.mes_nombre }}</div>
+      <div class="home-cal-grid">
+        {% for d in ['L', 'M', 'X', 'J', 'V', 'S', 'D'] %}
+        <div class="home-cal-dow">{{ d }}</div>
+        {% endfor %}
+        {% for semana in cal_home.semanas %}
+          {% for dia in semana %}
+            {% if dia == 0 %}
+            <div class="home-cal-day is-vacio"></div>
+            {% else %}
+            <div class="home-cal-day{% if dia == cal_home.hoy %} is-hoy{% endif %}">
+              <span class="home-cal-num">{{ dia }}</span>
+              {# El contenedor de puntos va SIEMPRE (aunque vacío): min-height
+                 en CSS mantiene las filas parejas #}
+              <span class="home-cal-dots">
+                {%- for est in cal_home.dias.get(dia, []) -%}
+                <span class="home-cal-dot home-cal-d-{{ est }}"></span>
+                {%- endfor -%}
+              </span>
+            </div>
+            {% endif %}
+          {% endfor %}
+        {% endfor %}
+      </div>
+
+      <div class="home-cal-sec">Pendientes</div>
+      {% for p in cal_home.pendientes %}
+      <div class="home-cal-item is-{{ p.estado }}">
+        <span class="home-cal-nombre">{{ p.nombre }}</span>
+        <span class="home-cal-venc t-{{ p.estado }}">
+          {%- if p.dias_restantes == 0 %}Vence hoy
+          {%- elif p.dias_restantes == 1 %}Vence mañana
+          {%- elif p.dias_restantes > 1 %}Vence en {{ p.dias_restantes }} días
+          {%- elif p.dias_restantes == -1 %}Venció ayer
+          {%- else %}Venció hace {{ -p.dias_restantes }} días{% endif -%}
+        </span>
+      </div>
+      {% else %}
+      <p class="home-cal-vacio">Nada pendiente.</p>
+      {% endfor %}
+
     </div>
   </section>
 
