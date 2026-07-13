@@ -7193,6 +7193,87 @@ body:has(.home-page) .contenido-principal {
   color: var(--color-texto-muted);
 }
 
+/* ── Tarjeta Rutina: qué hace cada uno AHORA + qué viene después ── */
+/* Filas compactas, mismo patrón que .home-lac-item (borde izq 3px + tinte
+   color-mix SOLO con var() adentro, fallback superficie previo). Color por
+   persona con las MISMAS variables que el módulo /rutina (.rut--leon/mama/
+   papa): León = persona-leon, mamá = persona-mari, papá = persona-elias. */
+.home-rut-item {
+  padding: 0.4rem 0.55rem;
+  margin-bottom: 0.4rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-left-width: 3px;
+  border-radius: var(--radio-borde);
+}
+
+.home-rut--leon {
+  border-left-color: var(--color-persona-leon);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-persona-leon) 6%, var(--color-superficie));
+}
+
+.home-rut--mama {
+  border-left-color: var(--color-persona-mari);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-persona-mari) 6%, var(--color-superficie));
+}
+
+.home-rut--papa {
+  border-left-color: var(--color-persona-elias);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-persona-elias) 6%, var(--color-superficie));
+}
+
+/* Línea principal: quién · actividad actual · rango horario */
+.home-rut-linea {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.home-rut-quien {
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+.home-rut-act {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-texto);
+}
+
+.home-rut-horas {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+/* Línea secundaria: "Después: … · HH:MM" */
+.home-rut-despues {
+  margin-top: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.74rem;
+  color: var(--color-texto-muted);
+}
+
+.home-rut-vacio {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
 /* ── Desktop ≥900px: grid 3 columnas × 2 filas, form inline ── */
 @media (min-width: 900px) {
   /* col A: Gastos arriba / Rutina abajo; col B: Lactancia (2 filas);

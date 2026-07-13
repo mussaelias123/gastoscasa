@@ -15,7 +15,7 @@
 
 | Método | URL                       | Función               | Propósito                                        |
 |--------|---------------------------|-----------------------|--------------------------------------------------|
-| GET    | `/`                       | `index`               | Página Inicio (home): tarjeta Gastos (saldos + form movimiento, partials compartidos con /gastos) + tarjeta Lactancia (`lac_home=_home_lactancia_payload()`, form compartido `_form_lactancia.html`) + tarjeta Calendario (`cal_home=_home_calendario_payload()`, 100% server-render) + placeholder Rutina. |
+| GET    | `/`                       | `index`               | Página Inicio (home): tarjeta Gastos (saldos + form movimiento, partials compartidos con /gastos) + tarjeta Lactancia (`lac_home=_home_lactancia_payload()`, form compartido `_form_lactancia.html`) + tarjeta Calendario (`cal_home=_home_calendario_payload()`, 100% server-render) + tarjeta Rutina (`rut_home=_rut_payload(hoy, hoy)` — mismo helper que /rutina, rango de 1 día; el template lo inyecta como `window.RUT_DATOS` y lo renderiza home.js vía `window.Rutina.hoyAhora()`). |
 | GET    | `/gastos`                 | `gastos`              | Pantalla del módulo Gastos: saldos, formulario, tabla (ex `/`). |
 | POST   | `/agregar`                | `agregar`             | Inserta movimiento (ingreso/gasto/cambio).       |
 | POST   | `/eliminar/<id>`          | `eliminar`            | Borra movimiento por id.                         |
