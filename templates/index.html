@@ -57,7 +57,7 @@
   {# ── LACTANCIA — funcional: consumir partidas + cargar extracción ───────── #}
   {# Listas server-rendered (primer paint) desde lac_home; tras cada mutación
      AJAX home.js las re-renderiza espejando ESTE markup (window.LAC_HOME).
-     Convenciones del módulo: "Extraída HH:MM · fecha" (hora primero),
+     Convenciones del módulo: "Extraída HH:MM h · fecha" (hora primero),
      vencimiento relativo (heladera en horas, freezer en días — los valores
      vienen calculados del server, acá solo se formatean) y estados→paleta
      (vencida=peligro, vence_pronto=alerta, disponible/en_heladera=exito). #}
@@ -87,7 +87,7 @@
                 {%- else %}Vence en {{ p.horas_restantes }} h{% endif -%}
               </span>
             </div>
-            <div class="home-lac-meta">Extraída {% if p.hora_extraccion %}{{ p.hora_extraccion }} · {% endif %}{{ p.fecha_extraccion[8:10] | int }} {{ lac_meses[p.fecha_extraccion[5:7] | int - 1] }}</div>
+            <div class="home-lac-meta">Extraída {% if p.hora_extraccion %}{{ p.hora_extraccion }} h · {% endif %}{{ p.fecha_extraccion[8:10] | int }} {{ lac_meses[p.fecha_extraccion[5:7] | int - 1] }}</div>
           </div>
           <button type="button" class="home-lac-usar" data-lac-usar="{{ p.id }}" title="Se le dio a León (fecha de hoy)">✓ Usada</button>
         </div>
@@ -110,7 +110,7 @@
                 {%- else %}Venció hace {{ -p.dias_restantes }} días{% endif -%}
               </span>
             </div>
-            <div class="home-lac-meta">Extraída {% if p.hora_extraccion %}{{ p.hora_extraccion }} · {% endif %}{{ p.fecha_extraccion[8:10] | int }} {{ lac_meses[p.fecha_extraccion[5:7] | int - 1] }}</div>
+            <div class="home-lac-meta">Extraída {% if p.hora_extraccion %}{{ p.hora_extraccion }} h · {% endif %}{{ p.fecha_extraccion[8:10] | int }} {{ lac_meses[p.fecha_extraccion[5:7] | int - 1] }}</div>
           </div>
           <button type="button" class="home-lac-usar" data-lac-usar="{{ p.id }}" title="Se le dio a León (fecha de hoy)">✓ Usada</button>
         </div>
