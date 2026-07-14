@@ -22,8 +22,10 @@
 #   - SQLite es SQL estándar (como el que ya conocés), pero guardado en un
 #     ARCHIVO LOCAL (.db) en lugar de en un servidor separado.
 #   - No requiere instalar nada extra: viene incluido con Python.
-#   - El archivo gastos.db se crea automáticamente la primera vez que
-#     corrés la aplicación.
+#   - El archivo fondo.db se crea automáticamente la primera vez que
+#     corrés la aplicación. (Renombrado de gastos.db en 2026-07; ver
+#     _migrar_nombre_db_si_hace_falta() más abajo para la red de seguridad
+#     que renombra automáticamente entornos que todavía tengan el nombre viejo.)
 #
 # MODELO DE DATOS:
 #   Hay UNA tabla: movimientos.
@@ -39,6 +41,8 @@ import os         # Para trabajar con rutas de archivos
 import re         # Para validar el formato de fecha en calcular_saldos(hasta)
 import datetime   # Para timestamps ISO en actividades (creado/actualizado/registrado)
 
+from logutil import log  # logutil no importa nada del proyecto: sin riesgo de import circular
+
 
 # =============================================================================
 # CONFIGURACIÓN: Ruta del archivo de base de datos
@@ -48,7 +52,47 @@ import datetime   # Para timestamps ISO en actividades (creado/actualizado/regis
 # archivo (database.py). Usamos eso para construir la ruta absoluta al
 # archivo .db, de forma que funcione sin importar desde qué carpeta se ejecute.
 #
-DB_PATH = os.path.join(os.path.dirname(__file__), 'gastos.db')
+DB_PATH = os.path.join(os.path.dirname(__file__), 'fondo.db')
+
+# Nombre legacy (pre rename 2026-07). Ver _migrar_nombre_db_si_hace_falta().
+_DB_PATH_LEGACY = os.path.join(os.path.dirname(__file__), 'gastos.db')
+
+
+def _migrar_nombre_db_si_hace_falta():
+    """
+    Red de seguridad del rename de la base 2026-07 (gastos.db → fondo.db).
+
+    En el flujo normal el rename ya se hizo a mano en cada entorno (dev y
+    prod) antes de desplegar este cambio de código, así que en la práctica
+    esta función es un NO-OP: ya existe fondo.db y no hace nada.
+
+    Solo actúa si un entorno todavía no pasó por el rename manual: si existe
+    el archivo viejo (gastos.db) pero NO el nuevo (fondo.db), lo renombra acá
+    mismo, a nivel de módulo, ANTES de que cualquier conectar() abra la DB.
+
+    JAMÁS pisa un fondo.db existente: si los dos archivos están presentes a
+    la vez, no toca nada — solo deja un AVISO en el log para que se note y
+    se resuelva a mano cuál es la DB vigente.
+    """
+    existe_nueva  = os.path.isfile(DB_PATH)
+    existe_legacy = os.path.isfile(_DB_PATH_LEGACY)
+
+    if existe_nueva and existe_legacy:
+        log(f"AVISO: existen {os.path.basename(DB_PATH)} y {os.path.basename(_DB_PATH_LEGACY)} "
+            f"a la vez — no se renombra nada automáticamente. Resolver a mano cuál es la DB vigente.")
+        return
+
+    if existe_legacy and not existe_nueva:
+        os.rename(_DB_PATH_LEGACY, DB_PATH)
+        # Nota: "->" en ASCII, no "→" — log() usa print() y en producción el
+        # stdout redirigido por NSSM cae al codec cp1252 (no UTF-8 completo);
+        # cp1252 sí tiene el em-dash "—" (ya usado en otros logs) pero NO la
+        # flecha unicode, que rompería con UnicodeEncodeError.
+        log(f"OK: DB renombrada automáticamente {os.path.basename(_DB_PATH_LEGACY)} -> "
+            f"{os.path.basename(DB_PATH)} (fallback de seguridad del rename 2026-07).")
+
+
+_migrar_nombre_db_si_hace_falta()
 
 
 # =============================================================================

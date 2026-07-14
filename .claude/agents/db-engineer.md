@@ -22,7 +22,7 @@ Modificar `database.py`: queries, esquema, lógica de saldos. También crear scr
 ## Reglas obligatorias
 1. Saldos NUNCA almacenados, siempre derivados.
 2. Migraciones de esquema → `ALTER TABLE ADD COLUMN` dentro de `inicializar_db()`, envuelto en try/except. Nunca DROP.
-3. Antes de cualquier migración de datos: backup manual `cp gastos.db backups/gastos_pre_<motivo>_$(date).db`.
+3. Antes de cualquier migración de datos: backup manual `cp fondo.db backups/fondo_pre_<motivo>_$(date).db` (legacy pre-2026-07: `gastos.db`/`gastos_*`).
 4. Scripts one-shot van en `TempScripts/` con nombre descriptivo (`backfill_*`, `migrate_*`).
 5. Cada función abre y cierra su propia conexión.
 

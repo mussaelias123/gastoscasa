@@ -227,13 +227,22 @@ body.has-dev-banner .site-topbar {
 /* ============================================================================
    HEADER (encabezado superior)
    ============================================================================ */
+/* Grilla de 3 columnas (1fr auto 1fr): ☰ a la izq, marca centrada real, y el
+   cluster de acciones a la der — así el sol/acciones NUNCA se superponen al
+   título (bug mobile). Las columnas laterales 1fr equilibran = marca centrada. */
 .site-header {
   background-color: var(--color-deco-1);
   color: white;
-  padding: 0.2rem 2rem;
-  text-align: center;
+  padding: 0.2rem 1rem;
   position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.4rem;
 }
+
+.header-content { min-width: 0; text-align: center; }
+.header-content h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .site-header h1 {
   color: white;
@@ -6608,23 +6617,15 @@ span.rut-ahora-emoji { cursor: default; }
 
 /* ============================================================================
    HEADER ACCIONES — botón de menú (☰) + cluster derecho (tema · Salir ·
-   avatar · 🔔). Reemplaza los dos `position:absolute` viejos (toggle de tema a
-   la izq, usuario a la der). La marca (.header-content) sigue centrada por
-   text-align; ☰ y el cluster se anclan a los costados con absolute para no
-   descentrarla.
+   avatar · 🔔). Son celdas de la grilla del `.site-header` (1fr auto 1fr): ☰ a
+   la izquierda de su columna, el cluster a la derecha de la suya, la marca
+   centrada en el medio. Antes eran `position:absolute` y el cluster se
+   superponía al título en mobile.
    ============================================================================ */
-#menu-toggle {
-  position: absolute;
-  left: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-}
+#menu-toggle { justify-self: start; }
 
 .header-acciones {
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
+  justify-self: end;
   display: flex;
   align-items: center;
   gap: 0.5rem;

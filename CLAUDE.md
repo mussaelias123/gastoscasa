@@ -22,7 +22,7 @@
 | Dominio       | Archivos principales                                  | Doc de contexto                  |
 |---------------|--------------------------------------------------------|----------------------------------|
 | Backend rutas | `app.py`                                               | `docs/CONTEXT_BACKEND.md`        |
-| Base de datos | `database.py`, `gastos.db`                             | `docs/CONTEXT_DB.md`             |
+| Base de datos | `database.py`, `fondo.db` (legacy: `gastos.db`)        | `docs/CONTEXT_DB.md`             |
 | Cotización    | `cotizacion.py`, `tests/test_cotizacion.py`            | `docs/CONTEXT_COTIZACION.md`     |
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
@@ -69,6 +69,7 @@
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.
 5. **Sesión iniciada**: la cuenta del usuario ya está logueada en ngrok. Si la página pide login, **detenerse y avisar**.
 6. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. Detalle en `docs/METODOLOGIA.md` §5.
+7. **Merge a main SOLO con permiso del usuario** (regla 2026-07-13): los agentes pueden crear ramas, commitear y abrir PRs, pero **NUNCA mergear un PR a main** sin que el usuario lo autorice explícitamente. Flujo: implementar → verificar en DEV → abrir PR → **avisar al usuario y esperar su OK** → recién ahí mergear. La verificación en DEV no reemplaza la aprobación del usuario.
 
 ---
 
