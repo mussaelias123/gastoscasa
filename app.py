@@ -754,7 +754,7 @@ def dias_desde_fecha(fecha_str):
 # =============================================================================
 # HELPER: _calcular_gauges(saldos, cotizacion_valor, historico=False)
 # Propósito: arma el dict de los 3 gauges de distribución (ARS, USD, Total).
-#   Compartido por la ruta '/' y por la API '/api/saldos'.
+#   Compartido por '/' (Inicio), '/gastos' y la API '/api/saldos'.
 # =============================================================================
 def _calcular_gauges(saldos, cotizacion_valor, historico=False):
     """Distribución para los 3 gauges circulares.
@@ -828,18 +828,27 @@ def _gastos_fijos_json():
 
 @app.route('/')
 def index():
-    """Inicio: home de la app. Tarjetas Gastos (saldos mini + form de
-    movimiento), Lactancia (consumir partidas + cargar extracción),
-    Calendario (mini mes + pendientes, 100% server-render) y Rutina (qué
-    hace cada uno AHORA + qué viene después: rut_home = _rut_payload de
-    HOY, rango de 1 día — mismo helper que /rutina; lo consume rutina.js
-    vía window.RUT_DATOS y lo renderiza home.js con window.Rutina.hoyAhora).
-    `cfg` llega vía inject_config."""
+    """Inicio: home de la app. Tarjetas Gastos (form de movimiento),
+    Saldos (tarjeta completa compartida con /gastos vía _tarjeta_saldos.html:
+    título + selector de fecha + tabla + gauges → necesita `gauges` en el
+    context, mismo cálculo que gastos()), Lactancia (cargar extracción +
+    consumir partidas), Calendario (mini mes + pendientes, 100%
+    server-render) y Rutina (qué hace cada uno AHORA + qué viene después:
+    rut_home = _rut_payload de HOY, rango de 1 día — mismo helper que
+    /rutina; lo consume rutina.js vía window.RUT_DATOS y lo renderiza
+    home.js con window.Rutina.hoyAhora). `cfg` llega vía inject_config."""
     from datetime import date
+    cfg    = config.cargar_config(CONFIG_FILE)
     saldos = database.calcular_saldos()
+
+    # ── Gauges de distribución (mismo cálculo que /gastos) ────────────────────
+    cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
+    gauges = _calcular_gauges(saldos, cotizacion_valor)
+
     hoy_iso = date.today().isoformat()
     return render_template('index.html',
                            saldos=saldos,
+                           gauges=gauges,
                            gastos_fijos_json=_gastos_fijos_json(),
                            lac_home=_home_lactancia_payload(),
                            cal_home=_home_calendario_payload(),

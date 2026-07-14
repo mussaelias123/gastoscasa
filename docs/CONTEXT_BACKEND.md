@@ -15,7 +15,7 @@
 
 | Método | URL                       | Función               | Propósito                                        |
 |--------|---------------------------|-----------------------|--------------------------------------------------|
-| GET    | `/`                       | `index`               | Página Inicio (home): tarjeta Gastos (saldos + form movimiento, partials compartidos con /gastos) + tarjeta Lactancia (`lac_home=_home_lactancia_payload()`, form compartido `_form_lactancia.html`) + tarjeta Calendario (`cal_home=_home_calendario_payload()`, 100% server-render) + tarjeta Rutina (`rut_home=_rut_payload(hoy, hoy)` — mismo helper que /rutina, rango de 1 día; el template lo inyecta como `window.RUT_DATOS` y lo renderiza home.js vía `window.Rutina.hoyAhora()`). |
+| GET    | `/`                       | `index`               | Página Inicio (home): tarjeta Gastos (form movimiento) + tarjeta Saldos (partial completo `_tarjeta_saldos.html` compartido con /gastos → el context lleva `saldos` Y `gauges`, mismo `_calcular_gauges` que `gastos()`) + tarjeta Lactancia (`lac_home=_home_lactancia_payload()`, form compartido `_form_lactancia.html`) + tarjeta Calendario (`cal_home=_home_calendario_payload()`, 100% server-render) + tarjeta Rutina (`rut_home=_rut_payload(hoy, hoy)` — mismo helper que /rutina, rango de 1 día; el template lo inyecta como `window.RUT_DATOS` y lo renderiza home.js vía `window.Rutina.hoyAhora()`). |
 | GET    | `/gastos`                 | `gastos`              | Pantalla del módulo Gastos: saldos, formulario, tabla (ex `/`). |
 | POST   | `/agregar`                | `agregar`             | Inserta movimiento (ingreso/gasto/cambio).       |
 | POST   | `/eliminar/<id>`          | `eliminar`            | Borra movimiento por id.                         |
@@ -60,7 +60,7 @@
 
 ## Helpers internos clave
 - `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
-- `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `gastos` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
+- `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `index`, `gastos` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
 - `_gastos_fijos_json()` → JSON (string) con los gastos fijos activos (`descripcion`, `es_cuota`, `cuota_actual`, `total_cuotas`) para `window.GASTOS_FIJOS` del form rápido. Compartido por `gastos` e `index`.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.

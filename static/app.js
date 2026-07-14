@@ -1593,6 +1593,28 @@ function initFormAjax() {
             // muestra el toast y el form queda listo para otra carga.
             if (form.dataset.modo === 'inline') {
                 if (data.saldos) actualizarSaldos(data.saldos);
+
+                // El home muestra la tarjeta de saldos COMPLETA (gauges +
+                // selector de fecha) y /agregar NO devuelve gauges: se
+                // re-piden a /api/saldos respetando la fecha del picker si
+                // la hay (en modo histórico también re-pisa la tabla con los
+                // saldos correctos a esa fecha). En /gastos este bloque no
+                // corre: el form sin data-modo navega y re-renderiza todo.
+                var inputSaldosFecha = document.getElementById('saldos-fecha');
+                var hastaSaldos = (inputSaldosFecha && inputSaldosFecha.value)
+                    ? '?hasta=' + encodeURIComponent(inputSaldosFecha.value) : '';
+                fetch('/api/saldos' + hastaSaldos, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        if (d && d.ok) {
+                            actualizarSaldos(d.saldos);
+                            actualizarGauges(d.gauges);
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error('Error /api/saldos tras alta inline:', err);
+                    });
+
                 // En tipo=cambio el server devuelve movimiento (salida) y
                 // movimiento2 (entrada): el toast usa el principal, que trae
                 // todos los campos que mostrarToast necesita.
