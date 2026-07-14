@@ -328,6 +328,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var formAdd = null;                    // estado del form "＋ Añadir tarea" (null = cerrado)
     var drag = null;                       // drag en curso (mover/estirar, estilo Teams)
     var seArrastro = false;                // suprime el click fantasma tras un drag
+    var ahoraHora = null;                  // item_id con el editor "empezó a las…" abierto
 
     function $(id) { return document.getElementById(id); }
 
@@ -335,9 +336,13 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         var g = {};
         try { g = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) {}
         return {
+            // Solo la selección de personas es preferencia persistida. El día
+            // y la etapa arrancan SIEMPRE en hoy + "actual": al entrar se ve la
+            // rutina del día corriente en vivo, no el último día/proyección que
+            // se haya mirado (dentro de la sesión sí se pueden cambiar).
             sel: g.sel || { leon: true, mama: true, papa: false },
-            dia: (g.dia !== undefined ? g.dia : new Date().getDay()),
-            etapa: ORDEN_ETAPAS.indexOf(g.etapa) >= 0 ? g.etapa : 'actual'
+            dia: new Date().getDay(),
+            etapa: 'actual'
         };
     }
 
@@ -424,6 +429,37 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return set;
     }
 
+    // Resuelve solapes en una línea de tiempo: dos actividades de la MISMA
+    // persona nunca ocurren a la vez. Recorre en orden de inicio; los links
+    // PUROS (atados a León: tetas/upa/paseo, no editables) son barreras
+    // inamovibles — son la misma actividad que la de León y no pueden correrse;
+    // el resto (cadena de León, clocks, customs) se empuja hacia adelante lo
+    // justo para no pisar ni al anterior ni a un link fijo. Los ítems de dur 0
+    // ("A dormir"/"Sueño nocturno") no ocupan lugar y se dejan como están.
+    // Muta start/end en el lugar. Pedido de Mari 2026-07-13.
+    function sinSolapes(items) {
+        var arr = items.filter(function (i) { return i.dur > 0; })
+                       .sort(function (a, b) { return a.start - b.start; });
+        var fijos = arr.filter(function (i) { return !i.editable; })
+                       .map(function (i) { return { s: i.start, e: i.end }; });
+        var cursor = -Infinity;
+        arr.forEach(function (it) {
+            if (!it.editable) { cursor = Math.max(cursor, it.end); return; }
+            var s = Math.max(it.start, cursor);
+            var choco = true, vueltas = 0;
+            while (choco && vueltas++ < 50) {
+                choco = false;
+                fijos.forEach(function (f) {
+                    if (s < f.e && s + it.dur > f.s) { s = f.e; choco = true; }
+                });
+            }
+            it.start = s;
+            it.end = s + it.dur;
+            cursor = it.end;
+        });
+        return items;
+    }
+
     // ── Cálculo del día (port literal del prototipo) ─────────────────────────
     // Cascada: run = anchor; start = ajuste ?? run; end = start + dur; run = end.
     // Nocturnas: start = inicio del sueño nocturno + off (dur fija 25).
@@ -456,7 +492,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         var leon = [];
         var porId = {};
         chain.forEach(function (it) {
-            var start = (aj[it.id] !== undefined) ? aj[it.id] : run;
+            // Clamp: un ajuste nunca arranca antes de que termine el anterior
+            // (la cadena de León no se solapa consigo misma).
+            var start = (aj[it.id] !== undefined) ? Math.max(aj[it.id], run) : run;
             var dur = (it.dur && dd[it.id] !== undefined) ? dd[it.id] : it.dur;
             var sub = it.sub;
             if (it.act && pool.length) {
@@ -549,10 +587,19 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         function porInicio(a, b) { return a.start - b.start; }
         var mamaDefs = (esFinde() && R.mamaFinde) ? R.mamaFinde : (R.mama || []);
         var papaDefs = esFinde() ? (R.papaFinde || []) : (R.papa || []);
+
+        // León: día (cadena + nocturnas) + sus tareas añadidas → resolver
+        // solapes ANTES de expandir los adultos, porque sus links heredan las
+        // posiciones finales de León (si un custom corrió un ítem de León, el
+        // link debe seguir esa posición corrida).
+        var leonFinal = sinSolapes(leon.concat(tareasDe('leon')));
+        porId = {};
+        leonFinal.forEach(function (i) { porId[i.id] = i; });
+
         return {
-            leon: leon.concat(tareasDe('leon')).sort(porInicio),
-            mama: expandir(mamaDefs, 'mama').concat(tareasDe('mama')).sort(porInicio),
-            papa: expandir(papaDefs, 'papa').concat(tareasDe('papa')).sort(porInicio),
+            leon: leonFinal.sort(porInicio),
+            mama: sinSolapes(expandir(mamaDefs, 'mama').concat(tareasDe('mama'))).sort(porInicio),
+            papa: sinSolapes(expandir(papaDefs, 'papa').concat(tareasDe('papa'))).sort(porInicio),
             quitados: quitados, R: R
         };
     }
@@ -599,11 +646,42 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         }, 400);
     }
 
+    // "Empezó a tal hora": la actividad actual arrancó a la hora T (ahora, o
+    // una que Mari elija). Pone su inicio en T y hace que la ANTERIOR termine
+    // ahí (se acorta/estira hasta T) — así reflejan la realidad sin pisarse.
+    // Los siguientes se re-encadenan solos. Pedido de Mari 2026-07-13.
+    function empezoALas(curId, T) {
+        T = Math.max(0, T);
+        var lista = calcular().leon;
+        var idx = -1;
+        lista.forEach(function (i, k) { if (i.id === curId) idx = k; });
+        if (idx < 0) return;
+        var prev = null;
+        for (var j = idx - 1; j >= 0; j--) {
+            if (lista[j].dur > 0) { prev = lista[j]; break; }
+        }
+        if (prev) T = Math.max(T, prev.start + 5);   // dejarle algo al anterior
+        ajustar(curId, T);
+        if (prev && prev.editable && prev.start < T) {
+            ajustarDur(prev.id, T - prev.start);
+        }
+    }
+
+    // "Termina a tal hora": ajusta la duración para que el fin caiga en T
+    // (el inicio no se mueve). Los siguientes se re-encadenan.
+    function terminaALas(curId, T) {
+        var it = null;
+        calcular().leon.forEach(function (i) { if (i.id === curId) it = i; });
+        if (!it) return;
+        ajustarDur(curId, Math.max(5, T - it.start));
+    }
+
     function resetDia() {
         var fecha = isoLocal(fechaVista());
         if (AJUSTES[fecha]) delete AJUSTES[fecha][UI.etapa];
         if (DURACIONES[fecha]) delete DURACIONES[fecha][UI.etapa];
         editando = null;
+        ahoraHora = null;
         renderTodo();
         postAccion('/api/rutina/reset', { fecha: fecha, etapa: UI.etapa });
     }
@@ -795,6 +873,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var pct = Math.round(Math.min(100, Math.max(3, ((now - el.start) / Math.max(1, (el.end - el.start))) * 100)));
             var rango = fmt(el.start) + ' – ' + (el.dur === 0 ? '…' : fmt(el.end));
             var editable = !!(cur && cur.editable && u === 'leon');
+            // La actividad está EN CURSO y es ajustable → knob arrastrable en la
+            // barra (mover = corregir cuánto avanzó) + editor de inicio/fin.
+            var enVentana = editable && cur.dur && now >= cur.start && now < cur.end;
             // "⏳ Aún en {anterior}": lo real va atrasado — la actividad en
             // curso todavía no arrancó. Estira la ANTERIOR hasta ahora (+10'
             // de changüí) y corre la actual. Solo si la actual está de verdad
@@ -831,17 +912,54 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                         (el.sub ? '<div class="rut-ahora-sub">' + escapeHtml(el.sub) + '</div>' : '') +
                     '</div>' +
                 '</div>' +
-                '<div class="rut-barra"><div class="rut-barra-fill" style="width:' + pct + '%"></div></div>' +
+                '<div class="rut-barra' + (enVentana ? ' rut-barra-mueve' : '') + '"' +
+                    (enVentana ? ' data-barra="' + cur.id + '" data-bstart="' + cur.start + '" data-bnow="' + now + '"' : '') + '>' +
+                    '<div class="rut-barra-fill" style="width:' + pct + '%"></div>' +
+                    (enVentana ? '<span class="rut-barra-knob" style="left:' + pct + '%"></span>' : '') +
+                '</div>' +
                 '<div class="rut-ahora-pie">' +
                     '<span class="rut-ahora-luego">luego: ' + (sig ? sig.emoji : '🌙') + ' ' +
                         escapeHtml(sig ? sig.t : 'fin del día') +
                         ' · <span class="rut-mono">' + (sig ? fmt(sig.start) : '—') + '</span></span>' +
-                    btnAun +
-                    (editable ? '<button type="button" class="rut-btn-empezo" data-empezo="' + cur.id + '">⏱ Empezó ahora</button>' : '') +
+                    accionesAhora(cur, btnAun, editable) +
                 '</div>' +
             '</div>';
         });
         cont.innerHTML = html;
+    }
+
+    // Botonera de la tarjeta "Ahora". Con el editor "empezó a las…" abierto
+    // (ahoraHora === cur.id) muestra los dos inputs de hora + OK; si no, los
+    // botones: "⏳ Aún en…" (si aplica), "🕐" (empezó a otra hora) y
+    // "⏱ Empezó ahora". El 🕐 y "Empezó ahora" solo si es editable (León).
+    function accionesAhora(cur, btnAun, editable) {
+        if (editable && ahoraHora === cur.id) {
+            var s = ((cur.start % 1440) + 1440) % 1440;
+            var e = (((cur.start + cur.dur) % 1440) + 1440) % 1440;
+            function campo(etiq, aH, aM, val) {
+                var m = ((val % 1440) + 1440) % 1440;
+                return '<span class="rut-ah-campo"><span class="rut-ah-label">' + etiq + '</span>' +
+                    '<input class="rut-hora-in" type="number" min="0" max="23" inputmode="numeric" ' +
+                        aH + ' value="' + Math.floor(m / 60) + '" aria-label="Hora ' + etiq + '">' +
+                    '<span class="rut-hora-sep">:</span>' +
+                    '<input class="rut-hora-in" type="number" min="0" max="59" inputmode="numeric" ' +
+                        aM + ' value="' + (m % 60) + '" aria-label="Minutos ' + etiq + '"></span>';
+            }
+            return '<span class="rut-ahora-acciones rut-ah-edit">' +
+                campo('empezó', 'data-ah-h', 'data-ah-m', cur.start) +
+                campo('termina', 'data-ah-eh', 'data-ah-em', cur.start + cur.dur) +
+                '<button type="button" class="rut-editor-ahora" data-ah-ok="' + cur.id + '">OK</button>' +
+                '<button type="button" class="rut-editor-ok" data-ah-x="1">✕</button>' +
+            '</span>';
+        }
+        if (!btnAun && !editable) return '';
+        return '<span class="rut-ahora-acciones">' + btnAun +
+            (editable
+                ? '<button type="button" class="rut-btn-hora" data-ahora-hora="' + cur.id + '" ' +
+                      'title="Empezó / termina a otra hora">🕐</button>' +
+                  '<button type="button" class="rut-btn-empezo" data-empezo="' + cur.id + '">⏱ Empezó ahora</button>'
+                : '') +
+        '</span>';
     }
 
     // ── Lienzo de columnas: una línea de tiempo por persona ─────────────────
@@ -1501,8 +1619,31 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         }
 
         $('rut-ahora').addEventListener('click', function (ev) {
-            var btn = ev.target.closest('[data-empezo]');
-            if (btn) return ajustar(btn.dataset.empezo, ahoraMin());
+            var el;
+            // "⏱ Empezó ahora" → empezó a esta hora (el anterior termina ahora)
+            if ((el = ev.target.closest('[data-empezo]'))) return empezoALas(el.dataset.empezo, ahoraMin());
+            // "🕐" → abrir el editor "empezó a las…"
+            if ((el = ev.target.closest('[data-ahora-hora]'))) { ahoraHora = el.dataset.ahoraHora; return renderTodo(); }
+            if (ev.target.closest('.rut-hora-in')) return;   // tipeando: no cerrar
+            if ((el = ev.target.closest('[data-ah-ok]'))) {
+                var id = el.dataset.ahOk;
+                var cur = buscarItem(id);
+                if (cur) {
+                    var gv = function (attr, max) {
+                        var i = document.querySelector('[' + attr + ']');
+                        return Math.min(max, Math.max(0, parseInt(i && i.value, 10) || 0));
+                    };
+                    var S = gv('data-ah-h', 23) * 60 + gv('data-ah-m', 59);
+                    var E = gv('data-ah-eh', 23) * 60 + gv('data-ah-em', 59);
+                    var start0 = cur.start, end0 = cur.start + cur.dur;
+                    ahoraHora = null;
+                    if (S !== start0) empezoALas(id, S);          // mueve el inicio (y el anterior)
+                    if (E !== end0) terminaALas(id, E);           // ajusta el fin
+                    if (S === start0 && E === end0) renderTodo();
+                }
+                return;
+            }
+            if (ev.target.closest('[data-ah-x]')) { ahoraHora = null; return renderTodo(); }
             // "⏳ Aún en {anterior}": estira la anterior hasta ahora +10' y
             // corre la actual a continuación (queda clavada ahí)
             var aun = ev.target.closest('[data-aun]');
@@ -1517,6 +1658,77 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var ir = ev.target.closest('[data-ir]');
             if (ir) irAItem(ir.dataset.ir);
         });
+
+        // Ruedita del mouse sobre los inputs del editor (inicio y fin)
+        $('rut-ahora').addEventListener('wheel', function (ev) {
+            var inp = ev.target.closest('.rut-hora-in');
+            if (!inp) return;
+            ev.preventDefault();
+            var esH = inp.hasAttribute('data-ah-h') || inp.hasAttribute('data-ah-eh');
+            var paso = esH ? 1 : 5, max = esH ? 23 : 59;
+            var v = (parseInt(inp.value, 10) || 0) + (ev.deltaY < 0 ? paso : -paso);
+            inp.value = Math.max(0, Math.min(max, v));
+        }, { passive: false });
+
+        // ── Knob arrastrable en la barra de progreso de la tarjeta "Ahora" ──
+        // Arrastrarlo = corregir cuánto avanzó la actividad: la fracción bajo
+        // el knob es dónde estamos AHORA dentro de la actividad, así que la
+        // duración se recalcula = transcurrido / fracción (el inicio no se
+        // mueve; el fin se adelanta o atrasa). Pedido de Mari 2026-07-13.
+        var barDrag = null;
+
+        function barPreview(f) {
+            var fill = barDrag.bar.querySelector('.rut-barra-fill');
+            var knob = barDrag.bar.querySelector('.rut-barra-knob');
+            if (fill) fill.style.width = (f * 100) + '%';
+            if (knob) knob.style.left = (f * 100) + '%';
+        }
+
+        function barMover(clientX) {
+            var trans = Math.max(1, barDrag.now - barDrag.start);   // min transcurridos
+            var fMin = trans / 720;                                  // dur máx 720
+            var f = (clientX - barDrag.left) / Math.max(1, barDrag.w);
+            barDrag.f = Math.max(fMin, Math.min(1, f));
+            barPreview(barDrag.f);
+        }
+
+        function barSoltar() {
+            var d = barDrag; barDrag = null;
+            if (!d || d.f === null) return;
+            var trans = Math.max(1, d.now - d.start);
+            var dur = Math.max(5, Math.min(720, Math.round((trans / d.f) / 5) * 5));
+            ajustarDur(d.id, dur);
+        }
+
+        function barIniciar(bar, clientX) {
+            var r = bar.getBoundingClientRect();
+            barDrag = { bar: bar, id: bar.dataset.barra, start: +bar.dataset.bstart,
+                        now: +bar.dataset.bnow, left: r.left, w: r.width, f: null };
+            barMover(clientX);
+        }
+
+        $('rut-ahora').addEventListener('mousedown', function (ev) {
+            if (ev.button !== 0) return;
+            var bar = ev.target.closest('[data-barra]');
+            if (!bar) return;
+            barIniciar(bar, ev.clientX);
+            ev.preventDefault();
+        });
+        document.addEventListener('mousemove', function (ev) { if (barDrag) barMover(ev.clientX); });
+        document.addEventListener('mouseup', function () { if (barDrag) barSoltar(); });
+
+        $('rut-ahora').addEventListener('touchstart', function (ev) {
+            if (ev.touches.length !== 1) return;
+            var bar = ev.target.closest('[data-barra]');
+            if (!bar) return;
+            barIniciar(bar, ev.touches[0].clientX);
+        }, { passive: true });
+        $('rut-ahora').addEventListener('touchmove', function (ev) {
+            if (!barDrag) return;
+            ev.preventDefault();
+            barMover(ev.touches[0].clientX);
+        }, { passive: false });
+        $('rut-ahora').addEventListener('touchend', function () { if (barDrag) barSoltar(); });
 
         // Busca el ítem vigente por id en el cálculo actual
         function buscarItem(itemId) {
@@ -1755,9 +1967,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // Reloj vivo + sync entre teléfonos (30 s); sync extra al volver a la app.
         // El tick se saltea en modo edición, con un popover abierto (editando)
         // o durante un drag: el re-render pisaría lo que se está haciendo.
-        setInterval(function () { if (!modoEdicion && !editando && !drag) syncAjustes(); }, 30000);
+        setInterval(function () { if (!modoEdicion && !editando && !drag && !ahoraHora) syncAjustes(); }, 30000);
         document.addEventListener('visibilitychange', function () {
-            if (!document.hidden && !modoEdicion && !editando && !drag) syncAjustes();
+            if (!document.hidden && !modoEdicion && !editando && !drag && !ahoraHora) syncAjustes();
         });
     }
 

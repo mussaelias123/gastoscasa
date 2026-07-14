@@ -40,7 +40,6 @@ opciones" (⋯) de cada partida.
     var cfMotivo = 'usada';      // 'usada' | 'descartada' en ese modal
     var masPartidaId = null;     // id en la hoja Más opciones
     var edPartidaId = null;      // id en el Editor
-    var eliminarId = null;       // id pendiente de confirmación de borrado
 
     // Instancias flatpickr (mismo patrón que calendario.js: valor real ISO
     // Y-m-d, altInput muestra d/m/Y). Se llenan en initFlatpickrs().
@@ -318,10 +317,10 @@ opciones" (⋯) de cada partida.
         return p.notas ? '<div class="lac-item-notas">📝 ' + esc(p.notas) + '</div>' : '';
     }
 
-    // "Extraída 14:30 · 10 jul" — hora primero, fecha después (pedido de Mari
-    // 2026-07-11; si la partida vieja no tiene hora, queda solo la fecha)
+    // "Extraída 14:30 h · 10 jul" — hora (con "h") primero, fecha después
+    // (pedido de Mari 2026-07-11 + "h" 2026-07-13; sin hora → solo la fecha)
     function extraidaTxt(p) {
-        return 'Extraída ' + (p.hora_extraccion ? p.hora_extraccion + ' · ' : '') +
+        return 'Extraída ' + (p.hora_extraccion ? p.hora_extraccion + ' h · ' : '') +
             fmtFechaCorta(p.fecha_extraccion);
     }
 
@@ -343,25 +342,17 @@ opciones" (⋯) de cada partida.
         '</div>';
     }
 
-    // En heladera JAMÁS se muestra la hora (regla del módulo); el vencimiento
-    // va relativo. El checkbox marca qué partidas entran en la próxima freezada
-    // (botón ⬆). Solo se bloquea si la partida está vencida (p.freezable=false
-    // del server). Si ya lleva muchas horas en heladera pero sigue freezable,
-    // arranca destildada (p.freezar_reciente=false) — el usuario la puede
-    // tildar igual, el server la acepta.
+    // El checkbox marca qué partidas entran en la próxima freezada (botón ⬆).
+    // SIEMPRE arranca destildado (pedido de Mari 2026-07-13): la usuaria tilda
+    // a mano las que quiere mandar al freezer. Solo se bloquea si la partida
+    // está vencida (p.freezable=false del server).
     function checkHeladera(p) {
         if (!p.freezable) {
             return '<label class="lac-check is-off" title="Vencida: no se puede pasar al freezer">' +
                 '<input type="checkbox" class="lac-check-input" value="' + p.id + '" disabled>' +
             '</label>';
         }
-        if (p.freezar_reciente) {
-            return '<label class="lac-check" title="Entra en la próxima freezada (⬆)">' +
-                '<input type="checkbox" class="lac-check-input" value="' + p.id + '" checked>' +
-            '</label>';
-        }
-        return '<label class="lac-check" title="Ya lleva ' + p.horas_en_heladera +
-                ' h en la heladera. No entra por defecto, pero se puede tildar igual.">' +
+        return '<label class="lac-check" title="Tildala para mandarla al freezer con ⬆">' +
             '<input type="checkbox" class="lac-check-input" value="' + p.id + '">' +
         '</label>';
     }
@@ -575,25 +566,63 @@ opciones" (⋯) de cada partida.
         }, function () { btn.disabled = false; });
     }
 
-    // ── Modal: Confirmar eliminación ─────────────────────────────────────────
-    function abrirConfirmEliminar(id) {
-        var p = buscarPartida(id);
-        if (!p) return;
-        eliminarId = id;
-        $('lac-confirm-msg').textContent =
-            'Se elimina definitivamente la partida de ' + fmtMl(p.volumen_ml) +
-            ' (extraída el ' + fmtFecha(p.fecha_extraccion) + '). ' +
-            'Esta acción no se puede deshacer.';
+    // ── Modal: Confirmación genérica ─────────────────────────────────────────
+    // Cualquier acción que se concrete al toque (Usada, Tirar, Eliminar) pide
+    // confirmación antes — así un toque sin querer no la ejecuta (pedido de
+    // Mari 2026-07-13). `confirmAccion` es la función que corre al confirmar.
+    var confirmAccion = null;
+
+    function abrirConfirm(opts) {
+        $('lac-confirm-emoji').textContent = opts.emoji || '⚠️';
+        $('lac-confirm-titulo').textContent = opts.titulo;
+        $('lac-confirm-msg').textContent = opts.msg;
+        var btn = $('lac-confirm-si');
+        btn.textContent = opts.boton;
+        btn.className = opts.peligro ? 'btn-peligro' : 'btn-acento';
+        confirmAccion = opts.accion;
         $('lac-modal-confirm').hidden = false;
     }
 
-    function confirmarEliminar() {
-        if (eliminarId === null) return;
-        postAccion('/api/lactancia/' + eliminarId + '/eliminar', new URLSearchParams(), function () {
-            $('lac-modal-confirm').hidden = true;
-            toast('✕ Partida eliminada.', 'info');
+    function confirmarSi() {
+        var accion = confirmAccion;
+        confirmAccion = null;
+        $('lac-modal-confirm').hidden = true;
+        if (accion) accion();
+    }
+
+    // "✓ Usada" y "🗑 Tirar" de cada partida: piden confirmación antes de cerrar
+    function pedirCierre(id, motivo) {
+        var p = buscarPartida(id);
+        if (!p) return;
+        var det = fmtMl(p.volumen_ml) + ' (extraída el ' + fmtFecha(p.fecha_extraccion) + ')';
+        if (motivo === 'usada') {
+            abrirConfirm({
+                emoji: '✓', titulo: 'Marcar como usada', peligro: false, boton: 'Sí, usada',
+                msg: 'Se le dio a León: ' + det + '. Se cierra con fecha de hoy.',
+                accion: function () { cerrarDirecto(id, 'usada'); }
+            });
+        } else {
+            abrirConfirm({
+                emoji: '🗑', titulo: 'Descartar partida', peligro: true, boton: 'Sí, descartar',
+                msg: 'Se descarta ' + det + '. Se cierra con fecha de hoy.',
+                accion: function () { cerrarDirecto(id, 'descartada'); }
+            });
+        }
+    }
+
+    function abrirConfirmEliminar(id) {
+        var p = buscarPartida(id);
+        if (!p) return;
+        abrirConfirm({
+            emoji: '⚠️', titulo: 'Eliminar partida', peligro: true, boton: 'Sí, eliminar',
+            msg: 'Se elimina definitivamente la partida de ' + fmtMl(p.volumen_ml) +
+                ' (extraída el ' + fmtFecha(p.fecha_extraccion) + '). Esta acción no se puede deshacer.',
+            accion: function () {
+                postAccion('/api/lactancia/' + id + '/eliminar', new URLSearchParams(), function () {
+                    toast('✕ Partida eliminada.', 'info');
+                });
+            }
         });
-        eliminarId = null;
     }
 
     // ── Reabrir desde el historial ───────────────────────────────────────────
@@ -678,7 +707,7 @@ opciones" (⋯) de cada partida.
         // Botones fijos
         $('lac-cf-guardar').addEventListener('click', guardarCierre);
         $('lac-ed-guardar').addEventListener('click', guardarEditor);
-        $('lac-confirm-si').addEventListener('click', confirmarEliminar);
+        $('lac-confirm-si').addEventListener('click', confirmarSi);
         $('lac-btn-freezar').addEventListener('click', freezarSeleccionadas);
 
         // Hoja "Más opciones" → acciones sobre masPartidaId
@@ -702,9 +731,9 @@ opciones" (⋯) de cada partida.
         // Delegación global: acciones repetidas en listas e historial
         document.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-lac-usar]');
-            if (btn) { cerrarDirecto(parseInt(btn.getAttribute('data-lac-usar'), 10), 'usada'); return; }
+            if (btn) { pedirCierre(parseInt(btn.getAttribute('data-lac-usar'), 10), 'usada'); return; }
             btn = e.target.closest('[data-lac-tirar]');
-            if (btn) { cerrarDirecto(parseInt(btn.getAttribute('data-lac-tirar'), 10), 'descartada'); return; }
+            if (btn) { pedirCierre(parseInt(btn.getAttribute('data-lac-tirar'), 10), 'descartada'); return; }
             btn = e.target.closest('[data-lac-mas]');
             if (btn) { abrirMas(parseInt(btn.getAttribute('data-lac-mas'), 10)); return; }
             btn = e.target.closest('[data-lac-reabrir]');

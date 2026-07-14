@@ -67,5 +67,6 @@ Reportar siempre:
 3. Los sub-agentes NO commitean: editan, reportan, y el orquestador commitea.
 
 **Antes de mergear un PR:**
+0. **Permiso del usuario (obligatorio, regla 2026-07-13)**: ningún agente mergea a main por su cuenta. Abrir el PR, avisar al usuario qué hay para verificar en DEV, y esperar su autorización explícita. Lección: en la reestructuración del home se mergearon 7 PRs sin pedir permiso — el usuario quería verificar en DEV primero.
 1. `git fetch origin`. Si `origin/main` avanzó: mergear `origin/main` EN LA RAMA, resolver conflictos ahí, re-verificar que la app sigue sana (mínimo `python -c "import app"` + smoke en dev) y recién entonces mergear el PR.
 2. Tras el merge: `git checkout main && git pull`, borrar la rama, y al desplegar sincronizar el clon PROD (`E:\Fondo`).
