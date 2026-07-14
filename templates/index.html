@@ -1,4 +1,12 @@
-{# Página principal: tabla de saldos + carga rápida + gastos fijos + tabla de movimientos #}
+{# Página Inicio (/): home de la app, sin scroll de página en desktop NI mobile.
+   Grid de 4 tarjetas .home-card, TODAS funcionales — Gastos (saldos mini +
+   form de movimiento), Rutina (qué hace cada uno AHORA + qué viene después,
+   vía window.Rutina.hoyAhora() de rutina.js), Lactancia (listas
+   heladera/freezer-primera con "✓ Usada" + form de extracción compartido vía
+   _form_lactancia.html) y Calendario (mini mes + pendientes, 100%
+   server-render). Cada form existe UNA sola vez en el DOM (.home-sheet):
+   bloque normal en desktop ≥900px, bottom-sheet fijo en mobile (<900px, lo
+   abre el botón ＋ vía home.js). #}
 
 {% extends 'base.html' %}
 
@@ -6,480 +14,189 @@
 
 {% block contenido %}
 
-{# ── BANNER DE PRIMER INICIO ─────────────────────────────────────────────── #}
-{% if cfg and cfg.first_run %}
-<div class="banner-primer-inicio" role="alert">
-  ⚙ <strong>Primera configuración</strong> — La app está corriendo solo en localhost.
-  <a href="{{ url_for('settings') }}">Ir a Settings para configurar el entorno.</a>
-</div>
-{% endif %}
+<div class="home-page">
 
-<div class="layout-desktop">
-
-{# ══════════════════════════════════════════════════════════════════════════ #}
-{# COLUMNA IZQUIERDA — Formulario + Saldos                                   #}
-{# ══════════════════════════════════════════════════════════════════════════ #}
-<div class="col-izquierda">
-
-{# ── FORMULARIO RÁPIDO DE CARGA ──────────────────────────────────────────── #}
-<div class="carga-rapida">
-  <h2 class="carga-rapida-titulo">➕ Nuevo movimiento</h2>
-
-  <form action="{{ url_for('agregar') }}" method="POST" class="form-rapido">
-
-    {# Mes actual — se preserva al volver después del POST #}
-    <input type="hidden" name="mes" value="{{ mes }}">
-
-    {# Fila 1: Descripción — full-width #}
-    <div class="form-fila">
-      <div class="campo-rapido campo-rapido-descripcion">
-        <label for="descripcion">Descripción</label>
-        <input type="text" id="descripcion" name="descripcion"
-               placeholder="Ej: Sueldo, Supermercado..." maxlength="200" required>
-        <select id="descripcion-fijo" name="descripcion" disabled style="display:none"></select>
-      </div>
+  {# ── GASTOS — funcional: saldos mini + form de movimiento ──────────────── #}
+  <section class="home-card home-card--gastos">
+    <div class="home-card-head">
+      <span class="home-card-titulo">💸 Gastos</span>
+      <a class="home-card-link" href="{{ url_for('gastos') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
     </div>
+    <div class="home-card-body">
+      {% include '_tarjeta_saldos_mini.html' %}
 
-    {# Fila 2: Monto + Tipo #}
-    <div class="form-fila">
-      <div class="campo-rapido campo-rapido-monto">
-        <label for="monto-display">Monto</label>
-        <input type="text" id="monto-display"
-               placeholder="0" maxlength="16"
-               inputmode="numeric" autocomplete="off" required>
-        <input type="hidden" id="monto" name="monto">
-      </div>
-      <div class="campo-rapido campo-rapido-tipo">
-        <label for="tipo">Tipo</label>
-        <select id="tipo" name="tipo" required>
-          <option value="gasto" selected>Gasto</option>
-          <option value="ingreso">Ingreso</option>
-          <option value="cambio">Cambio</option>
-        </select>
-      </div>
-    </div>
+      {# Solo mobile: abre el bottom-sheet con el form #}
+      <button type="button" class="btn btn-acento home-btn-nuevo" data-sheet="gastos">＋ Nuevo movimiento</button>
 
-    {# Fila 3: Persona + Moneda (con colores dinámicos via JS) #}
-    <div class="form-fila">
-      <div class="campo-rapido campo-rapido-persona">
-        <label for="persona">Persona</label>
-        <select id="persona" name="persona" required>
-          <option value="elias">Elías</option>
-          <option value="mari">Mari</option>
-        </select>
-      </div>
-      <div class="campo-rapido campo-rapido-moneda">
-        <label for="moneda">Moneda</label>
-        <select id="moneda" name="moneda" required>
-          <option value="ars">AR$</option>
-          <option value="usd">USD</option>
-        </select>
-      </div>
-    </div>
-
-    {# Fila 3b: Flecha indicadora (solo Cambio) #}
-    <div class="form-fila form-fila-cambio" id="fila-flecha-cambio" style="display:none">
-      <div class="cambio-flecha-indicador">↓</div>
-    </div>
-
-    {# Fila 3c: Persona final + Moneda final (solo Cambio) #}
-    <div class="form-fila form-fila-cambio" id="fila-cambio-destino" style="display:none">
-      <div class="campo-rapido campo-rapido-persona">
-        <label for="persona_final">Persona final</label>
-        <select id="persona_final" name="persona_final">
-          <option value="elias">Elías</option>
-          <option value="mari">Mari</option>
-        </select>
-      </div>
-      <div class="campo-rapido campo-rapido-moneda">
-        <label for="moneda_final">Moneda final</label>
-        <select id="moneda_final" name="moneda_final">
-          <option value="ars">AR$</option>
-          <option value="usd">USD</option>
-        </select>
-      </div>
-    </div>
-
-    {# Fila 3d: Monto final (solo si monedas son diferentes) #}
-    <div class="form-fila form-fila-cambio" id="fila-monto-final" style="display:none">
-      <div class="campo-rapido" style="flex:1">
-        <label for="monto_final">Monto final</label>
-        <input type="number" id="monto_final" name="monto_final"
-               placeholder="Monto en moneda destino" step="0.01" min="0">
-      </div>
-    </div>
-
-    {# Fila 4: Categoría + Fecha #}
-    <div class="form-fila">
-      <div class="campo-rapido campo-rapido-categoria">
-        <label for="categoria">Categoría</label>
-        <select id="categoria" name="categoria"></select>
-      </div>
-      <div class="campo-rapido campo-rapido-fecha">
-        <label for="fecha">Fecha</label>
-        <input type="date" id="fecha" name="fecha" min="2000-01-01" required>
-      </div>
-    </div>
-
-    {# Extras: Envío y Cuotas en una sola fila inline — visible solo para gastos #}
-    <div class="form-rapido-extras" id="seccion-envio">
-      <label class="checkbox-envio">
-        <input type="checkbox" id="incluye-envio"> Incluye envío
-      </label>
-      <div id="campo-costo-envio" style="visibility:hidden;" class="campo-extra-inline">
-        <input type="number" id="costo_envio" name="costo_envio"
-               step="0.01" min="0" placeholder="$ envío">
-      </div>
-      <div id="seccion-cuotas" style="display:none;" class="extra-cuotas-grupo">
-        <label class="checkbox-envio">
-          <input type="checkbox" id="incluye-cuotas" name="cuotas_checkbox" value="1"> En cuotas
-        </label>
-        <div id="campo-total-cuotas" style="visibility:hidden;" class="campo-extra-inline">
-          <input type="number" id="total_cuotas" name="total_cuotas"
-                 step="1" min="2" max="999" placeholder="# cuotas">
+      {# Sheet del form: bloque normal en desktop, bottom-sheet en mobile #}
+      <div class="home-sheet" id="home-sheet-gastos">
+        <div class="home-sheet-head">
+          <span class="home-sheet-titulo">➕ Nuevo movimiento</span>
+          <button type="button" class="home-sheet-cerrar" data-sheet-cerrar aria-label="Cerrar">✕</button>
         </div>
+        {% with form_modo = 'inline' %}{% include '_form_movimiento.html' %}{% endwith %}
       </div>
     </div>
+  </section>
 
-    {# Botón Agregar — full-width, último elemento #}
-    <button type="submit" class="btn btn-primario btn-guardar-rapido">
-      Agregar
-    </button>
-
-  </form>
-</div>
-
-{# ── TARJETA DE SALDOS ────────────────────────────────────────────────────── #}
-<div class="tarjeta-saldos">
-  {# Header: título + selector de fecha. Sin fecha = saldos de toda la base
-     (modo actual). Con fecha = saldos a esa fecha (inclusive), vía /api/saldos. #}
-  <div class="saldos-header">
-    <h3 id="saldos-titulo" class="carga-rapida-titulo">💰 Saldos actuales</h3>
-    <div class="saldos-fecha-control">
-      <input type="text" id="saldos-fecha" class="saldos-fecha-input" placeholder="Toda la base" autocomplete="off">
-      <button type="button" id="saldos-reset" class="saldos-reset"
-              title="Volver a toda la base" hidden>↺ Todo</button>
+  {# ── RUTINA — funcional: qué hace cada uno AHORA + qué viene después ────── #}
+  {# Contenedor vacío: lo llena initRutina() de home.js con los datos de
+     window.Rutina.hoyAhora() (rutina.js, cargado abajo con window.RUT_DATOS
+     = _rut_payload de HOY — mismo helper y mismo orden de scripts que
+     /rutina). Se re-renderiza cada 30 s (reloj vivo). #}
+  <section class="home-card home-card--rutina">
+    <div class="home-card-head">
+      <span class="home-card-titulo">⏰ Rutina</span>
+      <a class="home-card-link" href="{{ url_for('rutina') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
     </div>
-  </div>
-  {# Tabla traspuesta: columnas = monedas (AR$, USD); filas = personas (Elías, Mari, Total).
-     <colgroup> define los anchos fijos — indispensable con table-layout:fixed
-     para que la columna de nombres sea angosta y las de valores agarren el resto. #}
-  {% set total_ars = saldos.elias_ars + saldos.mari_ars %}
-  {% set total_usd = saldos.elias_usd + saldos.mari_usd %}
-  <table class="tabla-saldos">
-    <colgroup>
-      <col class="col-saldo-label">
-      <col class="col-saldo-valor">
-      <col class="col-saldo-valor">
-    </colgroup>
-    <thead>
-      <tr>
-        <th></th>
-        <th class="col-saldo-ars">AR$</th>
-        <th class="col-saldo-usd">USD</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <th class="saldo-persona-label saldo-label-elias">Elías</th>
-        <td id="saldo-elias-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_ars < 0 else 'saldo-positivo' }}">
-          {{ saldos.elias_ars | fmt_ars }}
-        </td>
-        <td id="saldo-elias-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_usd < 0 else 'saldo-positivo' }}">
-          {{ saldos.elias_usd | fmt_usd }}
-        </td>
-      </tr>
-      <tr>
-        <th class="saldo-persona-label saldo-label-mari">Mari</th>
-        <td id="saldo-mari-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_ars < 0 else 'saldo-positivo' }}">
-          {{ saldos.mari_ars | fmt_ars }}
-        </td>
-        <td id="saldo-mari-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_usd < 0 else 'saldo-positivo' }}">
-          {{ saldos.mari_usd | fmt_usd }}
-        </td>
-      </tr>
-      <tr>
-        <th class="saldo-persona-label saldo-label-total">Total</th>
-        <td id="saldo-total-ars" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_ars < 0 else 'saldo-positivo' }}">
-          {{ total_ars | fmt_ars }}
-        </td>
-        <td id="saldo-total-usd" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_usd < 0 else 'saldo-positivo' }}">
-          {{ total_usd | fmt_usd }}
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-{# ── GAUGES DE DISTRIBUCIÓN ───────────────────────────────────────────────── #}
-{# Los arcos se renderizan SIEMPRE (con id) para que actualizarGauges() los
-   pueda refrescar por JS al cambiar la fecha. Cuando un valor es 0 se les pone
-   .gauge-arc-oculto (display:none) para evitar el puntito que deja
-   stroke-linecap:round con dasharray 0. #}
-<div class="gauges-saldos">
-
-  {# — Gauge ARS: Elías vs Mari — #}
-  {% set ga = gauges.ars %}
-  <div class="gauge-wrap gauge-wrap-ars">
-    <svg viewBox="0 0 36 36" class="gauge-svg">
-      <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
-      <circle id="gauge-arc-ars-elias"
-        class="gauge-arc gauge-arc-elias{% if ga.elias <= 0 %} gauge-arc-oculto{% endif %}"
-        cx="18" cy="18" r="15.9"
-        stroke-dasharray="{{ ga.elias }} 100"
-        transform="rotate(-90 18 18)"/>
-      <circle id="gauge-arc-ars-mari"
-        class="gauge-arc gauge-arc-mari{% if ga.mari <= 0 %} gauge-arc-oculto{% endif %}"
-        cx="18" cy="18" r="15.9"
-        stroke-dasharray="{{ ga.mari }} 100"
-        stroke-dashoffset="-{{ ga.elias }}"
-        transform="rotate(-90 18 18)"/>
-      <text x="18" y="16.5" class="gauge-text-title">AR$</text>
-      <text id="gauge-sub-ars" x="18" y="21.5" class="gauge-text-sub">{{ ga.elias|int }}% / {{ ga.mari|int }}%</text>
-    </svg>
-    <div class="gauge-info">
-      <div class="gauge-legend">
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-elias"></span>Elías&nbsp;<span id="gauge-leg-ars-elias">{{ ga.elias }}</span>%</span>
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-mari"></span>Mari&nbsp;<span id="gauge-leg-ars-mari">{{ ga.mari }}</span>%</span>
-      </div>
+    <div class="home-card-body">
+      <div id="home-rut-lista"></div>
     </div>
-  </div>
+  </section>
 
-  {# — Gauge USD: Elías vs Mari — #}
-  {% set gu = gauges.usd %}
-  <div class="gauge-wrap gauge-wrap-usd">
-    <svg viewBox="0 0 36 36" class="gauge-svg">
-      <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
-      <circle id="gauge-arc-usd-elias"
-        class="gauge-arc gauge-arc-elias{% if gu.elias <= 0 %} gauge-arc-oculto{% endif %}"
-        cx="18" cy="18" r="15.9"
-        stroke-dasharray="{{ gu.elias }} 100"
-        transform="rotate(-90 18 18)"/>
-      <circle id="gauge-arc-usd-mari"
-        class="gauge-arc gauge-arc-mari{% if gu.mari <= 0 %} gauge-arc-oculto{% endif %}"
-        cx="18" cy="18" r="15.9"
-        stroke-dasharray="{{ gu.mari }} 100"
-        stroke-dashoffset="-{{ gu.elias }}"
-        transform="rotate(-90 18 18)"/>
-      <text x="18" y="16.5" class="gauge-text-title">USD</text>
-      <text id="gauge-sub-usd" x="18" y="21.5" class="gauge-text-sub">{{ gu.elias|int }}% / {{ gu.mari|int }}%</text>
-    </svg>
-    <div class="gauge-info">
-      <div class="gauge-legend">
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-elias"></span>Elías&nbsp;<span id="gauge-leg-usd-elias">{{ gu.elias }}</span>%</span>
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-mari"></span>Mari&nbsp;<span id="gauge-leg-usd-mari">{{ gu.mari }}</span>%</span>
-      </div>
+  {# ── LACTANCIA — funcional: consumir partidas + cargar extracción ───────── #}
+  {# Listas server-rendered (primer paint) desde lac_home; tras cada mutación
+     AJAX home.js las re-renderiza espejando ESTE markup (window.LAC_HOME).
+     Convenciones del módulo: "Extraída HH:MM · fecha" (hora primero),
+     vencimiento relativo (heladera en horas, freezer en días — los valores
+     vienen calculados del server, acá solo se formatean) y estados→paleta
+     (vencida=peligro, vence_pronto=alerta, disponible/en_heladera=exito). #}
+  <section class="home-card home-card--lactancia">
+    <div class="home-card-head">
+      <span class="home-card-titulo">🍼 Lactancia</span>
+      <a class="home-card-link" href="{{ url_for('lactancia') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
     </div>
-  </div>
+    <div class="home-card-body">
 
-  {# — Gauge TOTAL: ARS vs USD — #}
-  {% set gt = gauges.total %}
-  <div class="gauge-wrap">
-    <svg viewBox="0 0 36 36" class="gauge-svg">
-      <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
-      <circle id="gauge-arc-total-ars"
-        class="gauge-arc gauge-arc-ars{% if gt.ars <= 0 %} gauge-arc-oculto{% endif %}"
-        cx="18" cy="18" r="15.9"
-        stroke-dasharray="{{ gt.ars }} 100"
-        transform="rotate(-90 18 18)"/>
-      <circle id="gauge-arc-total-usd"
-        class="gauge-arc gauge-arc-usd{% if gt.usd <= 0 %} gauge-arc-oculto{% endif %}"
-        cx="18" cy="18" r="15.9"
-        stroke-dasharray="{{ gt.usd }} 100"
-        stroke-dashoffset="-{{ gt.ars }}"
-        transform="rotate(-90 18 18)"/>
-      <text x="18" y="16.5" class="gauge-text-title">Total</text>
-      <text id="gauge-sub-total" x="18" y="21.5" class="gauge-text-sub">{{ gt.ars|int }}% / {{ gt.usd|int }}%</text>
-    </svg>
-    <div class="gauge-info">
-      <div class="gauge-legend">
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-ars"></span>AR$&nbsp;<span id="gauge-leg-total-ars">{{ gt.ars }}</span>%</span>
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-usd"></span>USD&nbsp;<span id="gauge-leg-total-usd">{{ gt.usd }}</span>%</span>
-      </div>
-      <div class="gauge-tasa" id="gauge-tasa">@ ${{ gauges.cotizacion }}/USD</div>
-    </div>
-  </div>
+      {% set lac_meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+                          'jul', 'ago', 'sep', 'oct', 'nov', 'dic'] %}
+      <div id="home-lac-listas">
 
-</div>
-
-</div>{# /col-izquierda #}
-
-{# ══════════════════════════════════════════════════════════════════════════ #}
-{# COLUMNA DERECHA — Movimientos                                              #}
-{# ══════════════════════════════════════════════════════════════════════════ #}
-<div class="col-derecha">
-<div class="movimientos-card">
-
-  {# ── HEADER UNIFICADO: título + navegador de mes + contador ────────────── #}
-  <div class="movimientos-card-header">
-    <span class="movimientos-card-titulo">📋 Movimientos</span>
-    <div class="mes-nav-inline">
-      <a class="btn-mes-nav" href="/?mes={{ mes_prev }}" title="Mes anterior">&#8592;</a>
-      <span class="mes-titulo">{{ mes_nombre }}</span>
-      <a class="btn-mes-nav" href="/?mes={{ mes_next }}" title="Mes siguiente">&#8594;</a>
-    </div>
-    <span class="movimientos-card-contador">{{ total_movimientos }} movimiento{% if total_movimientos != 1 %}s{% endif %}</span>
-  </div>
-
-  {# ── GASTOS FIJOS — tags compactos: impagos primero, pagados grisados ──── #}
-  {% if checklist %}
-  <div class="seccion-gastos-fijos">
-    <ul class="fijos-tags">
-      {# Impagos: clickeables (data-descripcion habilita el handler JS) #}
-      {% for item in checklist | rejectattr('encontrado') %}
-      <li class="fijo-tag" data-descripcion="{{ item.descripcion }}" title="Cargar pago">
-        <span class="fijo-tag-desc">{{ item.descripcion }}</span>
-        {% if item.es_cuota %}
-        <span class="badge-cuota">Cuota {{ item.cuota_actual + 1 }}/{{ item.total_cuotas }}</span>
-        {% endif %}
-      </li>
-      {% endfor %}
-      {# Pagados: grisados al fondo, con monto + persona #}
-      {% for item in checklist | selectattr('encontrado') %}
-      <li class="fijo-tag fijo-tag-pagado">
-        <span class="fijo-tag-desc">✓ {{ item.descripcion }}</span>
-        {% if item.es_cuota %}
-        <span class="badge-cuota">Cuota {{ item.cuota_actual }}/{{ item.total_cuotas }}</span>
-        {% endif %}
-        {% if item.moneda %}
-        <span class="fijo-tag-monto">{{ item.monto | fmt_ars if item.moneda == 'ars' else item.monto | fmt_usd }}</span>
-        <span class="badge-persona badge-{{ item.persona }}">{{ 'Elías' if item.persona == 'elias' else 'Mari' }}</span>
-        {% endif %}
-      </li>
-      {% endfor %}
-      {# Acceso a gestión de fijos (reemplaza el header con botón Administrar) #}
-      <li class="fijo-tag fijo-tag-admin" title="Administrar gastos fijos">
-        <a href="{{ url_for('settings') }}#gastos-fijos">⚙ Administrar</a>
-      </li>
-    </ul>
-  </div>
-  {% else %}
-  <div class="gastos-fijos-vacio">
-    <a href="{{ url_for('settings') }}#gastos-fijos">📌 Definir gastos fijos en Settings</a>
-  </div>
-  {% endif %}
-
-  {# ── BARRA DE FILTROS — una sola línea ─────────────────────────────────── #}
-  <div class="filtros-tabla">
-    <div class="filtros-fila">
-
-      <div class="filtros-grupo">
-        <span class="filtros-label">Persona:</span>
-        <button class="btn-filtro filtro-activo" data-filtro-persona="todos">Todos</button>
-        <button class="btn-filtro" data-filtro-persona="elias">Elías</button>
-        <button class="btn-filtro" data-filtro-persona="mari">Mari</button>
-      </div>
-
-      <div class="filtros-grupo">
-        <span class="filtros-label">Moneda:</span>
-        <button class="btn-filtro filtro-activo" data-filtro-moneda="todos">Todos</button>
-        <button class="btn-filtro" data-filtro-moneda="ars">AR$</button>
-        <button class="btn-filtro" data-filtro-moneda="usd">USD</button>
-      </div>
-
-      <div class="filtros-grupo">
-        <span class="filtros-label">Ver:</span>
-        <select id="select-vista" class="select-filtro">
-          <option value="mes"        {% if vista == 'mes' %}selected{% endif %}>Mes actual</option>
-          <option value="ultimos100" {% if vista == 'ultimos100' %}selected{% endif %}>Últimos 100</option>
-          <option value="todos"      {% if vista == 'todos' %}selected{% endif %}>Todos</option>
-        </select>
-      </div>
-
-      <div class="filtros-grupo">
-        <button id="btn-filtro-sin-categoria" class="btn-filtro" type="button">Sólo sin categoría</button>
-      </div>
-
-      <div class="filtros-grupo">
-        <input id="input-buscar" type="search" class="select-filtro" placeholder="Buscar descripción…" autocomplete="off">
-      </div>
-
-      <div class="filtros-grupo filtros-grupo-orden">
-        <span class="filtros-label">Orden:</span>
-        <button id="btn-orden-carga" class="btn-filtro filtro-activo">Carga ↓</button>
-        <button id="btn-orden-fecha" class="btn-filtro">Fecha ↓</button>
-      </div>
-
-    </div>
-  </div>
-
-  {# ── TABLA DE MOVIMIENTOS ───────────────────────────────────────────────── #}
-  {% if movimientos %}
-  <div class="tabla-scroll-wrapper">
-  <table class="tabla-gastos" id="tabla-movimientos">
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Descripción</th>
-        <th class="col-info"></th>
-        <th>Categoría</th>
-        <th class="col-monto">Monto</th>
-        <th class="col-acciones"></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for mov in movimientos %}
-      <tr data-persona="{{ mov['persona'] }}"
-          data-moneda="{{ mov['moneda'] }}"
-          data-id="{{ mov['id'] }}"
-          data-fecha="{{ mov['fecha'] }}"
-          data-descripcion="{{ mov['descripcion'] | e }}"
-          data-tipo="{{ mov['tipo'] }}"
-          data-monto="{{ mov['monto'] }}"
-          data-categoria="{{ mov['categoria'] or '' }}"
-          data-costo-envio="{{ mov['costo_envio'] or '' }}">
-        <td data-label="Fecha">{{ mov['fecha'] | fmt_fecha }}</td>
-        <td class="col-descripcion" data-label="Descripción">{{ mov['descripcion'] }}</td>
-        <td class="col-info" data-label="Info">
-          <span class="badge-persona badge-{{ mov['persona'] }}">{{ 'Elías' if mov['persona'] == 'elias' else 'Mari' }}</span>
-          <span class="badge-moneda badge-moneda-{{ mov['moneda'] }}">{{ 'AR$' if mov['moneda'] == 'ars' else 'USD' }}</span>
-          <span class="badge-tipo badge-{{ mov['tipo'] }}">{{ 'Ingreso' if mov['tipo'] == 'ingreso' else 'Gasto' }}</span>
-        </td>
-        <td data-label="Categoría">{{ mov['categoria'] or '—' }}</td>
-        <td class="col-monto" data-label="Monto">
-          {% if mov['factor_aplicado'] is not none %}
-            {% set monto_efectivo = mov['monto'] * mov['factor_aplicado'] %}
-            {{ monto_efectivo | fmt_ars if mov['moneda'] == 'ars' else monto_efectivo | fmt_usd }}
-            <span class="badge-envio">
-              Sueldo: {{ mov['monto'] | fmt_ars if mov['moneda'] == 'ars' else mov['monto'] | fmt_usd }} × {{ mov['factor_aplicado'] }}
-            </span>
-          {% else %}
-            {{ mov['monto'] | fmt_ars if mov['moneda'] == 'ars' else mov['monto'] | fmt_usd }}
-            {% if mov['costo_envio'] %}
-              <span class="badge-envio">
-                📦 {{ mov['costo_envio'] | fmt_ars if mov['moneda'] == 'ars' else mov['costo_envio'] | fmt_usd }}
+        <div class="home-lac-sec">🥛 Heladera</div>
+        {% for p in lac_home.heladera %}
+        <div class="home-lac-item is-{{ p.estado }}">
+          <div class="home-lac-info">
+            <div class="home-lac-top">
+              <span class="home-lac-vol">{{ p.volumen_ml }} ml</span>
+              <span class="home-lac-venc t-{{ p.estado }}">
+                {%- if p.horas_restantes < 0 -%}
+                  {%- set h = -p.horas_restantes -%}
+                  {%- if h < 24 %}Venció hace {{ h }} h{% elif h < 48 %}Venció hace {{ h // 24 }} día{% else %}Venció hace {{ h // 24 }} días{% endif -%}
+                {%- elif p.horas_restantes == 0 %}Vence dentro de 1 h
+                {%- elif p.horas_restantes == 1 %}Vence en 1 h
+                {%- else %}Vence en {{ p.horas_restantes }} h{% endif -%}
               </span>
+            </div>
+            <div class="home-lac-meta">Extraída {% if p.hora_extraccion %}{{ p.hora_extraccion }} · {% endif %}{{ p.fecha_extraccion[8:10] | int }} {{ lac_meses[p.fecha_extraccion[5:7] | int - 1] }}</div>
+          </div>
+          <button type="button" class="home-lac-usar" data-lac-usar="{{ p.id }}" title="Se le dio a León (fecha de hoy)">✓ Usada</button>
+        </div>
+        {% else %}
+        <p class="home-lac-vacio">Nada en la heladera.</p>
+        {% endfor %}
+
+        <div class="home-lac-sec">🧊 Freezer · próxima a usar</div>
+        {% if lac_home.freezer_primera %}
+        {% set p = lac_home.freezer_primera %}
+        <div class="home-lac-item is-{{ p.estado }}">
+          <div class="home-lac-info">
+            <div class="home-lac-top">
+              <span class="home-lac-vol">{{ p.volumen_ml }} ml</span>
+              <span class="home-lac-venc t-{{ p.estado }}">
+                {%- if p.dias_restantes == 0 %}Vence hoy
+                {%- elif p.dias_restantes == 1 %}Vence mañana
+                {%- elif p.dias_restantes > 1 %}Vence en {{ p.dias_restantes }} días
+                {%- elif p.dias_restantes == -1 %}Venció ayer
+                {%- else %}Venció hace {{ -p.dias_restantes }} días{% endif -%}
+              </span>
+            </div>
+            <div class="home-lac-meta">Extraída {% if p.hora_extraccion %}{{ p.hora_extraccion }} · {% endif %}{{ p.fecha_extraccion[8:10] | int }} {{ lac_meses[p.fecha_extraccion[5:7] | int - 1] }}</div>
+          </div>
+          <button type="button" class="home-lac-usar" data-lac-usar="{{ p.id }}" title="Se le dio a León (fecha de hoy)">✓ Usada</button>
+        </div>
+        {% else %}
+        <p class="home-lac-vacio">Sin partidas en el freezer.</p>
+        {% endif %}
+
+      </div>{# /home-lac-listas #}
+
+      {# Solo mobile: abre el bottom-sheet con el form de extracción #}
+      <button type="button" class="btn btn-acento home-btn-nuevo" data-sheet="lactancia">＋ Cargar</button>
+
+      {# Sheet del form: bloque normal en desktop, bottom-sheet en mobile.
+         El título interno del form (.lac-form-titulo) se oculta por CSS:
+         acá lo da .home-sheet-head. #}
+      <div class="home-sheet" id="home-sheet-lactancia">
+        <div class="home-sheet-head">
+          <span class="home-sheet-titulo">🥛 Nueva extracción</span>
+          <button type="button" class="home-sheet-cerrar" data-sheet-cerrar aria-label="Cerrar">✕</button>
+        </div>
+        {% include '_form_lactancia.html' %}
+      </div>
+    </div>
+  </section>
+
+  {# ── CALENDARIO — mini mes + pendientes (100% server-render, SIN JS) ────── #}
+  {# Todo viene armado de _home_calendario_payload() (app.py): semanas del mes
+     (monthdayscalendar, 0 = celda vacía), dias = {dia: [estados]} ya con la
+     prioridad/tope de dotsDelDia() del módulo, y pendientes ordenadas como la
+     agenda de /calendario. Sin navegación de mes ni celdas clickeables (v1):
+     "Ver módulo →" cubre profundizar. home.js NO toca esta tarjeta. #}
+  <section class="home-card home-card--calendario">
+    <div class="home-card-head">
+      <span class="home-card-titulo">📅 Calendario</span>
+      <a class="home-card-link" href="{{ url_for('calendario') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
+    </div>
+    <div class="home-card-body">
+
+      <div class="home-cal-mes">{{ cal_home.mes_nombre }}</div>
+      <div class="home-cal-grid">
+        {% for d in ['L', 'M', 'X', 'J', 'V', 'S', 'D'] %}
+        <div class="home-cal-dow">{{ d }}</div>
+        {% endfor %}
+        {% for semana in cal_home.semanas %}
+          {% for dia in semana %}
+            {% if dia == 0 %}
+            <div class="home-cal-day is-vacio"></div>
+            {% else %}
+            <div class="home-cal-day{% if dia == cal_home.hoy %} is-hoy{% endif %}">
+              <span class="home-cal-num">{{ dia }}</span>
+              {# El contenedor de puntos va SIEMPRE (aunque vacío): min-height
+                 en CSS mantiene las filas parejas #}
+              <span class="home-cal-dots">
+                {%- for est in cal_home.dias.get(dia, []) -%}
+                <span class="home-cal-dot home-cal-d-{{ est }}"></span>
+                {%- endfor -%}
+              </span>
+            </div>
             {% endif %}
-            {% if mov['cuota_numero'] %}
-              <span class="badge-cuota">Cuota {{ mov['cuota_numero'] }}/{{ mov['cuota_total'] }}</span>
-            {% endif %}
-          {% endif %}
-        </td>
-        <td class="col-acciones">
-          <button type="button" class="btn btn-editar btn-editar-fila" title="Editar">✎</button>
-          <form action="{{ url_for('eliminar', id=mov['id']) }}?mes={{ mes }}"
-                method="POST"
-                class="form-inline">
-            <button type="button" class="btn btn-borrar" title="Eliminar"
-                    onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
-          </form>
-        </td>
-      </tr>
+          {% endfor %}
+        {% endfor %}
+      </div>
+
+      <div class="home-cal-sec">Pendientes</div>
+      {% for p in cal_home.pendientes %}
+      <div class="home-cal-item is-{{ p.estado }}">
+        <span class="home-cal-nombre">{{ p.nombre }}</span>
+        <span class="home-cal-venc t-{{ p.estado }}">
+          {%- if p.dias_restantes == 0 %}Vence hoy
+          {%- elif p.dias_restantes == 1 %}Vence mañana
+          {%- elif p.dias_restantes > 1 %}Vence en {{ p.dias_restantes }} días
+          {%- elif p.dias_restantes == -1 %}Venció ayer
+          {%- else %}Venció hace {{ -p.dias_restantes }} días{% endif -%}
+        </span>
+      </div>
+      {% else %}
+      <p class="home-cal-vacio">Nada pendiente.</p>
       {% endfor %}
-    </tbody>
-  </table>
-  </div>{# /tabla-scroll-wrapper #}
 
-  {% else %}
-  <div class="sin-datos">
-    <p>📭 No hay movimientos en {{ mes_nombre }}.</p>
-  </div>
-  {% endif %}
+    </div>
+  </section>
 
-</div>{# /movimientos-card #}
-</div>{# /col-derecha #}
+</div>{# /home-page #}
 
-</div>{# /layout-desktop #}
+{# Overlay del bottom-sheet (solo mobile; lo maneja home.js) #}
+<div class="home-overlay" id="home-overlay"></div>
 
 {# Contenedor de notificaciones toast — los agrega JS dinámicamente #}
 <div class="toast-container" id="toast-container"></div>
@@ -489,5 +206,14 @@
 {% block scripts %}
 <script>
   var GASTOS_FIJOS = {{ gastos_fijos_json | safe }};
+  window.LAC_HOME = {{ lac_home | tojson }};
+  window.RUT_DATOS = {{ rut_home | tojson }};
 </script>
+{# Rutina: MISMO orden que rutina.html (datos → actividades → rutina.js).
+   rutina.js popula su estado al evaluarse (necesita RUT_DATOS ya inyectado)
+   y expone window.Rutina; su init() corta solo (acá no hay #rut-filas).
+   home.js va al final: initRutina() usa window.Rutina. #}
+<script src="{{ url_for('static', filename='rutina-actividades.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='rutina.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='home.js') }}?v={{ static_version }}"></script>
 {% endblock %}

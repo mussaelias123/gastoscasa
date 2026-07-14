@@ -423,28 +423,13 @@ opciones" (⋯) de cada partida.
             'Todavía no se cerró ninguna partida.');
     }
 
-    // ── Badge del ítem de nav (se actualiza sin recargar) ────────────────────
-    function actualizarBadgeNav(n) {
-        var link = document.querySelector('.site-nav a[href*="/lactancia"]');
-        if (!link) return;
-        var badge = link.querySelector('.nav-badge');
-        if (!n) {
-            if (badge) badge.remove();
-            return;
-        }
-        if (!badge) {
-            badge = document.createElement('span');
-            badge.className = 'nav-badge';
-            link.appendChild(badge);
-        }
-        badge.textContent = n;
-    }
-
     function renderTodo() {
         renderAviso();
         renderTablero();
         renderListas();
-        actualizarBadgeNav(DATOS.badge);
+        // Estándar de notificaciones: refrescar la campana del header tras
+        // mutar datos (DATOS.badge sigue en el payload por compat, ya no se usa).
+        if (window.Notif) window.Notif.refrescar();
         // Hint del form de alta con el parámetro vigente
         var hint = $('lac-ex-hint');
         if (hint && DATOS.params.heladera_horas) {

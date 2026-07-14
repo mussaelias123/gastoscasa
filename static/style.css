@@ -203,12 +203,19 @@ body {
 
 
 /* ============================================================================
-   TOPBAR FIJA (header + nav siempre visibles, como celdas fijadas en Excel)
+   TOPBAR FIJA (solo el header; siempre visible al scrollear, como celda fijada)
+   Jerarquía z-index de la app: contenido < rut-topbar 400 < backdrop 800 <
+   topbar 805 < drawers (sidebar/notif) 810 < modales 1000 < dev-banner/toasts 9999.
+   El header va ARRIBA del backdrop a propósito: con un drawer abierto, sus
+   botones (☰, tema, 🔔) tienen que seguir siendo clickeables sin que un primer
+   click quede "perdido" cerrando el drawer. La sidebar (810) sigue tapando el
+   header en su franja izquierda porque está por encima; initDrawers() en
+   app.js hace el resto (toggle/exclusión mutua) vía JS, no vía z-index.
    ============================================================================ */
 .site-topbar {
   position: sticky;
   top: 0;
-  z-index: 500;            /* Sobre el contenido; bajo el modal (1000) y el dev-banner (9999) */
+  z-index: 805;            /* Sobre el backdrop (800): header clickeable con un drawer abierto. Bajo drawers (810), modal (1000) y dev-banner (9999) */
   box-shadow: var(--sombra-card);
 }
 /* En modo DEV, el banner fijo ocupa los 24px superiores: la topbar se pega debajo. */
@@ -240,31 +247,12 @@ body.has-dev-banner .site-topbar {
   font-size: 0.72rem;
 }
 
-/* ── Usuario logueado (header) ─────────────────────────────────────────── */
-.header-user {
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-}
-
+/* ── Usuario logueado (header) — avatar + Salir viven en .header-acciones ── */
 .header-user-photo {
   width: 28px;
   height: 28px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.4);
-}
-
-.header-user-name {
-  opacity: 0.9;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .header-logout-btn {
@@ -283,24 +271,22 @@ body.has-dev-banner .site-topbar {
   background: rgba(255, 255, 255, 0.1);
 }
 
-@media (max-width: 600px) {
-  .header-user-name { display: none; }
-  .header-user { gap: 0.35rem; }
-}
-
-/* ── Toggle de tema Light/Dark ─────────────────────────────────────────── */
-.header-theme-btn {
-  position: absolute;
-  left: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
+/* ── Botón-icono circular del header (☰, tema, 🔔) ──────────────────────────
+   Botón-icono reutilizable: mismo look que el toggle de tema previo, SIN
+   position absolute (ahora viven en flex — ☰ suelto a la izq, tema/campana
+   en `.header-acciones`).
+   `position: relative` = ancla del `.notif-badge`. El layout está al final del
+   archivo (sección HEADER ACCIONES). */
+.header-icon-btn {
+  position: relative;
   width: 32px;
   height: 32px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: var(--color-superficie);
+  color: var(--color-texto-invertido);   /* glifo blanco sobre el deco oscuro del header */
   border: 1px solid var(--color-borde);
   border-radius: 50%;
   cursor: pointer;
@@ -310,12 +296,12 @@ body.has-dev-banner .site-topbar {
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.header-theme-btn:hover {
+.header-icon-btn:hover {
   background: var(--color-deco-3);
   border-color: var(--color-superficie);
 }
 
-.header-theme-btn:focus {
+.header-icon-btn:focus {
   outline: none;
   box-shadow: var(--sombra-focus);
 }
@@ -326,74 +312,9 @@ body.has-dev-banner .site-topbar {
 }
 
 
-/* ============================================================================
-   NAVEGACIÓN (barra de menú)
-   ============================================================================ */
-.site-nav {
-  background-color: var(--color-deco-2);  /* Gris oscuro decorativo */
-  padding: 0 1rem;
-}
-
-.site-nav ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  gap: 0.5rem;
-  max-width: 1280px;
-  margin: 0 auto;
-}
-
-.site-nav li a {
-  display: block;
-  color: rgba(255, 255, 255, 0.85);
-  padding: 0.5rem 1rem;
-  border-radius: var(--radio-borde) var(--radio-borde) 0 0;
-  /* Radio solo arriba: para efecto de "pestaña" */
-  transition: background-color 0.2s, color 0.2s;
-  /* transition: animación suave al cambiar propiedades */
-}
-
-.site-nav li a:hover {
-  background-color: rgba(255, 255, 255, 0.15);
-  color: white;
-  text-decoration: none;
-}
-
-/* Clase agregada por app.js para resaltar el enlace de la página actual */
-.site-nav li a.nav-activo {
-  background-color: rgba(255, 255, 255, 0.25);
-  color: white;
-  font-weight: 600;
-  border-bottom: 3px solid white;
-}
-
-/* Contador rojo en un ítem de nav (hoy lo usa Lactancia: vencidas + por
-   vencer). Lo renderiza base.html server-side y lo actualiza lactancia.js. */
-.site-nav li a .nav-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  margin-left: 0.35rem;
-  border-radius: 999px;
-  background: var(--color-peligro);
-  color: var(--color-texto-invertido);
-  font-size: 0.68rem;
-  font-weight: 700;
-  line-height: 1;
-  vertical-align: middle;
-}
-
-/* Mobile: con 5 ítems la nav ya no entra en 375px → scroll horizontal
-   (patrón tabs; el ítem activo lo resalta app.js igual que siempre). */
-@media (max-width: 767px) {
-  .site-nav { overflow-x: auto; }
-  .site-nav ul { width: max-content; }
-  .site-nav li a { white-space: nowrap; }
-}
+/* La navegación por pestañas fue reemplazada por la sidebar desplegable + la
+   campana de notificaciones. Estilos nuevos al final del archivo:
+   HEADER ACCIONES / SIDEBAR / DRAWERS / PANEL NOTIFICACIONES. */
 
 
 /* ============================================================================
@@ -3538,11 +3459,11 @@ a.btn-filtro {
 .settings-aside {
   flex: 0 0 300px;
   position: sticky;
-  top: 6rem;            /* queda por debajo de la topbar fija (~header+nav) */
+  top: 4.5rem;          /* la topbar ahora es solo header (sin nav) → más baja */
 }
 
 body.has-dev-banner .settings-aside {
-  top: calc(6rem + 24px);   /* el banner DEV ocupa 24px arriba */
+  top: calc(4.5rem + 24px);   /* el banner DEV ocupa 24px arriba */
 }
 
 @media (max-width: 900px) {
@@ -5485,7 +5406,7 @@ body.has-dev-banner .settings-aside {
 .rut-topbar {
   position: sticky;
   top: 0;                    /* fallback; rutina.js lo ajusta */
-  z-index: 400;              /* bajo el .site-topbar (500) */
+  z-index: 400;              /* bajo el .site-topbar (805) */
   box-shadow: var(--sombra-card);
   border-radius: var(--radio-borde);
   overflow: hidden;
@@ -6682,4 +6603,838 @@ span.rut-ahora-emoji { cursor: default; }
     margin-bottom: 0;
     padding: 0.15rem 0 0.5rem;
   }
+}
+
+
+/* ============================================================================
+   HEADER ACCIONES — botón de menú (☰) + cluster derecho (tema · Salir ·
+   avatar · 🔔). Reemplaza los dos `position:absolute` viejos (toggle de tema a
+   la izq, usuario a la der). La marca (.header-content) sigue centrada por
+   text-align; ☰ y el cluster se anclan a los costados con absolute para no
+   descentrarla.
+   ============================================================================ */
+#menu-toggle {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.header-acciones {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Badge de la campana: pill roja arriba-derecha del botón (misma receta que el
+   viejo contador de Lactancia en la nav). El botón es position:relative — ver
+   `.header-icon-btn`. Lo renderiza base.html server-side y lo mantiene Notif. */
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-peligro);
+  color: var(--color-texto-invertido);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* En ~375px el cluster derecho choca con el slogan: se oculta (el h1
+   "💰 Fondo" solo entra cómodo). Gap más chico para dar aire al título. */
+@media (max-width: 480px) {
+  .site-header .subtitulo { display: none; }
+  .header-acciones { gap: 0.35rem; }
+}
+
+
+/* ============================================================================
+   SIDEBAR — navegación desplegable (overlay izquierdo, mobile Y desktop)
+   Cerrada = fuera de pantalla (translateX -100%); `.is-abierto` la trae.
+   Fondo deco-1 (chrome estructural). La controla initDrawers() en app.js.
+   ============================================================================ */
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 260px;
+  max-width: 85vw;
+  z-index: 810;
+  background: var(--color-deco-1);
+  box-shadow: var(--sombra-modal);
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar.is-abierto { transform: translateX(0); }
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-texto-invertido);
+  border-bottom: 1px solid var(--color-deco-3);
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+.sidebar-nav li a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;               /* área táctil cómoda */
+  padding: 0.7rem 1.15rem;
+  color: var(--color-texto-invertido);
+  font-size: 0.95rem;
+  border-left: 3px solid transparent;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-nav li a:hover {
+  background: var(--color-deco-2);
+  text-decoration: none;
+}
+
+/* Ítem de la página actual (lo marca app.js → resaltarNavActual): tinte de
+   acento sobre el fondo del sidebar + borde izquierdo. Fallback deco-2 para
+   browsers sin color-mix. Solo var() adentro del mix (ver sección Paleta). */
+.sidebar-nav li a.nav-activo {
+  background: var(--color-deco-2);
+  background: color-mix(in srgb, var(--color-acento) 30%, var(--color-deco-1));
+  border-left-color: var(--color-acento);
+  font-weight: 600;
+}
+
+
+/* ============================================================================
+   DRAWERS — piezas compartidas por la sidebar y el panel de notificaciones
+   Backdrop único semitransparente detrás de cualquiera de los dos; abrir uno
+   cierra el otro (exclusión mutua, la maneja initDrawers en app.js).
+   ============================================================================ */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: var(--overlay-modal);
+}
+.drawer-backdrop[hidden] { display: none; }
+
+/* Botón ✕ de la cabecera de cada drawer. Hereda el color del head (blanco en
+   la sidebar oscura, texto normal en el panel claro) vía `color: inherit`. */
+.drawer-cerrar {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radio-borde);
+  transition: opacity 0.15s ease;
+}
+.drawer-cerrar:hover { opacity: 0.6; }
+
+/* En modo DEV el banner fijo ocupa 24px arriba: los drawers arrancan debajo. */
+body.has-dev-banner .sidebar,
+body.has-dev-banner .notif-panel { top: 24px; }
+
+
+/* ============================================================================
+   PANEL DE NOTIFICACIONES — drawer derecho (mismo patrón que la sidebar)
+   Fondo superficie (contenido informativo, no chrome). Lo llena
+   Notif.refrescar() (app.js) con los ítems de /api/notificaciones. Severidad
+   → borde izquierdo 3px + tinte de fondo por color-mix (ver sección Paleta).
+   ============================================================================ */
+.notif-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 320px;
+  max-width: 85vw;
+  z-index: 810;
+  background: var(--color-superficie);
+  box-shadow: var(--sombra-modal);
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-panel.is-abierto { transform: translateX(0); }
+
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-texto);
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.notif-lista {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Ítem: <a> que arma Notif.refrescar() con createElement (nunca innerHTML). */
+.notif-item {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-borde);
+  border-left: 3px solid var(--color-deco-3);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+}
+
+.notif-item:hover { text-decoration: none; }
+
+.notif-item-icono { font-size: 1.15rem; line-height: 1.3; flex-shrink: 0; }
+.notif-item-cuerpo { flex: 1; min-width: 0; }
+
+.notif-item-modulo {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-texto-muted);
+}
+
+.notif-item-titulo {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-texto);
+}
+
+.notif-item-detalle {
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+  line-height: 1.35;
+}
+
+/* Severidad → borde izquierdo + tinte de fondo. Línea previa `background:
+   var(--color-superficie)` = fallback para browsers sin color-mix. */
+.notif-item.is-peligro {
+  border-left-color: var(--color-peligro);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-peligro) 10%, var(--color-superficie));
+}
+.notif-item.is-alerta {
+  border-left-color: var(--color-alerta);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-alerta) 10%, var(--color-superficie));
+}
+.notif-item.is-info {
+  border-left-color: var(--color-acento);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-acento) 10%, var(--color-superficie));
+}
+
+.notif-vacio {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--color-texto-muted);
+  font-size: 0.9rem;
+}
+
+
+/* ============================================================================
+   HOME (Inicio) — página / (prefijo home-)
+   Grid de tarjetas de módulos. A diferencia de los módulos (que solo fijan el
+   alto en desktop ≥900px), el Inicio NUNCA scrollea la página: ni en desktop
+   ni en mobile. Una tarjeta individual puede scrollear adentro
+   (.home-card-body). El form de movimiento existe UNA sola vez en el DOM
+   (.home-sheet): bloque normal en desktop, bottom-sheet fijo en mobile que
+   abre home.js con .is-abierta + overlay.
+   z-index: home-overlay 900 / home-sheet 910 — sobre los drawers (810), bajo
+   los modales (1000). Ver jerarquía documentada en la sección TOPBAR.
+   ============================================================================ */
+
+/* Página sin scroll SIEMPRE (sin gate de media query). body.home-body la pone
+   home.js; :has(.home-page) cubre el primer paint. Con banner DEV el body ya
+   trae padding-top:24px y border-box: el alto útil se descuenta solo. */
+body.home-body,
+body:has(.home-page) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.home-body .contenido-principal,
+body:has(.home-page) .contenido-principal {
+  display: flex;
+  min-height: 0;
+}
+
+/* ── Grid de tarjetas ── */
+/* Mobile (default): 2 columnas compactas — Gastos (span 2), Rutina (span 2),
+   Lactancia | Calendario. Fila 1 (Gastos) = alto exacto de su contenido (la
+   tabla compacta + botón entran hasta en 375×667); filas 2-3 se reparten el
+   resto 1 : 1.2 (Rutina scrollea adentro; la fila de Lactancia|Calendario
+   lleva algo más para que el mini-mes no quede aplastado). Con dos filas
+   max-content el grid repartía el sobrante en partes IGUALES y aplastaba la
+   fila 3 (body de 71px en iPhone SE). */
+.home-page {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: max-content minmax(110px, 1fr) minmax(150px, 1.35fr);
+}
+
+.home-card--gastos { grid-column: span 2; }
+.home-card--rutina { grid-column: span 2; }
+
+/* ── Tarjeta de módulo ── */
+.home-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+}
+
+/* Header compacto: emoji + nombre del módulo + link al módulo completo */
+.home-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.home-card-titulo {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-texto);
+  white-space: nowrap;   /* que "📅 Calendario" no parta el head en 2 líneas */
+}
+
+.home-card-link {
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.home-card-link:hover {
+  color: var(--color-acento);
+  text-decoration: none;
+}
+
+/* En pantallas angostas las tarjetas de media columna miden ~164px: "Ver
+   módulo →" no entra (el head desbordaba la tarjeta). Se oculta la palabra
+   "módulo" (span del template) y queda "Ver →" en las 4 tarjetas. */
+@media (max-width: 479px) {
+  .home-card-link-modulo { display: none; }
+}
+
+/* ── Tabla de saldos compacta (tarjeta Gastos) ── */
+/* El partial _tarjeta_saldos_mini.html llega SIN el wrapper .tarjeta-saldos
+   (eso es de /gastos): sin esto caía al estilo global de .tabla-saldos
+   (paddings de 1rem, fuente 1.1rem → 401px de ancho natural, desbordaba el
+   body en mobile). Misma receta que .tarjeta-saldos: table-layout fixed +
+   ancho fijo solo en la columna de nombres. */
+.home-card--gastos .tabla-saldos {
+  width: 100%;
+  table-layout: fixed;
+  margin-bottom: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.home-card--gastos .tabla-saldos col.col-saldo-label { width: 3.4rem; }
+
+.home-card--gastos .tabla-saldos thead th {
+  padding: 0.3rem 0.35rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.home-card--gastos .tabla-saldos tbody th.saldo-persona-label {
+  padding: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.home-card--gastos .tabla-saldos tbody td.saldo-monto {
+  padding: 0.4rem 0.45rem;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;          /* valor extremo: no empuja la celda */
+  text-overflow: ellipsis;
+}
+
+/* Cuerpo: única zona que scrollea si el contenido no entra */
+.home-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.7rem 0.8rem;
+}
+
+.home-placeholder {
+  color: var(--color-texto-muted);
+  font-size: 0.85rem;
+}
+
+/* ── Botón mobile "＋ Nuevo movimiento" (abre el bottom-sheet) ── */
+.home-btn-nuevo {
+  display: block;
+  width: 100%;
+  margin-top: 0.6rem;
+  min-height: 44px;   /* touch target (solo existe <900px) */
+}
+
+/* ── Overlay del bottom-sheet (solo mobile) ── */
+.home-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: var(--overlay-modal);
+}
+
+.home-overlay.is-abierta { display: block; }
+
+/* ── Sheet del form: bottom-sheet en mobile, bloque normal en desktop ── */
+.home-sheet {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 910;
+  max-height: 85dvh;
+  overflow-y: auto;
+  padding: 0.8rem 1rem 1rem;
+  background: var(--color-superficie);
+  border-radius: var(--radio-borde) var(--radio-borde) 0 0;
+  box-shadow: var(--sombra-modal);
+}
+
+.home-sheet.is-abierta { display: block; }
+
+.home-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.home-sheet-titulo {
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+.home-sheet-cerrar {
+  background: transparent;
+  border: none;
+  color: var(--color-texto-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--radio-borde);
+}
+
+.home-sheet-cerrar:hover { color: var(--color-texto); }
+
+/* ── Tarjeta Lactancia: listas Heladera / Freezer (próxima a usar) ── */
+/* Ítems compactos espejo de los .lac-item del módulo. Misma correspondencia
+   estado→paleta que /lactancia (vencida=peligro, vence_pronto=alerta,
+   disponible y en_heladera=exito — SIN variables nuevas de paleta): borde
+   izquierdo 3px + tinte de fondo color-mix SOLO con var() adentro (fallback
+   previo background: var(--color-superficie) para browsers sin soporte). */
+.home-lac-sec {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.home-lac-sec:first-child { margin-top: 0; }
+
+.home-lac-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  padding: 0.4rem 0.55rem;
+  margin-bottom: 0.4rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-left-width: 3px;
+  border-radius: var(--radio-borde);
+}
+
+.home-lac-item.is-en_heladera,
+.home-lac-item.is-disponible {
+  border-left-color: var(--color-exito);
+  background: color-mix(in srgb, var(--color-exito) 6%, var(--color-superficie));
+}
+
+.home-lac-item.is-vence_pronto {
+  border-left-color: var(--color-alerta);
+  background: color-mix(in srgb, var(--color-alerta) 8%, var(--color-superficie));
+}
+
+.home-lac-item.is-vencida {
+  border-left-color: var(--color-peligro);
+  background: color-mix(in srgb, var(--color-peligro) 8%, var(--color-superficie));
+}
+
+.home-lac-info { min-width: 0; }
+
+.home-lac-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.home-lac-vol {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--color-texto);
+}
+
+.home-lac-venc {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+.home-lac-venc.t-vencida { color: var(--color-peligro); }
+.home-lac-venc.t-vence_pronto { color: var(--color-alerta); }
+
+.home-lac-meta {
+  margin-top: 0.1rem;
+  font-size: 0.74rem;
+  color: var(--color-texto-muted);
+}
+
+/* Botón de acción semántico (mismo criterio que .lac-btn-usar del módulo) */
+.home-lac-usar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-exito);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  padding: 0.32rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.home-lac-usar:hover { filter: brightness(1.08); }
+
+/* Touch target en mobile/tablet (<900px = capa táctil): el botón medía 26px
+   de alto. En desktop queda compacto (puntero fino). */
+@media (max-width: 899px) {
+  .home-lac-usar { min-height: 40px; }
+}
+
+.home-lac-vacio {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
+/* El form del partial trae su propio título (.lac-form-titulo, necesario en
+   /lactancia); en el home el título lo da .home-sheet-head → se oculta */
+.home-sheet .lac-form-titulo { display: none; }
+
+/* La fila de extras del form de movimiento (envío + cuotas) es nowrap fuera
+   del mobile de /gastos: en la columna del home (~300px) desbordaba la
+   tarjeta → mismo tratamiento que el responsive de /gastos. */
+.home-sheet .form-rapido-extras { flex-wrap: wrap; }
+
+.home-sheet .extra-cuotas-grupo {
+  border-left: none;
+  padding-left: 0;
+  border-top: 1px solid var(--color-borde);
+  padding-top: 0.5rem;
+  width: 100%;
+}
+
+/* ── Tarjeta Calendario: mini mes + pendientes (server-render, sin JS) ── */
+/* Puntos: MISMO mapeo estado→paleta que la grilla de /calendario
+   (.cal-dot .cal-d-*): vencida=peligro, proxima=alerta, hecha=exito,
+   aldia=deco-3. Clases propias home-cal-* porque las cal-* del módulo
+   están acopladas a su grilla grande (posicionamiento absoluto, día
+   seleccionable); acá solo se replican las variables de color. */
+.home-cal-mes {
+  margin-bottom: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+.home-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.home-cal-dow {
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+.home-cal-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 0 3px;
+  border-radius: var(--radio-borde);
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: var(--color-texto);
+}
+
+.home-cal-day.is-hoy {
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-acento) 14%, var(--color-superficie));
+  box-shadow: inset 0 0 0 1px var(--color-acento);
+  font-weight: 800;
+}
+
+/* El contenedor de puntos existe SIEMPRE: filas parejas con o sin puntos */
+.home-cal-dots {
+  display: flex;
+  gap: 2px;
+  min-height: 5px;
+}
+
+.home-cal-dot { width: 5px; height: 5px; border-radius: 50%; }
+.home-cal-dot.home-cal-d-vencida { background: var(--color-peligro); }
+.home-cal-dot.home-cal-d-proxima { background: var(--color-alerta); }
+.home-cal-dot.home-cal-d-hecha   { background: var(--color-exito); }
+.home-cal-dot.home-cal-d-aldia   { background: var(--color-deco-3); }
+
+/* Lista de pendientes: mismo patrón visual que .home-lac-item */
+.home-cal-sec {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.home-cal-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  padding: 0.35rem 0.55rem;
+  margin-bottom: 0.35rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-left-width: 3px;
+  border-radius: var(--radio-borde);
+}
+
+.home-cal-item.is-vencida {
+  border-left-color: var(--color-peligro);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-peligro) 8%, var(--color-superficie));
+}
+
+.home-cal-item.is-proxima {
+  border-left-color: var(--color-alerta);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-alerta) 8%, var(--color-superficie));
+}
+
+.home-cal-nombre {
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-texto);
+}
+
+.home-cal-venc {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+.home-cal-venc.t-vencida { color: var(--color-peligro); }
+.home-cal-venc.t-proxima { color: var(--color-alerta); }
+
+.home-cal-vacio {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
+/* ── Tarjeta Rutina: qué hace cada uno AHORA + qué viene después ── */
+/* Filas compactas, mismo patrón que .home-lac-item (borde izq 3px + tinte
+   color-mix SOLO con var() adentro, fallback superficie previo). Color por
+   persona con las MISMAS variables que el módulo /rutina (.rut--leon/mama/
+   papa): León = persona-leon, mamá = persona-mari, papá = persona-elias. */
+.home-rut-item {
+  padding: 0.4rem 0.55rem;
+  margin-bottom: 0.4rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-left-width: 3px;
+  border-radius: var(--radio-borde);
+}
+
+.home-rut--leon {
+  border-left-color: var(--color-persona-leon);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-persona-leon) 6%, var(--color-superficie));
+}
+
+.home-rut--mama {
+  border-left-color: var(--color-persona-mari);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-persona-mari) 6%, var(--color-superficie));
+}
+
+.home-rut--papa {
+  border-left-color: var(--color-persona-elias);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-persona-elias) 6%, var(--color-superficie));
+}
+
+/* Línea principal: quién · actividad actual · rango horario */
+.home-rut-linea {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.home-rut-quien {
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+.home-rut-act {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-texto);
+}
+
+.home-rut-horas {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+/* Línea secundaria: "Después: … · HH:MM" */
+.home-rut-despues {
+  margin-top: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.74rem;
+  color: var(--color-texto-muted);
+}
+
+.home-rut-vacio {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
+/* ── Desktop ≥900px: grid 3 columnas × 2 filas, form inline ── */
+@media (min-width: 900px) {
+  /* col A: Gastos arriba / Rutina abajo; col B: Lactancia (2 filas);
+     col C: Calendario (2 filas). OJO con los mínimos: 320+280+280 + gaps +
+     padding del main sumaba 936px → scroll horizontal justo en el
+     breakpoint (900-935px). Con 300+260+260 entra desde 900. */
+  .home-page {
+    grid-template-columns: minmax(300px, 380px) minmax(260px, 1fr) minmax(260px, 1fr);
+    /* Fila 2 con piso de 180px: Rutina muestra ~2 personas aunque el form de
+       Gastos (fila 1, max-content) quiera todo el alto en pantallas bajas. */
+    grid-template-rows: minmax(0, max-content) minmax(180px, 1fr);
+  }
+
+  .home-card--gastos     { grid-column: 1; grid-row: 1; }
+  .home-card--rutina     { grid-column: 1; grid-row: 2; }
+  .home-card--lactancia  { grid-column: 2; grid-row: 1 / span 2; }
+  .home-card--calendario { grid-column: 3; grid-row: 1 / span 2; }
+
+  /* El form va inline dentro de la tarjeta: sin botón, sin overlay */
+  .home-btn-nuevo { display: none; }
+
+  .home-overlay { display: none !important; }
+
+  .home-sheet {
+    display: block;
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 0.6rem 0 0;
+    border-radius: 0;
+    box-shadow: none;
+    border-top: 1px solid var(--color-borde);
+    margin-top: 0.7rem;
+  }
+
+  /* El ✕ solo tiene sentido como bottom-sheet */
+  .home-sheet-cerrar { display: none; }
 }

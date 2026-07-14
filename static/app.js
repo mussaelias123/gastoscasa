@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
     inicializarColoresDinamicos();
     inicializarToggleTema();
     resaltarNavActual();
+    initDrawers();
     inicializarCategorias();
     initFiltros();
     initOrden();
@@ -625,10 +626,10 @@ function resaltarNavActual() {
 
     /*
       querySelectorAll() → devuelve TODOS los elementos que coinciden.
-      '.site-nav a' → todos los <a> dentro de un elemento con clase 'site-nav'
+      '.sidebar-nav a' → todos los <a> dentro de la sidebar desplegable.
       Devuelve un NodeList (similar a un array).
     */
-    var enlaces = document.querySelectorAll('.site-nav a');
+    var enlaces = document.querySelectorAll('.sidebar-nav a');
 
     /*
       forEach() → itera sobre cada elemento del NodeList.
@@ -656,10 +657,202 @@ function resaltarNavActual() {
               visual diferente (fondo blanco translúcido, texto blanco).
             */
             enlace.classList.add('nav-activo');
-            console.log('Nav activo:', href);
         }
     });
 }
+
+
+/*
+================================================================================
+FUNCIÓN: initDrawers()
+================================================================================
+Propósito:
+  Maneja los dos drawers overlay del header:
+    - Sidebar de navegación (izquierda), la abre #menu-toggle.
+    - Panel de notificaciones (derecha), lo abre #notif-toggle.
+  Ambos comparten un solo backdrop (#drawer-backdrop) y se excluyen: abrir uno
+  cierra el otro EN EL MISMO CLICK — `abrir(drawer, boton)` cierra el otro
+  drawer y abre el pedido en una sola llamada (no hace falta un click previo
+  para "soltar" el que estaba abierto). Cierre por: backdrop, botón ✕
+  (.drawer-cerrar), tecla ESC y click en cualquier link de la sidebar.
+  `setDrawer()` sincroniza aria-expanded del botón Y aria-hidden del drawer
+  para AMBOS lados en cada cambio (cerrarTodo/abrir tocan siempre los dos
+  pares botón+drawer, así nunca queda un aria-expanded="true" huérfano). Al
+  abrir el panel de notificaciones refresca la lista vía Notif.refrescar().
+
+  Nota z-index (acoplada a `.site-topbar` en style.css, z-index 805 > backdrop
+  800): el header queda POR ENCIMA del backdrop a propósito, así sus botones
+  reciben el click directo con un drawer abierto en vez de que el backdrop lo
+  intercepte primero (bug ya corregido: antes hacía falta un click "perdido"
+  para cerrar y uno más para abrir el otro). Efecto colateral aceptado: cada
+  drawer (z-index 810, por encima del header) SÍ tapa la franja del header
+  que tiene debajo cuando está abierto (la sidebar cubre el ☰; el panel
+  cubre tema/Salir/avatar/🔔) — no importa, cada uno tiene su propio ✕/ESC/
+  backdrop para cerrarse. El botón que abre al OTRO lado del header siempre
+  queda libre (☰ con el panel abierto; 🔔 con la sidebar abierta), que es el
+  caso que de verdad hacía falta arreglar.
+================================================================================
+*/
+function initDrawers() {
+    var backdrop   = document.getElementById('drawer-backdrop');
+    var sidebar    = document.getElementById('sidebar');
+    var panel      = document.getElementById('notif-panel');
+    var btnMenu    = document.getElementById('menu-toggle');
+    var btnNotif   = document.getElementById('notif-toggle');
+    if (!backdrop || !sidebar || !panel) return;
+
+    // Aplica el estado (abierto/cerrado) a un drawer + su botón disparador.
+    function setDrawer(drawer, boton, abierto) {
+        drawer.classList.toggle('is-abierto', abierto);
+        drawer.setAttribute('aria-hidden', abierto ? 'false' : 'true');
+        if (boton) boton.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+    }
+
+    // Cierra ambos y esconde el backdrop.
+    function cerrarTodo() {
+        setDrawer(sidebar, btnMenu, false);
+        setDrawer(panel, btnNotif, false);
+        backdrop.hidden = true;
+    }
+
+    // Abre uno (cerrando el otro): exclusión mutua + backdrop compartido.
+    function abrir(drawer, boton) {
+        var otro = (drawer === sidebar) ? panel : sidebar;
+        var otroBtn = (drawer === sidebar) ? btnNotif : btnMenu;
+        setDrawer(otro, otroBtn, false);
+        setDrawer(drawer, boton, true);
+        backdrop.hidden = false;
+        if (drawer === panel && window.Notif) window.Notif.refrescar();
+    }
+
+    // Toggle de un drawer desde su botón.
+    function toggle(drawer, boton) {
+        if (drawer.classList.contains('is-abierto')) cerrarTodo();
+        else abrir(drawer, boton);
+    }
+
+    if (btnMenu)  btnMenu.addEventListener('click', function () { toggle(sidebar, btnMenu); });
+    if (btnNotif) btnNotif.addEventListener('click', function () { toggle(panel, btnNotif); });
+
+    backdrop.addEventListener('click', cerrarTodo);
+
+    // Botones ✕ de cada cabecera.
+    document.querySelectorAll('.drawer-cerrar').forEach(function (btn) {
+        btn.addEventListener('click', cerrarTodo);
+    });
+
+    // Click en un link de la sidebar → navega y deja el drawer cerrado.
+    sidebar.querySelectorAll('.sidebar-nav a').forEach(function (a) {
+        a.addEventListener('click', cerrarTodo);
+    });
+
+    // ESC cierra el que esté abierto.
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') cerrarTodo();
+    });
+}
+
+
+/*
+================================================================================
+window.Notif — API pública de la campana de notificaciones
+================================================================================
+Estándar del proyecto: cualquier módulo (lactancia.js, etc.) llama
+`window.Notif.refrescar()` después de mutar sus datos para que la campana se
+actualice sin recargar. Contrato del ítem en docs/CONTEXT_NOTIFICATIONS.md.
+
+refrescar():
+  GET /api/notificaciones → { ok, total, items }. Actualiza el badge
+  (#notif-badge, lo crea/borra según total) y re-renderiza #notif-lista.
+  Los nodos se arman con createElement/textContent (NUNCA innerHTML con datos
+  del server). Un error de red es silencioso (console.warn): la campana nunca
+  debe romper la página.
+================================================================================
+*/
+window.Notif = (function () {
+    // Sincroniza el pill rojo del botón campana con el total.
+    function pintarBadge(total) {
+        var boton = document.getElementById('notif-toggle');
+        if (!boton) return;
+        var badge = document.getElementById('notif-badge');
+        if (!total) {
+            if (badge) badge.remove();
+            return;
+        }
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'notif-badge';
+            badge.className = 'notif-badge';
+            boton.appendChild(badge);
+        }
+        badge.textContent = total;
+    }
+
+    // Un ítem = <a class="notif-item is-{severidad}"> con icono + textos.
+    function crearItem(it) {
+        var a = document.createElement('a');
+        var sev = (it.severidad === 'peligro' || it.severidad === 'alerta') ? it.severidad : 'info';
+        a.className = 'notif-item is-' + sev;
+        a.href = it.url || '#';
+
+        var icono = document.createElement('span');
+        icono.className = 'notif-item-icono';
+        icono.textContent = it.icono || '🔔';
+        a.appendChild(icono);
+
+        var cuerpo = document.createElement('div');
+        cuerpo.className = 'notif-item-cuerpo';
+
+        var modulo = document.createElement('div');
+        modulo.className = 'notif-item-modulo';
+        modulo.textContent = it.modulo_nombre || '';
+        cuerpo.appendChild(modulo);
+
+        var titulo = document.createElement('div');
+        titulo.className = 'notif-item-titulo';
+        titulo.textContent = it.titulo || '';
+        cuerpo.appendChild(titulo);
+
+        if (it.detalle) {
+            var detalle = document.createElement('div');
+            detalle.className = 'notif-item-detalle';
+            detalle.textContent = it.detalle;
+            cuerpo.appendChild(detalle);
+        }
+
+        a.appendChild(cuerpo);
+        return a;
+    }
+
+    function render(items) {
+        var lista = document.getElementById('notif-lista');
+        if (!lista) return;
+        lista.textContent = '';
+        if (!items || !items.length) {
+            var vacio = document.createElement('div');
+            vacio.className = 'notif-vacio';
+            vacio.textContent = 'Sin notificaciones';
+            lista.appendChild(vacio);
+            return;
+        }
+        items.forEach(function (it) { lista.appendChild(crearItem(it)); });
+    }
+
+    function refrescar() {
+        fetch('/api/notificaciones', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) return;
+                pintarBadge(data.total || 0);
+                render(data.items || []);
+            })
+            .catch(function (err) {
+                console.warn('No se pudieron cargar las notificaciones:', err);
+            });
+    }
+
+    return { refrescar: refrescar };
+})();
 
 
 /*
@@ -1394,9 +1587,57 @@ function initFormAjax() {
         .then(function(data) {
             if (!data.ok) throw new Error('El servidor devolvió ok=false');
 
-            // Redirigir preservando el mes activo
+            // ── Modo inline (home /): sin navegación — refrescar en el lugar ──
+            // El form del Inicio lleva data-modo="inline" (partial
+            // _form_movimiento.html): se actualizan los saldos mini, se
+            // muestra el toast y el form queda listo para otra carga.
+            if (form.dataset.modo === 'inline') {
+                if (data.saldos) actualizarSaldos(data.saldos);
+                // En tipo=cambio el server devuelve movimiento (salida) y
+                // movimiento2 (entrada): el toast usa el principal, que trae
+                // todos los campos que mostrarToast necesita.
+                if (data.movimiento) mostrarToast(data.movimiento);
+
+                form.reset();
+
+                // reset() NO limpia el hidden #monto: en inputs hidden .value
+                // escribe el atributo (defaultValue), así que reset lo deja.
+                var hiddenMonto = document.getElementById('monto');
+                if (hiddenMonto) hiddenMonto.value = '';
+
+                // reset() vació el hidden de flatpickr → re-fijar hoy por la
+                // instancia (mismo formato que inicializarFechaHoy)
+                var campoFecha = document.getElementById('fecha');
+                if (campoFecha && campoFecha._flatpickr) {
+                    var t = new Date();
+                    var hoy = t.getFullYear() + '-' +
+                              String(t.getMonth() + 1).padStart(2, '0') + '-' +
+                              String(t.getDate()).padStart(2, '0');
+                    campoFecha._flatpickr.setDate(hoy, false);
+                }
+
+                // reset() volvió persona al default → restaurar la última
+                // usada (mismo criterio que inicializarPersona al cargar)
+                var selPersona = document.getElementById('persona');
+                var ultimaPersona = localStorage.getItem('ultima_persona');
+                if (selPersona && ultimaPersona) selPersona.value = ultimaPersona;
+
+                // Re-sincronizar categorías y secciones (envío/cuotas/cambio)
+                // según el tipo por defecto
+                var selTipo = document.getElementById('tipo');
+                if (selTipo) selTipo.dispatchEvent(new Event('change'));
+
+                // Re-pintar los colores de los selects de persona/moneda
+                if (window._refrescarColoresSelects) window._refrescarColoresSelects();
+
+                // En mobile el form vive en el bottom-sheet → cerrarlo
+                if (window.cerrarHomeSheet) window.cerrarHomeSheet('gastos');
+                return;
+            }
+
+            // Redirigir a /gastos preservando el mes activo
             var mes = new URLSearchParams(window.location.search).get('mes') || '';
-            window.location.href = mes ? '/?mes=' + mes : '/';
+            window.location.href = mes ? '/gastos?mes=' + mes : '/gastos';
         })
         .catch(function(err) {
             console.error('Error AJAX al agregar:', err);

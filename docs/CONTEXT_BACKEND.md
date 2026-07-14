@@ -3,26 +3,27 @@
 > Leer junto con `CLAUDE.md`. Este doc es para tareas que tocan `app.py`.
 
 ## Archivos del dominio
-- `app.py` (~2200 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulos Calendario, Lactancia y Rutina.
+- `app.py` (~2500 líneas): rutas, schedulers, formatters Jinja, ngrok, backups, módulos Calendario, Lactancia, Rutina y Notificaciones.
 - Imports clave: `database`, `auth`, `cotizacion`, `config`.
 
 ## Patrón general de ruta
 1. Leer parámetros de `request.form` / `request.args`.
 2. Si AJAX (`X-Requested-With: XMLHttpRequest`) → retornar `jsonify(...)`.
-3. Si no → `redirect(url_for('index', mes=...))`.
+3. Si no → `redirect(url_for('gastos', mes=...))`.
 4. Validar excepciones → en AJAX retornar `{'ok': False, 'error': str(e)}`, status 500.
-
 ## Mapa de rutas (actualizar al agregar/eliminar)
 
 | Método | URL                       | Función               | Propósito                                        |
 |--------|---------------------------|-----------------------|--------------------------------------------------|
-| GET    | `/`                       | `index`               | Pantalla principal: saldos, formulario, tabla.   |
+| GET    | `/`                       | `index`               | Página Inicio (home): tarjeta Gastos (saldos + form movimiento, partials compartidos con /gastos) + tarjeta Lactancia (`lac_home=_home_lactancia_payload()`, form compartido `_form_lactancia.html`) + tarjeta Calendario (`cal_home=_home_calendario_payload()`, 100% server-render) + tarjeta Rutina (`rut_home=_rut_payload(hoy, hoy)` — mismo helper que /rutina, rango de 1 día; el template lo inyecta como `window.RUT_DATOS` y lo renderiza home.js vía `window.Rutina.hoyAhora()`). |
+| GET    | `/gastos`                 | `gastos`              | Pantalla del módulo Gastos: saldos, formulario, tabla (ex `/`). |
 | POST   | `/agregar`                | `agregar`             | Inserta movimiento (ingreso/gasto/cambio).       |
 | POST   | `/eliminar/<id>`          | `eliminar`            | Borra movimiento por id.                         |
 | GET/POST | `/editar/<id>`          | `editar`              | Edición completa de movimiento.                  |
 | GET    | `/resumen`                | `resumen`             | Dashboard con métricas mensuales.                |
 | POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD.               |
 | GET    | `/api/metrics`            | `metrics`             | JSON con métricas (CPU, RAM, etc.).              |
+| GET    | `/api/notificaciones`     | `api_notificaciones`  | JSON `{ok, total, items}`. Agrega todos los `NOTIF_PROVIDERS`. Ver `docs/CONTEXT_NOTIFICATIONS.md`. |
 | GET    | `/api/saldos`             | `api_saldos`          | JSON `{saldos, gauges, historico, fecha}`. `?hasta=YYYY-MM-DD` = saldos a esa fecha; sin `hasta` = toda la DB. |
 | GET/POST | `/settings`             | `settings`            | Ajustes. POST general guarda **solo** `app_name` y `factor_sueldo` (merge parcial; NO toca ngrok/OAuth/puerto). Otras acciones (form `accion`): `agregar_fijo`, `editar_fijo`, `eliminar_fijo`, `guardar_backup_dir`, `marcar_configurado`. |
 | POST   | `/api/paleta`             | `api_paleta`          | Guarda `paleta_light` / `paleta_dark` desde Settings. |
@@ -59,7 +60,8 @@
 
 ## Helpers internos clave
 - `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
-- `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `index` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
+- `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `gastos` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
+- `_gastos_fijos_json()` → JSON (string) con los gastos fijos activos (`descripcion`, `es_cuota`, `cuota_actual`, `total_cuotas`) para `window.GASTOS_FIJOS` del form rápido. Compartido por `gastos` e `index`.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
 - `PALETA_META`: lista `(key, nombre, uso)` con las 23 variables de paleta (incluye `texto-invertido` y `persona-leon`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
@@ -75,6 +77,7 @@ Convención de datos: `intervalo_u` ∈ `dias|semanas|meses|anios`. Fechas TEXT 
 - `_act_estado(act)` → `str`. `terminada` > sin próxima → `aldia` > `dias<0` → `vencida` > (`avisar` y `dias<=lead_dias`) → `proxima` > `aldia`.
 - `_act_enriquecer(row)` → dict JSON-serializable: todos los campos de la fila + `proxima_fecha` (ISO/None) + `estado` + `dias_restantes` (int/None).
 - `_act_payload()` → `{'actividades': [...enriquecidas], 'historial': [{'actividad_id','fecha_hecha'}...]}`. Fuente de TODAS las respuestas AJAX del módulo (fresco tras cada mutación).
+- `_home_calendario_payload()` → `{'mes_nombre', 'hoy' (día int), 'semanas' (monthdayscalendar lunes-primero, 0 = celda vacía), 'dias' {dia: [estados]} con prioridad/dedup/tope-3 espejo de dotsDelDia() de calendario.js, 'pendientes' (vencida|proxima, vencidas primero + fecha asc, cap 6)}`. Proyección de `_act_payload()` para la tarjeta Calendario del Inicio — JAMÁS recalcula estado/próxima fecha. La consume `index()` (`cal_home`, render 100% Jinja sin JS).
 - `_act_leer_form_comun(form)`: valida y arma kwargs para `database.agregar_actividad` / `editar_actividad`. Compartido por crear/editar.
 - `_act_parsear_fecha_opcional(valor, campo)`: valida `''` o `YYYY-MM-DD`; lanza `ValueError` si es inválida.
 - `_es_ajax()`: `request.headers.get('X-Requested-With') == 'XMLHttpRequest'`.
@@ -94,7 +97,8 @@ Sin alta directa a freezer en la UI ni traspaso individual.
 - `_lac_horas_en_heladera(p, ahora)` / `_lac_freezable(p, params, ahora)` / `_lac_freezar_reciente(p, params, ahora)` → antigüedad en heladera (desde `cargada`); si la partida TODAVÍA puede pasar al freezer (abierta, no vencida — sin tope de horas, el usuario decide); y si lleva menos de `freezar_hasta_horas` (solo define el tildado por defecto del checkbox, no bloquea nada). `_lac_freezable` espera dict (no `sqlite3.Row`).
 - `_lac_enriquecer(row, params, ahora)` → dict + `vencimiento` (ISO), `estado`, `dias_restantes` (freezer) / `horas_restantes` + `horas_en_heladera` + `freezable` + `freezar_reciente` (heladera).
 - `_lac_payload()` → `{'freezer': [FIFO], 'heladera': [FIFO], 'historial': [cerradas DESC], 'tablero': {...}, 'params': {...}, 'badge': int}`. FIFO = vencimiento asc, desempate por hora de extracción y luego id. Tablero: usables = disponible+vence_pronto (vencidas NO suman); trasladadas no cuentan como usadas ni descartadas; heladera separada del freezer. Fuente de TODAS las respuestas AJAX del módulo.
-- `_lac_badge_count()` → abiertas vencidas + vence_pronto (ambas ubicaciones). Lo usa `inject_lactancia_badge` (context_processor con try/except → 0: expone `lac_badge` a todos los templates para el contador del nav; jamás rompe un render).
+- `_home_lactancia_payload()` → `{'heladera': [...], 'freezer_primera': dict|None}`. Proyección de `_lac_payload()` para la tarjeta Lactancia del Inicio (todas las de heladera + la primera del freezer, FIFO). Solo recorta — JAMÁS reimplementa vencimientos/estados. La consume `index()` (`lac_home` → `window.LAC_HOME`).
+- Badge de nav propio (`_lac_badge_count()` / `inject_lactancia_badge` / `lac_badge`) **eliminado**: lo reemplaza el sistema genérico de notificaciones (`NOTIF_PROVIDERS`, `_notificaciones()`, `inject_notif_badge` → `notif_badge`). Ver `docs/CONTEXT_NOTIFICATIONS.md`. Provider de este módulo: `_notif_lactancia()`, definido junto a los demás helpers `_lac_*`.
 - `_lac_parsear_volumen(valor)` / `_lac_parsear_extraccion(form)` / `_lac_parsear_fecha_cierre(valor)` / `_lac_leer_form_alta(form)`: validaciones (ValueError). Volumen int 1..2000; fechas no futuras; ambas ubicaciones exigen fecha/hora de extracción (el momento real de carga lo pone el server en `cargada`, base del vencimiento de heladera).
 
 ## Módulo Rutina — helpers

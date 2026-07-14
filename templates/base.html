@@ -47,41 +47,55 @@ Cada página hija define su propio {% block contenido %}.
   <div id="dev-banner">⚙ APP — MODO DESARROLLO</div>
   {% endif %}
 
-  {# HEADER + NAV van juntos en un contenedor sticky: quedan siempre visibles
-     al hacer scroll, como celdas fijadas en Excel. #}
+  {# HEADER sticky: ☰ menú (izq) · marca centrada · acciones a la derecha
+     (tema · Salir · avatar · 🔔). La navegación vive en la sidebar desplegable
+     y las notificaciones en el panel derecho — ambos overlay desde cualquier
+     página, así el contenido gana ancho. #}
   <div class="site-topbar">
-    <!-- HEADER -->
     <header class="site-header">
-      <button type="button" id="theme-toggle" class="header-theme-btn" title="Cambiar tema" aria-label="Cambiar tema">
-        <span id="theme-icon" class="theme-icon">🌙</span>
-      </button>
+      <button type="button" id="menu-toggle" class="header-icon-btn" title="Abrir menú"
+              aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false">☰</button>
       <div class="header-content">
         <h1>💰 Fondo</h1>
         <p class="subtitulo">El fondo familiar más lindo</p>
       </div>
-      {% if user_email %}
-      <div class="header-user">
-        {% if user_photo %}
-        <img src="{{ user_photo }}" alt="" class="header-user-photo" referrerpolicy="no-referrer">
-        {% endif %}
-        <span class="header-user-name">{{ user_name or user_email }}</span>
+      <div class="header-acciones">
+        <button type="button" id="theme-toggle" class="header-icon-btn" title="Cambiar tema" aria-label="Cambiar tema">
+          <span id="theme-icon" class="theme-icon">🌙</span>
+        </button>
+        {% if user_email %}
         <a href="{{ url_for('auth.logout') }}" class="header-logout-btn" title="Cerrar sesión">Salir</a>
+        {% if user_photo %}
+        <img src="{{ user_photo }}" alt="" class="header-user-photo" title="{{ user_name or user_email }}" referrerpolicy="no-referrer">
+        {% endif %}
+        {% endif %}
+        <button type="button" id="notif-toggle" class="header-icon-btn" title="Notificaciones"
+                aria-label="Notificaciones" aria-controls="notif-panel" aria-expanded="false">🔔{% if notif_badge %}<span id="notif-badge" class="notif-badge">{{ notif_badge }}</span>{% endif %}</button>
       </div>
-      {% endif %}
     </header>
-
-    <!-- NAVEGACIÓN -->
-    <nav class="site-nav">
-      <ul>
-        <li><a href="{{ url_for('index') }}">🏠 Inicio</a></li>
-        <li><a href="{{ url_for('resumen') }}">📊 Resumen</a></li>
-        <li><a href="{{ url_for('calendario') }}">📅 Calendario</a></li>
-        <li><a href="{{ url_for('rutina') }}">⏰ Rutina</a></li>
-        <li><a href="{{ url_for('lactancia') }}">🍼 Lactancia{% if lac_badge %}<span class="nav-badge">{{ lac_badge }}</span>{% endif %}</a></li>
-        <li><a href="{{ url_for('settings') }}">⚙ Settings</a></li>
-      </ul>
-    </nav>
   </div>
+
+  {# DRAWERS: sidebar de navegación (izq) + panel de notificaciones (der).
+     Backdrop compartido; abrir uno cierra el otro (exclusión mutua). initDrawers() en app.js. #}
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+  <aside id="sidebar" class="sidebar" aria-hidden="true">
+    <div class="sidebar-head">💰 Fondo <button type="button" class="drawer-cerrar" aria-label="Cerrar menú">✕</button></div>
+    <nav class="sidebar-nav"><ul>
+      <li><a href="{{ url_for('index') }}">🏠 Inicio</a></li>
+      <li><a href="{{ url_for('gastos') }}">💸 Gastos</a></li>
+      <li><a href="{{ url_for('resumen') }}">📊 Resumen</a></li>
+      <li><a href="{{ url_for('calendario') }}">📅 Calendario</a></li>
+      <li><a href="{{ url_for('rutina') }}">⏰ Rutina</a></li>
+      <li><a href="{{ url_for('lactancia') }}">🍼 Lactancia</a></li>
+      <li><a href="{{ url_for('settings') }}">⚙ Settings</a></li>
+    </ul></nav>
+  </aside>
+
+  <aside id="notif-panel" class="notif-panel" aria-hidden="true">
+    <div class="notif-head">🔔 Notificaciones <button type="button" class="drawer-cerrar" aria-label="Cerrar notificaciones">✕</button></div>
+    <div id="notif-lista" class="notif-lista"></div>
+  </aside>
 
   <!-- CONTENIDO PRINCIPAL -->
   <main class="contenido-principal">

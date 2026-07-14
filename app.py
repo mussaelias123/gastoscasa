@@ -208,6 +208,71 @@ def _act_payload():
     return {'actividades': actividades, 'historial': historial}
 
 
+def _home_calendario_payload():
+    """Proyección de _act_payload() para la tarjeta Calendario del Inicio
+    (mini mes con puntitos + lista de pendientes, 100% server-render).
+
+    JAMÁS recalcula estado/próxima fecha: _act_enriquecer/_act_estado son la
+    única fuente. Devuelve:
+      - mes_nombre: 'Julio 2026' (es-AR, como fmtMesAnio del módulo).
+      - hoy: día del mes (int).
+      - semanas: monthdayscalendar del mes actual (lunes primero, 0 = celda
+        vacía) — mismo arranque de semana que la grilla de /calendario.
+      - dias: {dia_int: [estados]} — espejo de mapaPorDia() + dotsDelDia()
+        de calendario.js: próxima fecha de actividades activas (estado
+        vencida|proxima|aldia) + 'hecha' del historial; por día se dedupe
+        con prioridad vencida → proxima → hecha → aldia y tope de 3 puntos.
+      - pendientes: no terminadas con estado vencida|proxima, vencidas
+        primero y luego proxima_fecha asc (mismo orden que renderAgenda),
+        cap 6. Ítems: id, nombre, estado, proxima_fecha, dias_restantes."""
+    import calendar as _calendar   # alias: no pisar la función de ruta `calendario`
+    from datetime import date
+
+    hoy = date.today()
+    datos = _act_payload()
+    prefijo_mes = hoy.strftime('%Y-%m')
+
+    crudos = {}   # dia_int → [estados sin dedup]
+    def _sumar(iso, estado):
+        if iso and str(iso)[:7] == prefijo_mes:
+            crudos.setdefault(int(str(iso)[8:10]), []).append(estado)
+
+    pendientes = []
+    for a in datos['actividades']:
+        if a.get('terminada'):
+            continue
+        if a.get('proxima_fecha'):
+            _sumar(a['proxima_fecha'], a['estado'])
+        if a['estado'] in ('vencida', 'proxima'):
+            pendientes.append({
+                'id':             a['id'],
+                'nombre':         a['nombre'],
+                'estado':         a['estado'],
+                'proxima_fecha':  a['proxima_fecha'],
+                'dias_restantes': a['dias_restantes'],
+            })
+    for h in datos['historial']:
+        _sumar(h.get('fecha_hecha'), 'hecha')
+
+    ORDEN_PUNTOS = ('vencida', 'proxima', 'hecha', 'aldia')
+    dias = {d: [e for e in ORDEN_PUNTOS if e in ests][:3]
+            for d, ests in crudos.items()}
+
+    pendientes.sort(key=lambda p: (0 if p['estado'] == 'vencida' else 1,
+                                   p['proxima_fecha'] or ''))
+    pendientes = pendientes[:6]
+
+    MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    return {
+        'mes_nombre': f"{MESES_ES[hoy.month - 1]} {hoy.year}",
+        'hoy':        hoy.day,
+        'semanas':    _calendar.Calendar(firstweekday=0).monthdayscalendar(hoy.year, hoy.month),
+        'dias':       dias,
+        'pendientes': pendientes,
+    }
+
+
 # =============================================================================
 # MÓDULO LACTANCIA — constantes y helpers de vencimiento/estado
 # Propósito: banco de leche materna (partidas de freezer y heladera). La capa
@@ -361,18 +426,14 @@ def _lac_payload():
             'tablero': tablero, 'params': params, 'badge': badge}
 
 
-def _lac_badge_count():
-    """Contador del badge de nav: partidas abiertas vencidas o por vencer
-    (ambas ubicaciones). Usado por inject_lactancia_badge en cada render."""
-    params = _lac_params()
-    ahora = datetime.now()
-    total = 0
-    for fila in database.obtener_partidas_lactancia():
-        if fila['motivo_cierre']:
-            continue
-        if _lac_estado(dict(fila), params, ahora) in ('vencida', 'vence_pronto'):
-            total += 1
-    return total
+def _home_lactancia_payload():
+    """Proyección de _lac_payload() para la tarjeta Lactancia del Inicio:
+    TODAS las partidas de heladera + la PRIMERA del freezer (FIFO: la que se
+    consumiría a continuación). Solo recorta el payload completo — JAMÁS
+    reimplementa vencimientos/estados (viven en los helpers _lac_*)."""
+    datos = _lac_payload()
+    return {'heladera': datos['heladera'],
+            'freezer_primera': datos['freezer'][0] if datos['freezer'] else None}
 
 
 def _lac_parsear_volumen(valor):
@@ -442,6 +503,83 @@ def _lac_leer_form_alta(form):
 
 
 # =============================================================================
+# MÓDULO NOTIFICACIONES — helpers y registry de providers
+# Propósito: campana de notificaciones genérica en el header (reemplaza los
+# badges de nav por módulo). Cada módulo de negocio expone un "provider":
+# una función sin argumentos que devuelve una lista de ítems con el contrato
+# CERRADO documentado en docs/CONTEXT_NOTIFICATIONS.md (claves: modulo,
+# modulo_nombre, icono, titulo, detalle, url, severidad). _notificaciones()
+# agrega los providers de NOTIF_PROVIDERS; un provider roto NUNCA tumba la
+# campana (try/except individual, logueado con AVISO). Para sumar un módulo
+# nuevo: escribir su función `_notif_<modulo>()` y agregarla a
+# NOTIF_PROVIDERS — nada más (ver checklist en CONTEXT_NOTIFICATIONS.md).
+# =============================================================================
+
+def _notif_lactancia():
+    """Provider de notificaciones del módulo Lactancia: 1 ítem por partida
+    ABIERTA (sin motivo_cierre) cuyo estado sea 'vencida' o 'vence_pronto'.
+    Reusa _lac_params()/_lac_enriquecer() tal cual — el cálculo de
+    vencimiento/estado vive únicamente en los helpers _lac_* (NUNCA se
+    reimplementa acá). Orden interno: vencidas primero, luego por vencer;
+    dentro de cada grupo, por vencimiento ascendente."""
+    params = _lac_params()
+    ahora = datetime.now()
+    partidas = [_lac_enriquecer(f, params, ahora)
+                for f in database.obtener_partidas_lactancia()
+                if not f['motivo_cierre']]
+    relevantes = [p for p in partidas if p['estado'] in ('vencida', 'vence_pronto')]
+    relevantes.sort(key=lambda p: (0 if p['estado'] == 'vencida' else 1, p['vencimiento']))
+
+    def _dias_texto(n):
+        return f"{n} día" if n == 1 else f"{n} días"
+
+    items = []
+    for p in relevantes:
+        vencida = p['estado'] == 'vencida'
+        if p['ubicacion'] == 'freezer':
+            dias = abs(p['dias_restantes'])
+            if vencida:
+                tiempo = 'venció hoy' if dias == 0 else f'venció hace {_dias_texto(dias)}'
+            else:
+                tiempo = 'vence hoy' if dias == 0 else f'vence en {_dias_texto(dias)}'
+            ubicacion_txt = 'Freezer'
+        else:
+            tiempo = 'venció' if vencida else f"vence en {p['horas_restantes']} h"
+            ubicacion_txt = 'Heladera'
+        items.append({
+            'modulo':        'lactancia',
+            'modulo_nombre': 'Lactancia',
+            'icono':         '🍼',
+            'titulo':        'Partida vencida' if vencida else 'Partida por vencer',
+            'detalle':       f"{ubicacion_txt} · {p['volumen_ml']} ml · {tiempo}",
+            'url':           '/lactancia',
+            'severidad':     'peligro' if vencida else 'alerta',
+        })
+    return items
+
+
+NOTIF_PROVIDERS = [_notif_lactancia]
+
+
+def _notificaciones():
+    """Agrega los ítems de TODOS los providers de NOTIF_PROVIDERS. Cada
+    provider corre aislado: si uno falla, se loguea (AVISO) y se sigue con
+    los demás — un módulo roto nunca tumba la campana. Orden final: peligro
+    → alerta → info; el sort es estable, así que respeta el orden interno de
+    cada provider y el orden de NOTIF_PROVIDERS entre módulos distintos con
+    la misma severidad."""
+    items = []
+    for provider in NOTIF_PROVIDERS:
+        try:
+            items.extend(provider())
+        except Exception as e:
+            log(f"AVISO: provider de notificaciones '{provider.__name__}' falló: {e}")
+    orden_severidad = {'peligro': 0, 'alerta': 1, 'info': 2}
+    items.sort(key=lambda it: orden_severidad.get(it['severidad'], 3))
+    return items
+
+
+# =============================================================================
 # HELPER: _calcular_monto_usd(monto, moneda, cfg)
 # Propósito: Centraliza la conversión ARS→USD al insertar/editar movimientos.
 # =============================================================================
@@ -499,14 +637,15 @@ def inject_config():
 
 
 @app.context_processor
-def inject_lactancia_badge():
-    """Expone `lac_badge` (partidas vencidas + por vencer) a todos los
-    templates para el contador del ítem de nav Lactancia. Con red de
-    seguridad: un fallo acá jamás debe romper el render de una página."""
+def inject_notif_badge():
+    """Expone `notif_badge` (cantidad total de notificaciones activas de
+    TODOS los módulos, vía _notificaciones()) a todos los templates, para el
+    contador de la campana en el header. Con red de seguridad: un fallo acá
+    jamás debe romper el render de una página."""
     try:
-        return {'lac_badge': _lac_badge_count()}
+        return {'notif_badge': len(_notificaciones())}
     except Exception:
-        return {'lac_badge': 0}
+        return {'notif_badge': 0}
 
 
 def _static_version():
@@ -519,6 +658,7 @@ def _static_version():
             os.path.join(app.static_folder, 'lactancia.js'),
             os.path.join(app.static_folder, 'rutina.js'),
             os.path.join(app.static_folder, 'rutina-actividades.js'),
+            os.path.join(app.static_folder, 'home.js'),
         ]
         return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))
     except Exception:
@@ -660,12 +800,59 @@ def _calcular_gauges(saldos, cotizacion_valor, historico=False):
 
 
 # =============================================================================
-# RUTA: Página principal — Saldos + formulario + tabla de movimientos
+# HELPER: gastos fijos activos → JSON para el form rápido (window.GASTOS_FIJOS)
+# Compartido por /gastos y / (Inicio): ambos renderizan el form de movimiento.
+# =============================================================================
+
+def _gastos_fijos_json():
+    """JSON con los gastos fijos activos (descripcion + datos de cuota) que
+    el frontend usa para poblar el select de descripciones cuando la
+    categoría es 'Fijo' (variable global GASTOS_FIJOS en app.js)."""
+    import json
+    fijos_activos = database.obtener_gastos_fijos(solo_activos=True)
+    return json.dumps([
+        {
+            'descripcion': f['descripcion'],
+            'es_cuota':    f['es_cuota'] or 0,
+            'cuota_actual': f['cuota_actual'] or 0,
+            'total_cuotas': f['total_cuotas'],
+        }
+        for f in fijos_activos
+    ])
+
+
+# =============================================================================
+# RUTA: Inicio — home de la app con lo más usado de cada módulo
 # URL: http://localhost:5000/
 # =============================================================================
 
 @app.route('/')
 def index():
+    """Inicio: home de la app. Tarjetas Gastos (saldos mini + form de
+    movimiento), Lactancia (consumir partidas + cargar extracción),
+    Calendario (mini mes + pendientes, 100% server-render) y Rutina (qué
+    hace cada uno AHORA + qué viene después: rut_home = _rut_payload de
+    HOY, rango de 1 día — mismo helper que /rutina; lo consume rutina.js
+    vía window.RUT_DATOS y lo renderiza home.js con window.Rutina.hoyAhora).
+    `cfg` llega vía inject_config."""
+    from datetime import date
+    saldos = database.calcular_saldos()
+    hoy_iso = date.today().isoformat()
+    return render_template('index.html',
+                           saldos=saldos,
+                           gastos_fijos_json=_gastos_fijos_json(),
+                           lac_home=_home_lactancia_payload(),
+                           cal_home=_home_calendario_payload(),
+                           rut_home=_rut_payload(hoy_iso, hoy_iso))
+
+
+# =============================================================================
+# RUTA: Módulo Gastos — Saldos + formulario + tabla de movimientos (ex /)
+# URL: http://localhost:5000/gastos
+# =============================================================================
+
+@app.route('/gastos')
+def gastos():
     import re
     from datetime import date
 
@@ -705,19 +892,9 @@ def index():
 
     checklist = database.verificar_gastos_fijos(mes)
 
-    fijos_activos = database.obtener_gastos_fijos(solo_activos=True)
-    import json
-    gastos_fijos_json = json.dumps([
-        {
-            'descripcion': f['descripcion'],
-            'es_cuota':    f['es_cuota'] or 0,
-            'cuota_actual': f['cuota_actual'] or 0,
-            'total_cuotas': f['total_cuotas'],
-        }
-        for f in fijos_activos
-    ])
+    gastos_fijos_json = _gastos_fijos_json()
 
-    return render_template('index.html',
+    return render_template('gastos.html',
         saldos=saldos,
         movimientos=movimientos,
         cfg=cfg,
@@ -832,7 +1009,7 @@ def agregar():
                 })
 
             mes = request.form.get('mes', '')
-            return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+            return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
         # ── Tipo "gasto" o "ingreso": flujo existente ──
         categoria   = request.form.get('categoria') or None
@@ -898,13 +1075,13 @@ def agregar():
             })
 
         mes = request.form.get('mes', '')
-        return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+        return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
     except Exception as e:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'ok': False, 'error': str(e)}), 500
         mes = request.form.get('mes', '')
-        return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+        return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
 
 # =============================================================================
@@ -917,7 +1094,7 @@ def agregar():
 def eliminar(id):
     database.eliminar_movimiento(id)
     mes = request.args.get('mes', '')
-    return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+    return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
 
 # =============================================================================
@@ -945,11 +1122,11 @@ def editar(id):
 
         database.editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_aplicada)
         mes = request.form.get('mes', '') or request.args.get('mes', '')
-        return redirect(url_for('index', mes=mes) if mes else url_for('index'))
+        return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
     else:
         mov = database.obtener_movimiento(id)
         if mov is None:
-            return redirect(url_for('index'))
+            return redirect(url_for('gastos'))
         return render_template('editar.html', mov=mov)
 
 
@@ -1835,6 +2012,20 @@ def metrics():
             "memoria_percent":   round(host_mem.percent, 1)
         }
     })
+
+
+# =============================================================================
+# RUTA: Notificaciones (campana genérica del header)
+# URL: GET http://localhost:5000/api/notificaciones
+# =============================================================================
+#
+# Agrega los ítems de TODOS los providers registrados en NOTIF_PROVIDERS (ver
+# docs/CONTEXT_NOTIFICATIONS.md). Solo lectura, sin parámetros.
+#
+@app.route('/api/notificaciones')
+def api_notificaciones():
+    items = _notificaciones()
+    return jsonify({'ok': True, 'total': len(items), 'items': items})
 
 
 # =============================================================================

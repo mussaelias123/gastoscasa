@@ -173,7 +173,7 @@ var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
 {% else %}
 <div class="sin-datos">
   <p>No hay movimientos registrados todavía.</p>
-  <p><a href="{{ url_for('index') }}" class="btn btn-primario">Agregar el primer movimiento</a></p>
+  <p><a href="{{ url_for('gastos') }}" class="btn btn-primario">Agregar el primer movimiento</a></p>
 </div>
 {% endif %}
 

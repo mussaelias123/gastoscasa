@@ -26,7 +26,8 @@
 | Cotización    | `cotizacion.py`, `tests/test_cotizacion.py`            | `docs/CONTEXT_COTIZACION.md`     |
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
-| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/rutina.js`, `static/rutina-actividades.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
+| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/rutina.js`, `static/rutina-actividades.js`, `static/home.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
+| Notificaciones| `app.py` (providers + `/api/notificaciones`), `static/app.js` (`window.Notif`), `templates/base.html` (campana/panel) | `docs/CONTEXT_NOTIFICATIONS.md`  |
 | Deploy/serv   | NSSM (`E:\Fondo\nssm.exe`, fuera de git), ngrok, `logs/`, `logutil.py` | `docs/CONTEXT_DEPLOY.md` |
 | Scripts ad-hoc| `TempScripts/`                                         | (one-shot, no producción)        |
 
@@ -50,6 +51,7 @@
 | Script one-shot (backfill, migración)  | `CLAUDE.md` + `CONTEXT_DB.md`                                 | `db-engineer`           |
 | Módulo Lactancia (banco de leche)      | `CLAUDE.md` + `CONTEXT_BACKEND.md` + `CONTEXT_DB.md` + `CONTEXT_FRONTEND.md` (+ `CONTEXT_CONFIG.md` si tocás parámetros) | según capa |
 | Módulo Rutina (rutina diaria de León)  | `CLAUDE.md` + `CONTEXT_FRONTEND.md` (la lógica y las definiciones viven en `static/rutina.js`) + `CONTEXT_BACKEND.md`/`CONTEXT_DB.md` si tocás los ajustes persistidos | según capa |
+| Notificaciones (sumar provider de un módulo, campana, panel) | `CLAUDE.md` + `CONTEXT_NOTIFICATIONS.md` (+ `CONTEXT_BACKEND.md` o `CONTEXT_FRONTEND.md` según la capa que toques) | según capa |
 
 **Regla**: si la tarea entra en una sola fila, **no leer los demás `CONTEXT_*.md`**. Eso es el ahorro.
 
@@ -66,6 +68,7 @@
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.
 5. **Sesión iniciada**: la cuenta del usuario ya está logueada en ngrok. Si la página pide login, **detenerse y avisar**.
+6. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. Detalle en `docs/METODOLOGIA.md` §5.
 
 ---
 

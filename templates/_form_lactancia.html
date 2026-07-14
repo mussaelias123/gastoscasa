@@ -1,0 +1,35 @@
+{# ── PARTIAL: form de alta de extracción (módulo Lactancia) ─────────────────
+   ÚNICA definición del form (ids únicos en el DOM: se incluye una sola vez
+   por página). Lo usan /lactancia (panel Cargar) e / (Inicio, dentro del
+   sheet de la tarjeta Lactancia). POST real a /api/lactancia/crear: sin JS
+   sigue funcionando (el backend redirige a /lactancia). El backend EXIGE
+   fecha_extraccion y hora_extraccion no vacías; los flatpickr los inicializan
+   lactancia.js (en /lactancia) o home.js (en /, donde lactancia.js NO se
+   carga). #}
+          <form id="lac-form-extraccion" action="/api/lactancia/crear" method="post" class="lac-form-alta">
+            <input type="hidden" name="ubicacion" value="heladera">
+            <div class="lac-form-titulo">🥛 Nueva extracción</div>
+            <div class="lac-form-grid">
+              <div class="lac-campo">
+                <label for="lac-ex-volumen">Volumen (ml)</label>
+                <input type="number" id="lac-ex-volumen" name="volumen_ml"
+                       min="1" max="2000" inputmode="numeric" placeholder="Ej: 150" required>
+              </div>
+              <div class="lac-campo">
+                <label for="lac-ex-hora">Hora de extracción</label>
+                <input type="text" id="lac-ex-hora" name="hora_extraccion"
+                       placeholder="HH:MM" autocomplete="off" required>
+              </div>
+              <div class="lac-campo">
+                <label for="lac-ex-fecha">Fecha de extracción</label>
+                <input type="text" id="lac-ex-fecha" name="fecha_extraccion"
+                       placeholder="DD/MM/AAAA" autocomplete="off">
+              </div>
+              <div class="lac-campo">
+                <label for="lac-ex-notas">Notas (opcional)</label>
+                <input type="text" id="lac-ex-notas" name="notas" maxlength="200">
+              </div>
+            </div>
+            <button type="submit" class="lac-btn-block" id="lac-ex-guardar">Guardar</button>
+            <div class="lac-help" id="lac-ex-hint"></div>
+          </form>
