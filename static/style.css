@@ -6838,13 +6838,14 @@ body:has(.home-page) .contenido-principal {
 }
 
 /* ── Grid de tarjetas ── */
-/* Mobile (default): 2 columnas compactas — Gastos (span 2), Rutina (span 2),
-   Lactancia | Calendario. Fila 1 (Gastos) = alto exacto de su contenido (la
-   tabla compacta + botón entran hasta en 375×667); filas 2-3 se reparten el
-   resto 1 : 1.2 (Rutina scrollea adentro; la fila de Lactancia|Calendario
-   lleva algo más para que el mini-mes no quede aplastado). Con dos filas
-   max-content el grid repartía el sobrante en partes IGUALES y aplastaba la
-   fila 3 (body de 71px en iPhone SE). */
+/* Mobile (default): 2 columnas compactas, orden del DOM — barra Gastos
+   (span 2, solo el botón ＋), Saldos (span 2, tabla compacta), Rutina
+   (span 2), Lactancia | Calendario. Filas 1-2 = alto exacto de su contenido
+   (barra + tabla entran hasta en 375×667); filas 3-4 se reparten el resto
+   1 : 1.35 (Rutina scrollea adentro; la fila de Lactancia|Calendario lleva
+   algo más para que el mini-mes no quede aplastado — con filas max-content
+   de más el grid repartía el sobrante en partes IGUALES y aplastaba la
+   última fila en iPhone SE). */
 .home-page {
   flex: 1 1 auto;
   min-width: 0;
@@ -6852,10 +6853,11 @@ body:has(.home-page) .contenido-principal {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: max-content minmax(110px, 1fr) minmax(150px, 1.35fr);
+  grid-template-rows: max-content max-content minmax(110px, 1fr) minmax(150px, 1.35fr);
 }
 
 .home-card--gastos { grid-column: span 2; }
+.home-card--saldos { grid-column: span 2; }
 .home-card--rutina { grid-column: span 2; }
 
 /* ── Tarjeta de módulo ── */
@@ -6908,39 +6910,44 @@ body:has(.home-page) .contenido-principal {
   .home-card-link-modulo { display: none; }
 }
 
-/* ── Tabla de saldos compacta (tarjeta Gastos) ── */
-/* El partial _tarjeta_saldos_mini.html llega SIN el wrapper .tarjeta-saldos
-   (eso es de /gastos): sin esto caía al estilo global de .tabla-saldos
-   (paddings de 1rem, fuente 1.1rem → 401px de ancho natural, desbordaba el
-   body en mobile). Misma receta que .tarjeta-saldos: table-layout fixed +
-   ancho fijo solo en la columna de nombres. */
-.home-card--gastos .tabla-saldos {
-  width: 100%;
-  table-layout: fixed;
-  margin-bottom: 0;
+/* ── Tarjeta Saldos (partial completo _tarjeta_saldos.html) ── */
+/* El partial llega CON su wrapper .tarjeta-saldos (el card de /gastos, que
+   además ya compacta la tabla: table-layout fixed + fuentes cqi): acá la
+   tarjeta la da .home-card, así que se neutraliza el chrome del wrapper
+   pero se conserva su container-type (los cqi miden el ancho real). */
+.home-card--saldos .tarjeta-saldos {
+  padding: 0;
   box-shadow: none;
+  border-left: none;
   border-radius: 0;
 }
 
-.home-card--gastos .tabla-saldos col.col-saldo-label { width: 3.4rem; }
+/* Título del partial al tamaño de los .home-card-titulo del home */
+.home-card--saldos .carga-rapida-titulo { font-size: 0.95rem; }
 
-.home-card--gastos .tabla-saldos thead th {
-  padding: 0.3rem 0.35rem;
-  font-size: 0.8rem;
-  white-space: nowrap;
-}
+/* Mobile <900px: tabla compacta SIN gauges y SIN selector de fecha — misma
+   vista que tenía la tarjeta Gastos del home (valores de la vieja regla
+   .home-card--gastos .tabla-saldos). Scoped al home: /gastos no cambia. */
+@media (max-width: 899px) {
+  .home-card--saldos .saldos-fecha-control,
+  .home-card--saldos .gauges-saldos { display: none; }
 
-.home-card--gastos .tabla-saldos tbody th.saldo-persona-label {
-  padding: 0.4rem;
-  font-size: 0.82rem;
-}
+  .home-card--saldos .tabla-saldos col.col-saldo-label { width: 3.4rem; }
 
-.home-card--gastos .tabla-saldos tbody td.saldo-monto {
-  padding: 0.4rem 0.45rem;
-  font-size: 0.95rem;
-  white-space: nowrap;
-  overflow: hidden;          /* valor extremo: no empuja la celda */
-  text-overflow: ellipsis;
+  .home-card--saldos .tabla-saldos thead th {
+    padding: 0.3rem 0.35rem;
+    font-size: 0.8rem;
+  }
+
+  .home-card--saldos .tabla-saldos tbody th.saldo-persona-label {
+    padding: 0.4rem;
+    font-size: 0.82rem;
+  }
+
+  .home-card--saldos .tabla-saldos tbody td.saldo-monto {
+    padding: 0.4rem 0.45rem;
+    font-size: 0.95rem;
+  }
 }
 
 /* Cuerpo: única zona que scrollea si el contenido no entra */
@@ -6956,12 +6963,22 @@ body:has(.home-page) .contenido-principal {
   font-size: 0.85rem;
 }
 
-/* ── Botón mobile "＋ Nuevo movimiento" (abre el bottom-sheet) ── */
+/* ── Botones mobile ＋ (abren el bottom-sheet de su tarjeta) ── */
+/* Van ARRIBA del contenido de su tarjeta (Lactancia: botón sobre las
+   listas, espejo del form inline de desktop) → el margen va abajo. */
 .home-btn-nuevo {
   display: block;
   width: 100%;
-  margin-top: 0.6rem;
+  margin-bottom: 0.6rem;
   min-height: 44px;   /* touch target (solo existe <900px) */
+}
+
+/* Barra fina de Gastos en mobile: la tarjeta es SOLO el botón (head oculto,
+   sin margen colgando). El acceso al módulo queda en la sidebar. */
+@media (max-width: 899px) {
+  .home-card--gastos .home-card-head { display: none; }
+  .home-card--gastos .home-btn-nuevo { margin-bottom: 0; }
+  .home-card--gastos .home-card-body { padding: 0.55rem 0.8rem; }
 }
 
 /* ── Overlay del bottom-sheet (solo mobile) ── */
@@ -7340,23 +7357,30 @@ body:has(.home-page) .contenido-principal {
   color: var(--color-texto-muted);
 }
 
-/* ── Desktop ≥900px: grid 3 columnas × 2 filas, form inline ── */
+/* ── Desktop ≥900px: grid 3 col × 2 filas (grid-template-areas), forms inline ── */
 @media (min-width: 900px) {
-  /* col A: Gastos arriba / Rutina abajo; col B: Lactancia (2 filas);
-     col C: Calendario (2 filas). OJO con los mínimos: 320+280+280 + gaps +
+  /* col A: form de Gastos arriba / tarjeta Saldos completa abajo; col B:
+     Lactancia (2 filas, form arriba de las listas); col C: Rutina arriba /
+     Calendario abajo. OJO con los mínimos de columna: 320+280+280 + gaps +
      padding del main sumaba 936px → scroll horizontal justo en el
      breakpoint (900-935px). Con 300+260+260 entra desde 900. */
   .home-page {
     grid-template-columns: minmax(300px, 380px) minmax(260px, 1fr) minmax(260px, 1fr);
-    /* Fila 2 con piso de 180px: Rutina muestra ~2 personas aunque el form de
-       Gastos (fila 1, max-content) quiera todo el alto en pantallas bajas. */
+    /* Fila 1 minmax(0, max-content): toma el alto del form de Gastos pero
+       puede ceder (la tarjeta scrollea adentro). Fila 2 con piso de 180px:
+       la tarjeta Saldos muestra al menos título+tabla en pantallas bajas
+       (1366×700) y el resto scrollea adentro (patrón del home). */
     grid-template-rows: minmax(0, max-content) minmax(180px, 1fr);
+    grid-template-areas:
+      "gastos lactancia rutina"
+      "saldos lactancia calendario";
   }
 
-  .home-card--gastos     { grid-column: 1; grid-row: 1; }
-  .home-card--rutina     { grid-column: 1; grid-row: 2; }
-  .home-card--lactancia  { grid-column: 2; grid-row: 1 / span 2; }
-  .home-card--calendario { grid-column: 3; grid-row: 1 / span 2; }
+  .home-card--gastos     { grid-area: gastos; }
+  .home-card--saldos     { grid-area: saldos; }
+  .home-card--lactancia  { grid-area: lactancia; }
+  .home-card--rutina     { grid-area: rutina; }
+  .home-card--calendario { grid-area: calendario; }
 
   /* El form va inline dentro de la tarjeta: sin botón, sin overlay */
   .home-btn-nuevo { display: none; }
@@ -7377,4 +7401,64 @@ body:has(.home-page) .contenido-principal {
 
   /* El ✕ solo tiene sentido como bottom-sheet */
   .home-sheet-cerrar { display: none; }
+
+  /* El sheet ya no viene después de otro contenido: abre la tarjeta pegado
+     al head (Gastos: único contenido; Lactancia: arriba de las listas) →
+     sin borde separador arriba. */
+  .home-card--gastos .home-sheet,
+  .home-card--lactancia .home-sheet {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+  }
+
+  /* Separador form → listas en Lactancia (antes lo daba el border-top del
+     sheet, que iba debajo de las listas). */
+  .home-card--lactancia .home-lac-listas {
+    margin-top: 0.8rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--color-borde);
+  }
+
+  /* Compactación col A — el alto es finito (100dvh) y la columna reparte
+     form (fila 1) + saldos completa (fila 2). Todo scoped al home: /gastos
+     no cambia.
+     · Gastos: valores de la compactación .layout-desktop de /gastos +
+       inputs/extras un toque más cortos; el head del sheet se oculta
+       (duplicaba el head de la tarjeta y solo aporta el ✕ de mobile). */
+  .home-card--gastos .home-card-body { padding: 0.5rem 0.8rem; }
+  .home-card--gastos .home-sheet-head { display: none; }
+  .home-card--gastos .campo-rapido label { margin-bottom: 0.2rem; }
+  .home-card--gastos .form-fila { margin-bottom: 0.45rem; }
+  .home-card--gastos .campo-rapido input,
+  .home-card--gastos .campo-rapido select { padding: 0.35rem 0.6rem; }
+  .home-card--gastos .form-rapido-extras { padding-top: 0.3rem; }
+  .home-card--gastos .extra-cuotas-grupo { padding-top: 0.3rem; }
+  .home-card--gastos .btn-guardar-rapido {
+    padding: 0.5rem 1.3rem;
+    margin-top: 0.2rem;
+  }
+
+  /* · Saldos: paddings de tabla cortos, gauges de 62px y — CLAVE — fuentes
+       cqi re-aplicadas con especificidad ganadora: el clamp original de
+       .tarjeta-saldos (0,2,0) pierde contra .tabla-saldos td.saldo-monto
+       (0,2,2, fuente fija 1.1rem); en /gastos no se nota (col de 580px)
+       pero acá la columna mide 300-380px → los montos largos se truncaban
+       con ellipsis. */
+  .home-card--saldos .home-card-body { padding: 0.5rem 0.8rem 0.6rem; }
+  .home-card--saldos .tabla-saldos col.col-saldo-label { width: 3.2rem; }
+  .home-card--saldos .tabla-saldos thead th {
+    padding: 0.25rem 0.3rem;
+    font-size: clamp(0.7rem, 3cqi, 0.95rem);
+  }
+  .home-card--saldos .tabla-saldos tbody th.saldo-persona-label {
+    padding: 0.3rem 0.4rem;
+    font-size: clamp(0.7rem, 3cqi, 0.95rem);
+  }
+  .home-card--saldos .tabla-saldos tbody td.saldo-monto {
+    padding: 0.3rem 0.3rem;
+    font-size: clamp(0.65rem, 3.6cqi, 1.15rem);
+    letter-spacing: 0;   /* el 1px global desborda 16 chars en col angosta */
+  }
+  .home-card--saldos .gauges-saldos .gauge-svg { width: 62px; height: 62px; }
 }

@@ -1,12 +1,16 @@
 {# Página Inicio (/): home de la app, sin scroll de página en desktop NI mobile.
-   Grid de 4 tarjetas .home-card, TODAS funcionales — Gastos (saldos mini +
-   form de movimiento), Rutina (qué hace cada uno AHORA + qué viene después,
-   vía window.Rutina.hoyAhora() de rutina.js), Lactancia (listas
-   heladera/freezer-primera con "✓ Usada" + form de extracción compartido vía
-   _form_lactancia.html) y Calendario (mini mes + pendientes, 100%
-   server-render). Cada form existe UNA sola vez en el DOM (.home-sheet):
-   bloque normal en desktop ≥900px, bottom-sheet fijo en mobile (<900px, lo
-   abre el botón ＋ vía home.js). #}
+   Grid de 5 tarjetas .home-card, TODAS funcionales — Gastos (form de
+   movimiento), Saldos (tarjeta completa de /gastos vía _tarjeta_saldos.html:
+   título + selector de fecha + tabla + gauges), Rutina (qué hace cada uno
+   AHORA + qué viene después, vía window.Rutina.hoyAhora() de rutina.js),
+   Lactancia (form de extracción compartido vía _form_lactancia.html ARRIBA +
+   listas heladera/freezer-primera con "✓ Usada" debajo) y Calendario (mini
+   mes + pendientes, 100% server-render). Desktop ≥900px (grid-template-areas):
+   col A Gastos/Saldos, col B Lactancia (2 filas), col C Rutina/Calendario.
+   Mobile <900px (orden del DOM): barra Gastos, Saldos, Rutina (span 2 c/u),
+   Lactancia | Calendario. Cada form existe UNA sola vez en el DOM
+   (.home-sheet): bloque normal en desktop ≥900px, bottom-sheet fijo en
+   mobile (<900px, lo abre el botón ＋ vía home.js). #}
 
 {% extends 'base.html' %}
 
@@ -16,15 +20,15 @@
 
 <div class="home-page">
 
-  {# ── GASTOS — funcional: saldos mini + form de movimiento ──────────────── #}
+  {# ── GASTOS — funcional: form de movimiento ─────────────────────────────── #}
+  {# En mobile la tarjeta queda como barra fina: solo el botón ＋ (el head se
+     oculta por CSS; el form vive en el bottom-sheet). #}
   <section class="home-card home-card--gastos">
     <div class="home-card-head">
       <span class="home-card-titulo">💸 Gastos</span>
       <a class="home-card-link" href="{{ url_for('gastos') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
     </div>
     <div class="home-card-body">
-      {% include '_tarjeta_saldos_mini.html' %}
-
       {# Solo mobile: abre el bottom-sheet con el form #}
       <button type="button" class="btn btn-acento home-btn-nuevo" data-sheet="gastos">＋ Nuevo movimiento</button>
 
@@ -36,6 +40,17 @@
         </div>
         {% with form_modo = 'inline' %}{% include '_form_movimiento.html' %}{% endwith %}
       </div>
+    </div>
+  </section>
+
+  {# ── SALDOS — tarjeta completa compartida con /gastos ───────────────────── #}
+  {# El partial trae su propio header (título #saldos-titulo + date picker
+     #saldos-fecha con chip "Toda la base"), la tabla y los 3 gauges: acá no
+     va .home-card-head. En mobile <900px el CSS del home oculta el selector
+     de fecha y los gauges (queda la tabla compacta, como siempre). #}
+  <section class="home-card home-card--saldos">
+    <div class="home-card-body">
+      {% include '_tarjeta_saldos.html' %}
     </div>
   </section>
 
@@ -54,7 +69,7 @@
     </div>
   </section>
 
-  {# ── LACTANCIA — funcional: consumir partidas + cargar extracción ───────── #}
+  {# ── LACTANCIA — funcional: cargar extracción + consumir partidas ───────── #}
   {# Listas server-rendered (primer paint) desde lac_home; tras cada mutación
      AJAX home.js las re-renderiza espejando ESTE markup (window.LAC_HOME).
      Convenciones del módulo: "Extraída HH:MM · fecha" (hora primero),
@@ -68,9 +83,24 @@
     </div>
     <div class="home-card-body">
 
+      {# Solo mobile: abre el bottom-sheet con el form de extracción. Va ARRIBA
+         de las listas (igual que el form inline en desktop). #}
+      <button type="button" class="btn btn-acento home-btn-nuevo" data-sheet="lactancia">＋ Cargar</button>
+
+      {# Sheet del form: bloque normal en desktop (arriba de las listas),
+         bottom-sheet en mobile. El título interno del form (.lac-form-titulo)
+         se oculta por CSS: acá lo da .home-sheet-head. #}
+      <div class="home-sheet" id="home-sheet-lactancia">
+        <div class="home-sheet-head">
+          <span class="home-sheet-titulo">🥛 Nueva extracción</span>
+          <button type="button" class="home-sheet-cerrar" data-sheet-cerrar aria-label="Cerrar">✕</button>
+        </div>
+        {% include '_form_lactancia.html' %}
+      </div>
+
       {% set lac_meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
                           'jul', 'ago', 'sep', 'oct', 'nov', 'dic'] %}
-      <div id="home-lac-listas">
+      <div id="home-lac-listas" class="home-lac-listas">
 
         <div class="home-lac-sec">🥛 Heladera</div>
         {% for p in lac_home.heladera %}
@@ -120,19 +150,6 @@
 
       </div>{# /home-lac-listas #}
 
-      {# Solo mobile: abre el bottom-sheet con el form de extracción #}
-      <button type="button" class="btn btn-acento home-btn-nuevo" data-sheet="lactancia">＋ Cargar</button>
-
-      {# Sheet del form: bloque normal en desktop, bottom-sheet en mobile.
-         El título interno del form (.lac-form-titulo) se oculta por CSS:
-         acá lo da .home-sheet-head. #}
-      <div class="home-sheet" id="home-sheet-lactancia">
-        <div class="home-sheet-head">
-          <span class="home-sheet-titulo">🥛 Nueva extracción</span>
-          <button type="button" class="home-sheet-cerrar" data-sheet-cerrar aria-label="Cerrar">✕</button>
-        </div>
-        {% include '_form_lactancia.html' %}
-      </div>
     </div>
   </section>
 
