@@ -5,12 +5,18 @@
    AHORA + qué viene después, vía window.Rutina.hoyAhora() de rutina.js),
    Lactancia (form de extracción compartido vía _form_lactancia.html ARRIBA +
    listas heladera/freezer-primera con "✓ Usada" debajo) y Calendario (mini
-   mes + pendientes, 100% server-render). Desktop ≥900px (grid-template-areas):
-   col A Gastos/Saldos, col B Lactancia (2 filas), col C Rutina/Calendario.
-   Mobile <900px (orden del DOM): barra Gastos, Saldos, Rutina (span 2 c/u),
-   Lactancia | Calendario. Cada form existe UNA sola vez en el DOM
-   (.home-sheet): bloque normal en desktop ≥900px, bottom-sheet fijo en
-   mobile (<900px, lo abre el botón ＋ vía home.js). #}
+   mes + pendientes, 100% server-render). Rutina y Calendario están envueltas
+   en `.home-col-rutcal` (columna C): desktop la reparte en flex-column
+   (Rutina a su alto de contenido, Calendario se lleva el resto); mobile la
+   deshace con display:contents y usa `order` para el orden visual real
+   (ver detalle en el propio wrapper, más abajo). Desktop ≥900px
+   (grid-template-areas): col A Gastos/Saldos, col B Lactancia (2 filas),
+   col C wrapper Rutina/Calendario — 3 columnas de igual ancho.
+   Mobile <900px (orden visual forzado con `order`, no el del DOM): barra
+   Gastos, Saldos, Rutina (span 2 c/u), Lactancia | Calendario. Cada form
+   existe UNA sola vez en el DOM (.home-sheet): bloque normal en desktop
+   ≥900px, bottom-sheet fijo en mobile (<900px, lo abre el botón ＋ vía
+   home.js). #}
 
 {% extends 'base.html' %}
 
@@ -54,20 +60,90 @@
     </div>
   </section>
 
-  {# ── RUTINA — funcional: qué hace cada uno AHORA + qué viene después ────── #}
-  {# Contenedor vacío: lo llena initRutina() de home.js con los datos de
-     window.Rutina.hoyAhora() (rutina.js, cargado abajo con window.RUT_DATOS
-     = _rut_payload de HOY — mismo helper y mismo orden de scripts que
-     /rutina). Se re-renderiza cada 30 s (reloj vivo). #}
-  <section class="home-card home-card--rutina">
-    <div class="home-card-head">
-      <span class="home-card-titulo">⏰ Rutina</span>
-      <a class="home-card-link" href="{{ url_for('rutina') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
-    </div>
-    <div class="home-card-body">
-      <div id="home-rut-lista"></div>
-    </div>
-  </section>
+  {# ── RUTINA + CALENDARIO — wrapper de columna C, solo relevante en desktop ──
+     Desktop ≥900px: .home-col-rutcal es un solo grid-area (columna C) que por
+     dentro se reparte en flex-column: Rutina mide su propio contenido (no se
+     estira) y Calendario se lleva el resto del alto disponible. Mobile <900px:
+     el wrapper pasa a display:contents (se "desarma") y Rutina/Calendario
+     vuelven a ser ítems directos del grid de .home-page; el orden visual
+     original (Rutina span2, luego Lactancia|Calendario) se fuerza con `order`
+     en CSS porque el orden del DOM ya no alcanza (Calendario ahora vive junto
+     a Rutina, antes de Lactancia). #}
+  <div class="home-col-rutcal">
+
+    {# ── RUTINA — funcional: qué hace cada uno AHORA + qué viene después ──── #}
+    {# Contenedor vacío: lo llena initRutina() de home.js con los datos de
+       window.Rutina.hoyAhora() (rutina.js, cargado abajo con window.RUT_DATOS
+       = _rut_payload de HOY — mismo helper y mismo orden de scripts que
+       /rutina). Se re-renderiza cada 30 s (reloj vivo). #}
+    <section class="home-card home-card--rutina">
+      <div class="home-card-head">
+        <span class="home-card-titulo">⏰ Rutina</span>
+        <a class="home-card-link" href="{{ url_for('rutina') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
+      </div>
+      <div class="home-card-body">
+        <div id="home-rut-lista"></div>
+      </div>
+    </section>
+
+    {# ── CALENDARIO — mini mes + pendientes (100% server-render, SIN JS) ──── #}
+    {# Todo viene armado de _home_calendario_payload() (app.py): semanas del mes
+       (monthdayscalendar, 0 = celda vacía), dias = {dia: [estados]} ya con la
+       prioridad/tope de dotsDelDia() del módulo, y pendientes ordenadas como la
+       agenda de /calendario. Sin navegación de mes ni celdas clickeables (v1):
+       "Ver módulo →" cubre profundizar. home.js NO toca esta tarjeta. #}
+    <section class="home-card home-card--calendario">
+      <div class="home-card-head">
+        <span class="home-card-titulo">📅 Calendario</span>
+        <a class="home-card-link" href="{{ url_for('calendario') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
+      </div>
+      <div class="home-card-body">
+
+        <div class="home-cal-mes">{{ cal_home.mes_nombre }}</div>
+        <div class="home-cal-grid">
+          {% for d in ['L', 'M', 'X', 'J', 'V', 'S', 'D'] %}
+          <div class="home-cal-dow">{{ d }}</div>
+          {% endfor %}
+          {% for semana in cal_home.semanas %}
+            {% for dia in semana %}
+              {% if dia == 0 %}
+              <div class="home-cal-day is-vacio"></div>
+              {% else %}
+              <div class="home-cal-day{% if dia == cal_home.hoy %} is-hoy{% endif %}">
+                <span class="home-cal-num">{{ dia }}</span>
+                {# El contenedor de puntos va SIEMPRE (aunque vacío): min-height
+                   en CSS mantiene las filas parejas #}
+                <span class="home-cal-dots">
+                  {%- for est in cal_home.dias.get(dia, []) -%}
+                  <span class="home-cal-dot home-cal-d-{{ est }}"></span>
+                  {%- endfor -%}
+                </span>
+              </div>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
+
+        <div class="home-cal-sec">Pendientes</div>
+        {% for p in cal_home.pendientes %}
+        <div class="home-cal-item is-{{ p.estado }}">
+          <span class="home-cal-nombre">{{ p.nombre }}</span>
+          <span class="home-cal-venc t-{{ p.estado }}">
+            {%- if p.dias_restantes == 0 %}Vence hoy
+            {%- elif p.dias_restantes == 1 %}Vence mañana
+            {%- elif p.dias_restantes > 1 %}Vence en {{ p.dias_restantes }} días
+            {%- elif p.dias_restantes == -1 %}Venció ayer
+            {%- else %}Venció hace {{ -p.dias_restantes }} días{% endif -%}
+          </span>
+        </div>
+        {% else %}
+        <p class="home-cal-vacio">Nada pendiente.</p>
+        {% endfor %}
+
+      </div>
+    </section>
+
+  </div>{# /home-col-rutcal #}
 
   {# ── LACTANCIA — funcional: cargar extracción + consumir partidas ───────── #}
   {# Listas server-rendered (primer paint) desde lac_home; tras cada mutación
@@ -149,63 +225,6 @@
         {% endif %}
 
       </div>{# /home-lac-listas #}
-
-    </div>
-  </section>
-
-  {# ── CALENDARIO — mini mes + pendientes (100% server-render, SIN JS) ────── #}
-  {# Todo viene armado de _home_calendario_payload() (app.py): semanas del mes
-     (monthdayscalendar, 0 = celda vacía), dias = {dia: [estados]} ya con la
-     prioridad/tope de dotsDelDia() del módulo, y pendientes ordenadas como la
-     agenda de /calendario. Sin navegación de mes ni celdas clickeables (v1):
-     "Ver módulo →" cubre profundizar. home.js NO toca esta tarjeta. #}
-  <section class="home-card home-card--calendario">
-    <div class="home-card-head">
-      <span class="home-card-titulo">📅 Calendario</span>
-      <a class="home-card-link" href="{{ url_for('calendario') }}">Ver <span class="home-card-link-modulo">módulo</span> →</a>
-    </div>
-    <div class="home-card-body">
-
-      <div class="home-cal-mes">{{ cal_home.mes_nombre }}</div>
-      <div class="home-cal-grid">
-        {% for d in ['L', 'M', 'X', 'J', 'V', 'S', 'D'] %}
-        <div class="home-cal-dow">{{ d }}</div>
-        {% endfor %}
-        {% for semana in cal_home.semanas %}
-          {% for dia in semana %}
-            {% if dia == 0 %}
-            <div class="home-cal-day is-vacio"></div>
-            {% else %}
-            <div class="home-cal-day{% if dia == cal_home.hoy %} is-hoy{% endif %}">
-              <span class="home-cal-num">{{ dia }}</span>
-              {# El contenedor de puntos va SIEMPRE (aunque vacío): min-height
-                 en CSS mantiene las filas parejas #}
-              <span class="home-cal-dots">
-                {%- for est in cal_home.dias.get(dia, []) -%}
-                <span class="home-cal-dot home-cal-d-{{ est }}"></span>
-                {%- endfor -%}
-              </span>
-            </div>
-            {% endif %}
-          {% endfor %}
-        {% endfor %}
-      </div>
-
-      <div class="home-cal-sec">Pendientes</div>
-      {% for p in cal_home.pendientes %}
-      <div class="home-cal-item is-{{ p.estado }}">
-        <span class="home-cal-nombre">{{ p.nombre }}</span>
-        <span class="home-cal-venc t-{{ p.estado }}">
-          {%- if p.dias_restantes == 0 %}Vence hoy
-          {%- elif p.dias_restantes == 1 %}Vence mañana
-          {%- elif p.dias_restantes > 1 %}Vence en {{ p.dias_restantes }} días
-          {%- elif p.dias_restantes == -1 %}Venció ayer
-          {%- else %}Venció hace {{ -p.dias_restantes }} días{% endif -%}
-        </span>
-      </div>
-      {% else %}
-      <p class="home-cal-vacio">Nada pendiente.</p>
-      {% endfor %}
 
     </div>
   </section>

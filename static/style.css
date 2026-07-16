@@ -6921,6 +6921,16 @@ body:has(.home-page) .contenido-principal {
 .home-card--saldos { grid-column: span 2; }
 .home-card--rutina { grid-column: span 2; }
 
+/* .home-col-rutcal (wrapper desktop de Rutina+Calendario, ver sección propia
+   más abajo): en mobile se "desarma" con display:contents — Rutina y
+   Calendario vuelven a ser ítems directos del grid y siguen el auto-flow de
+   siempre. Como Calendario ahora vive en el DOM junto a Rutina (antes de
+   Lactancia), se le da order:1 para que el auto-placement lo siga colocando
+   DESPUÉS de Lactancia (fila 4, col 2) — el resto de las tarjetas quedan en
+   order:0 por default, así que el orden visual real no cambia. */
+.home-col-rutcal { display: contents; }
+.home-card--calendario { order: 1; }
+
 /* ── Tarjeta de módulo ── */
 .home-card {
   display: flex;
@@ -7420,28 +7430,49 @@ body:has(.home-page) .contenido-principal {
 
 /* ── Desktop ≥900px: grid 3 col × 2 filas (grid-template-areas), forms inline ── */
 @media (min-width: 900px) {
-  /* col A: form de Gastos arriba / tarjeta Saldos completa abajo; col B:
-     Lactancia (2 filas, form arriba de las listas); col C: Rutina arriba /
-     Calendario abajo. OJO con los mínimos de columna: 320+280+280 + gaps +
-     padding del main sumaba 936px → scroll horizontal justo en el
-     breakpoint (900-935px). Con 300+260+260 entra desde 900. */
+  /* 3 columnas de igual ancho (1/3 de pantalla c/u, pedido 2026-07-15).
+     minmax(0, 1fr) en vez de 1fr a secas: evita que el contenido intrínseco
+     (inputs del form de Gastos, etc.) empuje la columna más allá de su
+     tercio y meta scroll horizontal. */
   .home-page {
-    grid-template-columns: minmax(300px, 380px) minmax(260px, 1fr) minmax(260px, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     /* Fila 1 minmax(0, max-content): toma el alto del form de Gastos pero
        puede ceder (la tarjeta scrollea adentro). Fila 2 con piso de 180px:
        la tarjeta Saldos muestra al menos título+tabla en pantallas bajas
-       (1366×700) y el resto scrollea adentro (patrón del home). */
+       (1366×700) y el resto scrollea adentro (patrón del home). Col C
+       (rutinacal) es un solo grid-area que abarca las 2 filas: por dentro
+       la reparte .home-col-rutcal en flex-column (ver esa sección) para que
+       Rutina no se estire a la altura de la fila 1 (dejaba espacio en
+       blanco bajo las tarjetas "ahora") y Calendario se lleve el resto. */
     grid-template-rows: minmax(0, max-content) minmax(180px, 1fr);
     grid-template-areas:
-      "gastos lactancia rutina"
-      "saldos lactancia calendario";
+      "gastos lactancia rutinacal"
+      "saldos lactancia rutinacal";
   }
 
   .home-card--gastos     { grid-area: gastos; }
   .home-card--saldos     { grid-area: saldos; }
   .home-card--lactancia  { grid-area: lactancia; }
-  .home-card--rutina     { grid-area: rutina; }
-  .home-card--calendario { grid-area: calendario; }
+
+  /* Col C: Rutina mide su propio contenido (flex 0 0 auto, sin blanco
+     debajo de las tarjetas "ahora"); Calendario se lleva TODO el resto del
+     alto disponible en la columna (flex 1 1 auto). */
+  .home-col-rutcal {
+    grid-area: rutinacal;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: 0.75rem;
+  }
+
+  .home-col-rutcal .home-card--rutina {
+    flex: 0 0 auto;
+  }
+
+  .home-col-rutcal .home-card--calendario {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 
   /* El form va inline dentro de la tarjeta: sin botón, sin overlay */
   .home-btn-nuevo { display: none; }
@@ -7521,5 +7552,30 @@ body:has(.home-page) .contenido-principal {
     font-size: clamp(0.65rem, 3.6cqi, 1.15rem);
     letter-spacing: 0;   /* el 1px global desborda 16 chars en col angosta */
   }
-  .home-card--saldos .gauges-saldos .gauge-svg { width: 62px; height: 62px; }
+  /* Con las 3 columnas iguales la tarjeta Saldos gana bastante ancho: los
+     gauges vuelven cerca de su tamaño de origen (75px) en vez de los 62px
+     que hacían falta en la columna angosta de 300-380px de antes. */
+  .home-card--saldos .gauges-saldos .gauge-svg { width: 72px; height: 72px; }
+
+  /* Se eliminan los % de la leyenda (pedido 2026-07-15: quedaban muy
+     amontonados en la columna angosta) — el dot + nombre alcanza para
+     identificar a quién corresponde cada arco; el color ya lo dice. Con el
+     texto más corto, centrado vertical con el gauge en vez de arriba. */
+  .home-card--saldos .gauges-saldos { align-items: center; }
+  .home-card--saldos .gauge-legend-pct { display: none; }
+
+  /* · Calendario: con el wrapper .home-col-rutcal la tarjeta se lleva TODO
+       el resto del alto de la columna (antes quedaba acotada a la fila 2 y
+       el mini-mes se veía aplastado) — se agranda la grilla para aprovechar
+       ese alto en vez de dejarlo en blanco. */
+  .home-card--calendario .home-cal-mes { font-size: 0.88rem; }
+  .home-card--calendario .home-cal-grid { gap: 4px; }
+  .home-card--calendario .home-cal-dow { font-size: 0.68rem; }
+  .home-card--calendario .home-cal-day {
+    gap: 3px;
+    padding: 5px 0 7px;
+    font-size: 0.8rem;
+  }
+  .home-card--calendario .home-cal-dots { min-height: 6px; }
+  .home-card--calendario .home-cal-dot { width: 6px; height: 6px; }
 }
