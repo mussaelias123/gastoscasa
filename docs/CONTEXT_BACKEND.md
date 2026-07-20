@@ -42,7 +42,7 @@
 | GET    | `/api/lactancia`          | `api_lactancia`       | JSON `{'ok': True, **_lac_payload()}`. |
 | POST   | `/api/lactancia/crear`    | `api_lactancia_crear` | Alta de partida (flujo estándar: heladera, con fecha/hora de extracción). Valida con `_lac_leer_form_alta`. |
 | POST   | `/api/lactancia/<id>/cerrar` | `api_lactancia_cerrar` | Marca `usada` \| `descartada` (form `motivo`). `fecha_cierre` vacía → hoy. |
-| POST   | `/api/lactancia/freezar`  | `api_lactancia_freezar` | Combina las heladeras tildadas (form `ids` CSV) en 1 partida de freezer: volumen sumado, extracción más vieja. Rechaza (400) si alguna no es freezable (`_lac_freezable`: vencida). Sin tope de horas — `freezar_hasta_horas` solo define el tildado por defecto del checkbox (`_lac_freezar_reciente`), no bloquea. |
+| POST   | `/api/lactancia/freezar`  | `api_lactancia_freezar` | Combina las heladeras tildadas (form `ids` CSV) en 1 partida de freezer: volumen sumado, extracción más vieja. Una partida VENCIDA se puede freezar igual, pero SOLO con `confirmar_vencidas=1` en el form (la usuaria declara que se pasó al freezer antes de vencerse y se cargó tarde en la app); sin ese flag, 400. Sin tope de horas. |
 | POST   | `/api/lactancia/<id>/reabrir` | `api_lactancia_reabrir` | Deshace un cierre. En una freezada, deshace la combinación COMPLETA (falla si la hija ya se cerró). |
 | POST   | `/api/lactancia/<id>/editar` | `api_lactancia_editar` | Corrige volumen/notas/fecha/hora (ambas ubicaciones). |
 | POST   | `/api/lactancia/<id>/eliminar` | `api_lactancia_eliminar` | Borrado definitivo. |

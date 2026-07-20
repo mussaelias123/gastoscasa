@@ -1503,7 +1503,13 @@ def api_lactancia_freezar():
         if not ids:
             raise ValueError("Tildá al menos una partida de heladera para freezar.")
 
+        # Una partida VENCIDA igual se puede freezar, pero solo si la usuaria
+        # confirma que en la realidad se pasó al freezer antes de vencerse
+        # (caso típico: se freezó a término y se cargó en la app más tarde).
+        # Sin esa confirmación explícita, se rechaza como antes.
+        confirmar_vencidas = request.form.get('confirmar_vencidas') == '1'
         partidas = []
+        vencidas = 0
         for pid in ids:
             row = database.obtener_partida_lactancia(pid)
             if row is None:
@@ -1514,8 +1520,14 @@ def api_lactancia_freezar():
             if p['motivo_cierre']:
                 raise ValueError("Una de las partidas tildadas ya está cerrada.")
             if not _lac_freezable(p, params, ahora):
-                raise ValueError("Una de las partidas tildadas ya está vencida: no se puede freezar.")
+                vencidas += 1   # acá solo puede ser por vencida (lo demás ya se validó)
             partidas.append(p)
+
+        if vencidas and not confirmar_vencidas:
+            raise ValueError(
+                "Hay partidas vencidas entre las tildadas: confirmá que se pasaron "
+                "al freezer antes de vencerse para poder freezarlas."
+            )
 
         volumen_ml = sum(p['volumen_ml'] for p in partidas)
         if volumen_ml > 2000:

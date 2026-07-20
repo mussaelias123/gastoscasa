@@ -192,6 +192,12 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
     </div>
     <div class="lac-modal-body">
       <p class="lac-confirm-msg" id="lac-confirm-msg"></p>
+      {# Checkbox obligatorio (solo en acciones que lo piden, ej. freezar
+         partidas vencidas): sin tildar, el botón de confirmar queda inhabilitado. #}
+      <label class="lac-confirm-check" id="lac-confirm-check-wrap" hidden>
+        <input type="checkbox" id="lac-confirm-check">
+        <span id="lac-confirm-check-txt"></span>
+      </label>
     </div>
     <div class="lac-modal-foot">
       <button type="button" class="btn btn-secundario" data-lac-cerrar-modal>Volver</button>

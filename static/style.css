@@ -4914,10 +4914,13 @@ body.has-dev-banner .settings-aside {
   accent-color: var(--color-acento);
 }
 
-/* Partida vencida: ya no se puede freezar, casilla bloqueada. Se ve tenue y
-   no acepta click. */
+/* Casilla deshabilitada (ya no se usa para vencidas, se deja por si acaso) */
 .lac-check.is-off { cursor: not-allowed; }
 .lac-check .lac-check-input:disabled { cursor: not-allowed; opacity: 0.4; }
+
+/* Partida VENCIDA: se puede tildar igual (se freezó a término y se cargó
+   tarde), pero se marca en alerta — al freezar se pide confirmación. */
+.lac-check--venc .lac-check-input { accent-color: var(--color-alerta); }
 
 .lac-btn-block {
   display: block;
@@ -5264,6 +5267,36 @@ body.has-dev-banner .settings-aside {
 }
 
 .lac-confirm-msg { margin: 0; color: var(--color-texto-muted); line-height: 1.5; }
+
+/* Checkbox obligatorio del modal de confirmación (ej. freezar una vencida):
+   mientras no se tilde, el botón de confirmar queda deshabilitado. */
+.lac-confirm-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-alerta);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-alerta) 10%, var(--color-superficie));
+  font-size: 0.85rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.lac-confirm-check[hidden] { display: none; }
+
+.lac-confirm-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--color-alerta);
+}
+
+#lac-confirm-si:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Hoja "Más opciones": botones grandes apilados (táctil, mobile-first) */
 .lac-menu { display: flex; flex-direction: column; gap: 0.5rem; }
