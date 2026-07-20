@@ -317,11 +317,11 @@ opciones" (⋯) de cada partida.
         return p.notas ? '<div class="lac-item-notas">📝 ' + esc(p.notas) + '</div>' : '';
     }
 
-    // "Extraída 14:30 h · 10 jul" — hora (con "h") primero, fecha después
-    // (pedido de Mari 2026-07-11 + "h" 2026-07-13; sin hora → solo la fecha)
+    // "Extraída 10 jul · 14:30 h" — FECHA primero, hora después (pedido de
+    // Mari 2026-07-14; sin hora cargada queda solo la fecha)
     function extraidaTxt(p) {
-        return 'Extraída ' + (p.hora_extraccion ? p.hora_extraccion + ' h · ' : '') +
-            fmtFechaCorta(p.fecha_extraccion);
+        return 'Extraída ' + fmtFechaCorta(p.fecha_extraccion) +
+            (p.hora_extraccion ? ' · ' + p.hora_extraccion + ' h' : '');
     }
 
     function itemFreezer(p) {
@@ -344,16 +344,17 @@ opciones" (⋯) de cada partida.
 
     // El checkbox marca qué partidas entran en la próxima freezada (botón ⬆).
     // SIEMPRE arranca destildado (pedido de Mari 2026-07-13): la usuaria tilda
-    // a mano las que quiere mandar al freezer. Solo se bloquea si la partida
-    // está vencida (p.freezable=false del server).
+    // a mano las que quiere mandar al freezer. Una partida VENCIDA también se
+    // puede tildar (pedido de Mari 2026-07-14: se freezó a término pero se
+    // cargó tarde en la app) — se marca en ámbar y al freezar pide confirmar
+    // que se pasó al freezer antes de vencerse.
     function checkHeladera(p) {
-        if (!p.freezable) {
-            return '<label class="lac-check is-off" title="Vencida: no se puede pasar al freezer">' +
-                '<input type="checkbox" class="lac-check-input" value="' + p.id + '" disabled>' +
-            '</label>';
-        }
-        return '<label class="lac-check" title="Tildala para mandarla al freezer con ⬆">' +
-            '<input type="checkbox" class="lac-check-input" value="' + p.id + '">' +
+        var venc = !p.freezable;
+        return '<label class="lac-check' + (venc ? ' lac-check--venc' : '') + '" title="' +
+                (venc ? 'Vencida: se puede freezar igual, pero vas a tener que confirmar que se pasó al freezer antes de vencerse'
+                      : 'Tildala para mandarla al freezer con ⬆') + '">' +
+            '<input type="checkbox" class="lac-check-input" value="' + p.id + '"' +
+                (venc ? ' data-venc="1"' : '') + '>' +
         '</label>';
     }
 
@@ -508,8 +509,27 @@ opciones" (⋯) de cada partida.
             toast('⚠ Tildá al menos una partida de heladera.', 'error');
             return;
         }
+        // Si hay vencidas entre las tildadas, hay que declarar que se pasaron
+        // al freezer antes de vencerse (checkbox obligatorio del modal).
+        var vencidas = [].filter.call(checks, function (c) { return c.dataset.venc === '1'; }).length;
+        if (vencidas) {
+            abrirConfirm({
+                emoji: '❄️', titulo: 'Freezar partidas vencidas', peligro: false, boton: 'Freezar',
+                msg: vencidas === 1
+                    ? 'Una de las partidas tildadas figura vencida en la app.'
+                    : vencidas + ' de las partidas tildadas figuran vencidas en la app.',
+                check: 'Confirmo que se pasó al freezer ANTES de vencerse (se cargó tarde en la app).',
+                accion: function () { freezarPost(ids, true); }
+            });
+            return;
+        }
+        freezarPost(ids, false);
+    }
+
+    function freezarPost(ids, confirmarVencidas) {
         var params = new URLSearchParams();
         params.append('ids', ids.join(','));
+        if (confirmarVencidas) params.append('confirmar_vencidas', '1');
         var primero = parseInt(ids[0], 10);
         var btn = $('lac-btn-freezar');
         btn.disabled = true;
@@ -572,6 +592,9 @@ opciones" (⋯) de cada partida.
     // Mari 2026-07-13). `confirmAccion` es la función que corre al confirmar.
     var confirmAccion = null;
 
+    // opts.check (opcional): texto de un checkbox OBLIGATORIO — el botón de
+    // confirmar queda deshabilitado hasta tildarlo (ej. freezar una vencida:
+    // hay que declarar que se pasó al freezer antes de vencerse).
     function abrirConfirm(opts) {
         $('lac-confirm-emoji').textContent = opts.emoji || '⚠️';
         $('lac-confirm-titulo').textContent = opts.titulo;
@@ -579,6 +602,19 @@ opciones" (⋯) de cada partida.
         var btn = $('lac-confirm-si');
         btn.textContent = opts.boton;
         btn.className = opts.peligro ? 'btn-peligro' : 'btn-acento';
+
+        var wrap = $('lac-confirm-check-wrap');
+        var chk = $('lac-confirm-check');
+        chk.checked = false;
+        if (opts.check) {
+            $('lac-confirm-check-txt').textContent = opts.check;
+            wrap.hidden = false;
+            btn.disabled = true;
+        } else {
+            wrap.hidden = true;
+            btn.disabled = false;
+        }
+
         confirmAccion = opts.accion;
         $('lac-modal-confirm').hidden = false;
     }
@@ -708,6 +744,10 @@ opciones" (⋯) de cada partida.
         $('lac-cf-guardar').addEventListener('click', guardarCierre);
         $('lac-ed-guardar').addEventListener('click', guardarEditor);
         $('lac-confirm-si').addEventListener('click', confirmarSi);
+        // Checkbox obligatorio del modal: habilita/inhabilita el botón confirmar
+        $('lac-confirm-check').addEventListener('change', function () {
+            $('lac-confirm-si').disabled = !this.checked;
+        });
         $('lac-btn-freezar').addEventListener('click', freezarSeleccionadas);
 
         // Hoja "Más opciones" → acciones sobre masPartidaId

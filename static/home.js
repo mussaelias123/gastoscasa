@@ -251,8 +251,8 @@
 
         var meta = document.createElement('div');
         meta.className = 'home-lac-meta';
-        meta.textContent = 'Extraída ' + (p.hora_extraccion ? p.hora_extraccion + ' h · ' : '') +
-            lacFechaCorta(p.fecha_extraccion);
+        meta.textContent = 'Extraída ' + lacFechaCorta(p.fecha_extraccion) +
+            (p.hora_extraccion ? ' · ' + p.hora_extraccion + ' h' : '');
 
         info.appendChild(top);
         info.appendChild(meta);
