@@ -37,6 +37,8 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - Cada entorno (DEV / PROD) tiene su propio `config.json` en la carpeta del clon. No existe `--config`.
 - `config.json` está gitignored: DEV y PROD usan sus propios valores sin interferencia.
 - Banner naranja "MODO DESARROLLO" si `app_name` contiene `DEV`.
+- **Reiniciar DEV** (los cambios de rutas no aplican hasta reiniciar; al ser proceso manual, no se relanza solo): matar el `python.exe` que escucha el puerto 5050 (`Get-NetTCPConnection -LocalPort 5050`) y relanzar `python app.py` desde `E:\FondoDev`.
+- **Gotcha — server DEV en background (Windows)**: lanzarlo detached (`Start-Process python app.py -WindowStyle Hidden`) SIN `-RedirectStandardOutput/-RedirectStandardError` cuelga los POST AJAX del navegador para siempre (curl responde normal — el buffer de stdout sin destino bloquea werkzeug). SIEMPRE redirigir ambos streams a archivo. Además: si la carpeta destino de los redirects no existe (`logs/` está gitignoreada y en DEV puede faltar), `Start-Process` devuelve PID pero python muere al instante sin error — crearla antes y confirmar con un request al puerto. Una pestaña de Chrome con fetches colgados de un server matado queda "zombie": usar pestaña nueva.
 
 ## ngrok
 - Túnel se inicia en `iniciar_ngrok(port, authtoken, domain)` desde `app.py`.
@@ -58,8 +60,9 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - NSSM redirige la salida del proceso a `logs/`:
   - `AppStdout` → `logs/` (stdout).
   - `AppStderr` → `logs/` (stderr).
-- Rotación activada en NSSM: `AppRotateFiles 1`, `AppRotateBytes 1048576` (1 MB).
-- `logs/` está en `.gitignore` (no se versiona).
+- Rotación activada en NSSM: `AppRotateFiles 1`, `AppRotateOnline 1`, `AppRotateBytes 1048576` (1 MB).
+- `logs/` está en `.gitignore` (no se versiona). En DEV no hay archivo: los logs van a la consola del `python app.py`.
+- NO introducir el módulo `logging` de Python salvo decisión explícita del usuario — `logutil.log()` simple es la convención.
 - En código se loguea con `log()` de `logutil.py` (NO `print()` directo). Formato de línea:
   `AA/MM/DD-HH:MM:SS | OK:/AVISO:/ERROR: mensaje` — el timestamp lo agrega `log()`,
   el mensaje no debe traer fecha/hora propia. Ej: `26/06/11-14:30:55 | OK: Login exitoso — Elías (...)`.
