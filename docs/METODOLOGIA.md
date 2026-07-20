@@ -45,8 +45,18 @@ El contexto debe ser **un mapa**, no una copia del código.
 
 ## §3 Auditoría rápida
 - Cada `CONTEXT_*.md` debe seguir bajo 150 líneas. Si crece, partir.
-- `MEMORY.md` (memoria de Claude) NO reemplaza a estos docs. Son sistemas distintos.
 - Antes de empezar, escanear: `ls docs/CONTEXT_*.md` y leer solo el del dominio.
+
+## §3b Memoria de Claude vs docs del repo (regla 2026-07-19)
+
+El conocimiento del proyecto vive en el **REPO** (`CLAUDE.md` + `docs/CONTEXT_*.md` + este archivo), NUNCA en la memoria local de Claude (`~/.claude/projects/.../memory/`). Razones:
+- La memoria local NO viaja con el repo: los agentes de Mari no la ven, y otro entorno/máquina tampoco.
+- No tiene backup: se pierde con la instalación de Claude o con la máquina.
+
+Reglas:
+1. **Información del proyecto y cómo trabajar en él** → mantener actualizados los `CONTEXT_*.md` (tabla del §1). Si un agente aprende algo útil del proyecto, va al doc del dominio, no a la memoria.
+2. **Decisiones históricas** ("qué se hizo y cuándo") NO se guardan en ningún lado nuevo: la bitácora son los PRs y el git log.
+3. La memoria local de Claude queda solo para lo estrictamente de esta máquina/instalación (si es que hay algo); ante la duda, va al repo.
 
 ## §4 Cuando un sub-agente cierra una tarea
 Reportar siempre:
