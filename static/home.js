@@ -400,18 +400,64 @@
 
         // "✓ Usada" — delegación en el contenedor de listas (sobrevive los
         // re-renders). fecha_cierre vacía → hoy en el server.
+        // Un toque NO cierra la partida: primero pide confirmación en el modal
+        // #home-confirm (misma regla que /lactancia; pedido de Mari 2026-07-19).
+        var confirmOv = document.getElementById('home-confirm');
+        var confirmMsg = document.getElementById('home-confirm-msg');
+        var confirmSi = document.getElementById('home-confirm-si');
+        var pendiente = null;   // { id, btn }
+
+        function cerrarConfirm() {
+            if (confirmOv) confirmOv.hidden = true;
+            pendiente = null;
+        }
+
+        function buscarLac(id) {
+            var d = window.LAC_HOME || {};
+            var todas = (d.heladera || []).concat(d.freezer_primera ? [d.freezer_primera] : []);
+            for (var i = 0; i < todas.length; i++) {
+                if (todas[i].id === id) return todas[i];
+            }
+            return null;
+        }
+
         listas.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-lac-usar]');
             if (!btn) return;
             var id = parseInt(btn.getAttribute('data-lac-usar'), 10);
-            var params = new URLSearchParams();
-            params.append('motivo', 'usada');
-            params.append('fecha_cierre', '');
-            btn.disabled = true;
-            lacPost('/api/lactancia/' + id + '/cerrar', params, function () {
-                lacToast('✓ Partida marcada como usada.');
-            }, function () { btn.disabled = false; });
+            var p = buscarLac(id);
+            if (!confirmOv || !confirmMsg || !confirmSi) return;   // sin modal: no ejecutar a ciegas
+            confirmMsg.textContent = p
+                ? 'Se le dio a León: ' + p.volumen_ml + ' ml (extraída el ' +
+                  lacFechaCorta(p.fecha_extraccion) + '). Se cierra con fecha de hoy.'
+                : 'Se marca la partida como usada, con fecha de hoy.';
+            pendiente = { id: id, btn: btn };
+            confirmOv.hidden = false;
         });
+
+        if (confirmSi) {
+            confirmSi.addEventListener('click', function () {
+                if (!pendiente) return;
+                var id = pendiente.id, btn = pendiente.btn;
+                cerrarConfirm();
+                var params = new URLSearchParams();
+                params.append('motivo', 'usada');
+                params.append('fecha_cierre', '');
+                btn.disabled = true;
+                lacPost('/api/lactancia/' + id + '/cerrar', params, function () {
+                    lacToast('✓ Partida marcada como usada.');
+                }, function () { btn.disabled = false; });
+            });
+        }
+        ['home-confirm-no', 'home-confirm-x'].forEach(function (bid) {
+            var b = document.getElementById(bid);
+            if (b) b.addEventListener('click', cerrarConfirm);
+        });
+        if (confirmOv) {
+            confirmOv.addEventListener('click', function (e) {
+                if (e.target === confirmOv) cerrarConfirm();   // click en el fondo
+            });
+        }
     }
 
     if (document.readyState === 'loading') {

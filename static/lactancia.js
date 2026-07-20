@@ -523,7 +523,21 @@ opciones" (⋯) de cada partida.
             });
             return;
         }
-        freezarPost(ids, false);
+        // Caso normal (ninguna vencida): igual confirma, como el resto de las
+        // acciones que se concretan al toque (pedido de Mari 2026-07-19).
+        var vol = 0;
+        ids.forEach(function (id) {
+            var p = buscarPartida(parseInt(id, 10));
+            if (p) vol += p.volumen_ml;
+        });
+        abrirConfirm({
+            emoji: '❄️', titulo: 'Freezar al freezer', peligro: false, boton: 'Sí, freezar',
+            msg: 'Se combinan ' + ids.length +
+                (ids.length === 1 ? ' partida' : ' partidas') +
+                (vol ? ' (' + fmtMl(vol) + ')' : '') +
+                ' en UNA sola partida de freezer, con la fecha de extracción más vieja.',
+            accion: function () { freezarPost(ids, false); }
+        });
     }
 
     function freezarPost(ids, confirmarVencidas) {
@@ -662,6 +676,22 @@ opciones" (⋯) de cada partida.
     }
 
     // ── Reabrir desde el historial ───────────────────────────────────────────
+    // ↩ del historial: pide confirmación como el resto de las acciones que se
+    // concretan al toque (pedido de Mari 2026-07-19). En una freezada revierte
+    // la combinación COMPLETA, así que se avisa explícitamente.
+    function pedirReabrir(id) {
+        var p = buscarPartida(id);
+        if (!p) return;
+        var esFreezada = p.motivo_cierre === 'trasladada';
+        abrirConfirm({
+            emoji: '↩', titulo: 'Reabrir partida', peligro: false, boton: 'Sí, reabrir',
+            msg: 'Vuelve al stock ' + fmtMl(p.volumen_ml) +
+                ' (extraída el ' + fmtFecha(p.fecha_extraccion) + ')' +
+                (esFreezada ? '. Al ser una freezada, se deshace la combinación COMPLETA.' : '.'),
+            accion: function () { reabrir(id); }
+        });
+    }
+
     function reabrir(id) {
         postAccion('/api/lactancia/' + id + '/reabrir', new URLSearchParams(), function () {
             toast('↩ Partida reabierta: volvió al stock.', 'info');
@@ -777,7 +807,7 @@ opciones" (⋯) de cada partida.
             btn = e.target.closest('[data-lac-mas]');
             if (btn) { abrirMas(parseInt(btn.getAttribute('data-lac-mas'), 10)); return; }
             btn = e.target.closest('[data-lac-reabrir]');
-            if (btn) { reabrir(parseInt(btn.getAttribute('data-lac-reabrir'), 10)); return; }
+            if (btn) { pedirReabrir(parseInt(btn.getAttribute('data-lac-reabrir'), 10)); return; }
             btn = e.target.closest('[data-lac-eliminar]');
             if (btn) { abrirConfirmEliminar(parseInt(btn.getAttribute('data-lac-eliminar'), 10)); return; }
             btn = e.target.closest('[data-lac-cerrar-modal]');

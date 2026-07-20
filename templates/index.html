@@ -234,6 +234,26 @@
 {# Overlay del bottom-sheet (solo mobile; lo maneja home.js) #}
 <div class="home-overlay" id="home-overlay"></div>
 
+{# Confirmación de "✓ Usada" de la tarjeta Lactancia: ninguna acción que
+   cierre una partida se concreta al toque (misma regla que /lactancia).
+   Reusa las clases de modal del módulo (.lac-overlay/.lac-modal, globales
+   en style.css) para no duplicar estilos. Lo maneja home.js. #}
+<div class="lac-overlay" id="home-confirm" role="dialog" aria-modal="true" hidden>
+  <div class="lac-modal">
+    <div class="lac-modal-head">
+      <h3><span>✓</span><span>Marcar como usada</span></h3>
+      <button type="button" class="lac-x" id="home-confirm-x" aria-label="Cerrar">×</button>
+    </div>
+    <div class="lac-modal-body">
+      <p class="lac-confirm-msg" id="home-confirm-msg"></p>
+    </div>
+    <div class="lac-modal-foot">
+      <button type="button" class="btn btn-secundario" id="home-confirm-no">Volver</button>
+      <button type="button" class="btn-acento" id="home-confirm-si">Sí, usada</button>
+    </div>
+  </div>
+</div>
+
 {# Contenedor de notificaciones toast — los agrega JS dinámicamente #}
 <div class="toast-container" id="toast-container"></div>
 
