@@ -250,8 +250,9 @@ def inicializar_db():
         )
     ''')
     # ubicacion: 'freezer' | 'heladera'.
-    # cargada: timestamp ISO del servidor al insertar, INMUTABLE (fuente de
-    #          verdad del vencimiento de heladera: cargada + N horas).
+    # cargada: timestamp ISO del servidor al insertar, INMUTABLE. Solo
+    #          auditoría — el vencimiento (ambas ubicaciones) se calcula
+    #          desde fecha/hora de EXTRACCIÓN (issue #48).
     # hora_extraccion: 'HH:MM' (desempata FIFO; en heladera no se muestra).
     # motivo_cierre: NULL (abierta) | 'usada' | 'descartada' | 'trasladada'.
     # origen_id: en una heladera cerrada por traslado ('trasladada'), id de la
@@ -968,8 +969,8 @@ def agregar_partida_lactancia(ubicacion, fecha_extraccion, hora_extraccion, volu
     """Inserta una partida nueva y devuelve su id.
 
     `cargada` se setea SIEMPRE acá con el timestamp real del servidor (nunca
-    viene del caller): es la fuente de verdad del vencimiento de heladera y
-    no se recalcula ni se mueve jamás."""
+    viene del caller) y no se mueve jamás. Es solo auditoría: el vencimiento
+    se calcula desde fecha/hora de extracción (issue #48)."""
     conn = conectar()
     cursor = conn.cursor()
     ahora = _ahora_iso()

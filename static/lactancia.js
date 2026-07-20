@@ -426,7 +426,7 @@ opciones" (⋯) de cada partida.
         var hint = $('lac-ex-hint');
         if (hint && DATOS.params.heladera_horas) {
             hint.textContent = 'Va a la heladera y vence a las ' + DATOS.params.heladera_horas +
-                ' h de la carga. Lo que juntes lo freezás con el botón ⬆️ de Heladera.';
+                ' h de la extracción. Lo que juntes lo freezás con el botón ⬆️ de Heladera.';
         }
     }
 

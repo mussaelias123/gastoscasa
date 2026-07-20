@@ -307,20 +307,35 @@ def _lac_params(cfg=None):
     return params
 
 
+def _lac_extraccion_dt(p):
+    """Momento real de extracción (datetime): `fecha_extraccion` +
+    `hora_extraccion`. Sin hora (solo filas legacy: alta y editar la exigen),
+    cae a las 00:00 de ese día — el fallback conservador: nunca le regala
+    vida útil a la leche."""
+    fecha = datetime.strptime(str(p['fecha_extraccion']), '%Y-%m-%d')
+    hora = (p.get('hora_extraccion') or '').strip()
+    if hora:
+        h, m = hora.split(':')
+        return fecha.replace(hour=int(h), minute=int(m))
+    return fecha
+
+
 def _lac_vencimiento(p, params):
-    """Vencimiento (datetime) de una partida.
+    """Vencimiento (datetime) de una partida, SIEMPRE desde la extracción
+    real (la leche se degrada desde que se extrae, no desde que se carga en
+    la app — issue #48; `cargada` queda como metadato de auditoría).
 
     Freezer: extracción + N meses (clamp fin de mes vía _act_sumar_intervalo),
     al fin del día (23:59:59): la partida es usable el día que vence, igual
-    que el Excel (HOY() > vencimiento). Heladera: momento real de carga
-    (`cargada`, timestamp inmutable) + N horas — corre por timestamp, así que
-    cruza medianoche sin caso especial."""
+    que el Excel (HOY() > vencimiento). Heladera: extracción (fecha + hora) +
+    N horas — corre por timestamp, así que cruza medianoche sin caso
+    especial."""
     from datetime import time
     if p['ubicacion'] == 'freezer':
         extraccion = datetime.strptime(str(p['fecha_extraccion']), '%Y-%m-%d').date()
         venc_dia = _act_sumar_intervalo(extraccion, params['freezer_meses'], 'meses')
         return datetime.combine(venc_dia, time(23, 59, 59))
-    return datetime.fromisoformat(str(p['cargada'])) + timedelta(hours=params['heladera_horas'])
+    return _lac_extraccion_dt(p) + timedelta(hours=params['heladera_horas'])
 
 
 def _lac_estado(p, params, ahora):
@@ -340,8 +355,10 @@ def _lac_estado(p, params, ahora):
 
 
 def _lac_horas_en_heladera(p, ahora):
-    """Horas transcurridas desde que la partida entró a la heladera (`cargada`)."""
-    return (ahora - datetime.fromisoformat(str(p['cargada']))).total_seconds() / 3600
+    """Horas transcurridas desde la extracción (la leche entra a la heladera
+    al extraerse, no al cargarse en la app — mismo criterio que el
+    vencimiento, issue #48)."""
+    return (ahora - _lac_extraccion_dt(p)).total_seconds() / 3600
 
 
 def _lac_freezable(p, params, ahora):
@@ -449,21 +466,21 @@ def _lac_parsear_volumen(valor):
 
 
 def _lac_parsear_extraccion(form):
-    """Valida fecha (YYYY-MM-DD, no futura) y hora (HH:MM) de extracción de
-    una partida de freezer. Devuelve (fecha, hora). Lanza ValueError."""
-    from datetime import date
+    """Valida fecha (YYYY-MM-DD) y hora (HH:MM) de extracción. El momento
+    combinado fecha+hora no puede ser futuro (es la base del vencimiento,
+    issue #48). Devuelve (fecha, hora). Lanza ValueError."""
     fecha = (form.get('fecha_extraccion') or '').strip()
     try:
-        fecha_dt = datetime.strptime(fecha, '%Y-%m-%d').date()
+        datetime.strptime(fecha, '%Y-%m-%d')
     except ValueError:
         raise ValueError(f"Fecha de extracción inválida: {fecha}")
-    if fecha_dt > date.today():
-        raise ValueError("La fecha de extracción no puede ser futura.")
     hora = (form.get('hora_extraccion') or '').strip()
     try:
         datetime.strptime(hora, '%H:%M')
     except ValueError:
         raise ValueError(f"Hora de extracción inválida: {hora}")
+    if datetime.fromisoformat(f"{fecha}T{hora}") > datetime.now():
+        raise ValueError("La extracción (fecha + hora) no puede ser futura.")
     return fecha, hora
 
 
@@ -487,10 +504,10 @@ def _lac_leer_form_alta(form):
     database.agregar_partida_lactancia. Lanza ValueError.
 
     El flujo estándar es a heladera (toda extracción entra por ahí, con su
-    fecha/hora de extracción; el momento real de carga lo pone el servidor en
-    `cargada`, que sigue siendo la base del vencimiento de heladera). La hora
-    de extracción se guarda pero en heladera no se muestra; importa al
-    freezar la combinación (la más vieja define el vencimiento de freezer)."""
+    fecha/hora de extracción — base del vencimiento en AMBAS ubicaciones,
+    issue #48; el momento de carga lo pone el servidor en `cargada`, solo
+    auditoría). Al freezar la combinación, la extracción más vieja define el
+    vencimiento de freezer."""
     ubicacion = form.get('ubicacion', '')
     if ubicacion not in LAC_UBICACIONES:
         raise ValueError(f"Ubicación inválida: {ubicacion}")
@@ -1583,8 +1600,9 @@ def api_lactancia_editar(id):
 
         volumen_ml = _lac_parsear_volumen(request.form.get('volumen_ml'))
         notas = (request.form.get('notas') or '').strip()[:200]
-        # Fecha/hora de extracción editables en ambas ubicaciones (`cargada`,
-        # la base del vencimiento de heladera, sigue siendo inmutable).
+        # Fecha/hora de extracción editables en ambas ubicaciones — corregirlas
+        # recalcula el vencimiento (la extracción es su base, issue #48).
+        # `cargada` sigue inmutable (auditoría).
         fecha, hora = _lac_parsear_extraccion(request.form)
 
         database.editar_partida_lactancia(id, fecha, hora, volumen_ml, notas)
