@@ -77,8 +77,8 @@ Nota: capa de datos PURA. `database.py` NO calcula próximas fechas ni estados
 |--------------------|---------|--------------------------------------------------------------|
 | `id`               | INTEGER | PK autoincremental                                           |
 | `ubicacion`        | TEXT    | `freezer` \| `heladera`                                      |
-| `cargada`          | TEXT    | Timestamp ISO del servidor al insertar, **INMUTABLE** (base del vencimiento de heladera) |
-| `fecha_extraccion` | TEXT    | `YYYY-MM-DD` (heladera: derivada de `cargada`)               |
+| `cargada`          | TEXT    | Timestamp ISO del servidor al insertar, **INMUTABLE**. Solo auditoría — el vencimiento se calcula desde la extracción (issue #48) |
+| `fecha_extraccion` | TEXT    | `YYYY-MM-DD` — con `hora_extraccion`, base del vencimiento en ambas ubicaciones |
 | `hora_extraccion`  | TEXT    | `HH:MM`, solo freezer (NULL en heladera; desempata FIFO)     |
 | `volumen_ml`       | INTEGER | 1..2000 (validado en app.py)                                 |
 | `motivo_cierre`    | TEXT    | NULL (abierta) \| `usada` \| `descartada` \| `trasladada`    |

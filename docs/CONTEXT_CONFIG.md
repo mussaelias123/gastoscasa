@@ -20,7 +20,7 @@
 | `app_name`                   | `Gastos Casa`| Título. Si contiene `DEV` muestra banner     |
 | `factor_sueldo`              | `0.7`        | Multiplicador para ingresos tipo sueldo      |
 | `lactancia_freezer_meses`    | `6`          | Vida útil freezer (meses desde extracción). Editable en Settings → Banco de leche |
-| `lactancia_heladera_horas`   | `48`         | Vida útil heladera (horas desde carga)       |
+| `lactancia_heladera_horas`   | `48`         | Vida útil heladera (horas desde extracción)  |
 | `lactancia_aviso_freezer_dias` | `14`       | Ventana "vence pronto" freezer (días)        |
 | `lactancia_aviso_heladera_horas` | `12`     | Ventana "vence pronto" heladera (horas)      |
 | `lactancia_freezar_hasta_horas`  | `24`     | Antigüedad en heladera hasta la que el checkbox de freezar arranca tildado por defecto. Pasado el umbral nace destildado, pero no bloquea: se puede tildar igual |
