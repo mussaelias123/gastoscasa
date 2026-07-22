@@ -38,6 +38,12 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
 {% block contenido %}
 <div class="lac-wrap">
 
+  <!-- Frase de mamá para el bebé (hero). Cambiar el texto es una sola línea. -->
+  <div class="lac-hero">
+    <svg class="lac-ico lac-hero-corazon" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 20.3S4.6 15.5 4.6 10.3A3.9 3.9 0 0 1 12 7.6a3.9 3.9 0 0 1 7.4 2.7C19.4 15.5 12 20.3 12 20.3Z"/><path d="M12 20.3S4.6 15.5 4.6 10.3A3.9 3.9 0 0 1 12 7.6a3.9 3.9 0 0 1 7.4 2.7C19.4 15.5 12 20.3 12 20.3Z"/></svg>
+    <span class="lac-frase">Con todo mi amor, mamá</span>
+  </div>
+
   <!-- Aviso al entrar (lo llena el JS solo si hay vencidas / por vencer) -->
   <div class="lac-aviso" id="lac-aviso" hidden></div>
 
@@ -53,7 +59,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
            Un solo form: toda extracción entra por HELADERA. ────────────────── -->
       <section class="lac-panel lac-panel--alta">
         <div class="lac-panel-header">
-          <div class="lac-panel-title">➕ Cargar</div>
+          <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M9.3 13.6a2.7 2.7 0 0 0 2 2.3"/></svg> Cargar</div>
         </div>
         <div class="lac-quickadd">
 
@@ -66,7 +72,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
       <!-- ── Resumen de stock ─────────────────────────────────────────────── -->
       <section class="lac-panel lac-panel--tablero">
         <div class="lac-panel-header">
-          <div class="lac-panel-title">📊 Resumen</div>
+          <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><rect x="5.5" y="11" width="3.4" height="7" rx="1.5"/><rect x="10.3" y="7" width="3.4" height="11" rx="1.5"/><rect x="15.1" y="13.5" width="3.4" height="4.5" rx="1.5"/></svg> Resumen</div>
         </div>
         <div class="lac-tablero" id="lac-tablero"></div>
       </section>
@@ -79,7 +85,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
       <!-- ── Freezer arriba (FIFO: usar siempre la primera) ────────────────── -->
       <section class="lac-panel lac-panel--freezer">
         <div class="lac-panel-header">
-          <div class="lac-panel-title">🧊 Freezer <span class="lac-count" id="lac-freezer-count"></span></div>
+          <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/><path d="M12 6.5 10 4.7M12 6.5l2-1.8M12 17.5l-2 1.8M12 17.5l2 1.8"/><path d="M5.6 8.2 5.2 5.7M5.6 8.2 3.1 8.6M18.4 8.2l2.5.4M18.4 8.2l.4-2.5M5.6 15.8l-2.5.4M5.6 15.8l-.4 2.5M18.4 15.8l.4 2.5M18.4 15.8l2.5-.4"/></svg> Freezer <span class="lac-count" id="lac-freezer-count"></span></div>
           <span class="lac-fifo-hint" title="Lo primero que entra, primero que sale">FIFO: usar la primera</span>
         </div>
         <div class="lac-lista-scroll" id="lac-lista-freezer"></div>
@@ -89,7 +95,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
            El botón ⬆ freeza la combinación de las partidas tildadas. ───────── -->
       <section class="lac-panel lac-panel--heladera">
         <div class="lac-panel-header">
-          <div class="lac-panel-title">🥛 Heladera <span class="lac-count" id="lac-heladera-count"></span></div>
+          <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M8 12.5h8l-.7 6.4a1 1 0 0 1-1 .9H9.7a1 1 0 0 1-1-.9L8 12.5Z"/><path d="M7.4 6h9.2l-1.3 12.9a1 1 0 0 1-1 .9H9.7a1 1 0 0 1-1-.9L7.4 6Z"/><path d="M7.7 9h8.6"/></svg> Heladera <span class="lac-count" id="lac-heladera-count"></span></div>
           <button type="button" class="lac-btn-freezar" id="lac-btn-freezar"
                   title="Freezar las tildadas: combina las partidas seleccionadas en una sola partida de freezer (volumen sumado, extracción más vieja)">⬆</button>
         </div>
@@ -101,7 +107,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
     <!-- ══ Columna derecha: historial ════════════════════════════════════════ -->
     <div class="lac-col lac-col--der">
       <details class="lac-panel lac-panel--historial" open>
-        <summary class="lac-historial-summary">📦 Historial <span class="lac-count" id="lac-historial-count"></span></summary>
+        <summary class="lac-historial-summary"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 4.8 20 8l-8 3.2L4 8Z"/><path d="M4 8 12 4.8 20 8l-8 3.2L4 8Z"/><path d="M4 8v8l8 3.2 8-3.2V8"/><path d="M12 11.2V19.2"/></svg> Historial <span class="lac-count" id="lac-historial-count"></span></summary>
         <div class="lac-lista-scroll lac-lista-historial" id="lac-lista-historial"></div>
       </details>
     </div>

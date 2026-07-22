@@ -7612,3 +7612,180 @@ body:has(.home-page) .contenido-principal {
   .home-card--calendario .home-cal-dots { min-height: 6px; }
   .home-card--calendario .home-cal-dot { width: 6px; height: 6px; }
 }
+
+
+/* ============================================================================
+   MÓDULO LACTANCIA — TEMA CÁLIDO "acto de amor"  (SCOPED, no toca lo global)
+   ============================================================================
+   Identidad propia de la hoja Lactancia: atardecer, piel, crema, marrones,
+   coral y un verde salvia. Pensado para extraer a una app standalone de
+   seguimiento de leche materna.
+
+   Cómo funciona sin romper la paleta global (config-driven en base.html):
+   se REDEFINEN las mismas variables --color-* pero SOLO dentro del scope de
+   esta hoja (body.lac-body, que agrega lactancia.js; + body:has(.lac-wrap)
+   para el primer paint sin flash). El toggle día/noche existente sigue
+   funcionando: modo noche = misma familia de colores, predominancia oscura.
+   El resto de la app (Gastos, Rutina, Calendario, Inicio) queda intacto.
+
+   Fuentes self-host (OFL, offline-first): Archivo Narrow (cuerpo/números) y
+   Parisienne (solo la frase del hero). Íconos cute propios: ver .lac-ico.
+   ============================================================================ */
+
+@font-face {
+  font-family: 'Archivo Narrow'; font-style: normal; font-weight: 400;
+  font-display: swap; src: url('fonts/archivo-narrow-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Archivo Narrow'; font-style: normal; font-weight: 500;
+  font-display: swap; src: url('fonts/archivo-narrow-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Archivo Narrow'; font-style: normal; font-weight: 700;
+  font-display: swap; src: url('fonts/archivo-narrow-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Parisienne'; font-style: normal; font-weight: 400;
+  font-display: swap; src: url('fonts/parisienne-400.woff2') format('woff2');
+}
+
+/* ── Paleta cálida — MODO DÍA (crema soleada) ──────────────────────────────
+   Overrides sobre body.lac-body: por ser más profundo que :root, sombrean
+   los valores globales para toda la hoja. */
+body.lac-body,
+body:has(.lac-wrap) {
+  /* Acento coral (atardecer) — deep enough for blanco legible en botones */
+  --color-acento:          #D3653F;
+  --color-acento-oscuro:   #BC5636;
+  /* Superficies crema */
+  --color-fondo:           #FBF3E9;
+  --color-superficie:      #FFFDF9;
+  /* Texto cacao cálido */
+  --color-texto:           #4A362D;
+  --color-texto-muted:     #82655A;
+  --color-texto-invertido: #FFF6EE;
+  /* Estructura */
+  --color-borde:           #ECDDCD;
+  /* Estado (verde salvia · miel · terracota) */
+  --color-exito:           #6E9873;
+  --color-alerta:          #D79A46;
+  --color-peligro:         #C85D4E;
+  --color-exito-suave:     #E4EEE1;
+  --color-alerta-suave:    #F8E9D2;
+  --color-peligro-suave:   #F8E1DA;
+  /* Personas (familia cálida) */
+  --color-persona-elias:   #6C97A0;
+  --color-persona-mari:    #DE7B62;
+  --color-persona-leon:    #E0A94E;
+  /* Monedas (por si algún componente compartido aparece) */
+  --color-moneda-ars:      #8FAEBE;
+  --color-moneda-usd:      #6E9873;
+  /* Grises decorativos → marrones cálidos */
+  --color-deco-1:          #3E2E27;
+  --color-deco-2:          #6E5346;
+  --color-deco-3:          #A0897A;
+  --color-deco-4:          #EAD9C8;
+
+  /* No-color: tipografía cálida + más redondeo + sombras marrones */
+  --fuente-principal: 'Archivo Narrow', 'Segoe UI', Tahoma, sans-serif;
+  --radio-borde:      14px;
+  --sombra-card:      0 4px 18px rgba(120, 80, 60, 0.13);
+  --sombra-focus:     0 0 0 3px rgba(222, 115, 88, 0.32);
+  --sombra-modal:     0 18px 50px rgba(74, 45, 35, 0.34);
+  --overlay-modal:    rgba(60, 40, 32, 0.44);
+}
+
+/* ── Paleta cálida — MODO NOCHE (atardecer profundo) ───────────────────────
+   Misma familia, predominancia oscura/intensa. */
+html[data-theme="dark"] body.lac-body,
+html[data-theme="dark"] body:has(.lac-wrap) {
+  --color-acento:          #F0977B;
+  --color-acento-oscuro:   #D2725A;
+  --color-fondo:           #241A16;
+  --color-superficie:      #33251F;
+  --color-texto:           #F3E6D8;
+  --color-texto-muted:     #C0A492;
+  --color-texto-invertido: #2A1C16;
+  --color-borde:           #4A362D;
+  --color-exito:           #8CB690;
+  --color-alerta:          #EBB56A;
+  --color-peligro:         #DE7A69;
+  --color-exito-suave:     #2E3A2C;
+  --color-alerta-suave:    #3E3120;
+  --color-peligro-suave:   #3E2620;
+  --color-persona-elias:   #82A7B0;
+  --color-persona-mari:    #EE9E86;
+  --color-persona-leon:    #E7BE6E;
+  --color-moneda-ars:      #9EBBC9;
+  --color-moneda-usd:      #8CB690;
+  --color-deco-1:          #1B1310;
+  --color-deco-2:          #2E211C;
+  --color-deco-3:          #7A5E4F;
+  --color-deco-4:          #4A362D;
+
+  --sombra-card:      0 4px 18px rgba(0, 0, 0, 0.35);
+  --sombra-modal:     0 18px 50px rgba(0, 0, 0, 0.5);
+  --overlay-modal:    rgba(20, 12, 9, 0.6);
+}
+
+/* ── "Rayo de sol": glow cálido sutil en la esquina superior de la hoja ──── */
+body.lac-body,
+body:has(.lac-wrap) {
+  background:
+    radial-gradient(1100px 460px at 78% -8%, rgba(255, 214, 170, 0.40), transparent 62%),
+    var(--color-fondo);
+  background-attachment: fixed;
+}
+html[data-theme="dark"] body.lac-body,
+html[data-theme="dark"] body:has(.lac-wrap) {
+  background:
+    radial-gradient(1100px 460px at 78% -8%, rgba(240, 151, 123, 0.16), transparent 62%),
+    var(--color-fondo);
+  background-attachment: fixed;
+}
+
+/* ── Hero: frase de mamá para el bebé (Parisienne) ────────────────────────── */
+.lac-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem 0.9rem;
+  text-align: center;
+}
+
+.lac-frase {
+  font-family: 'Parisienne', 'Segoe Script', cursive;
+  font-weight: 400;
+  line-height: 1.1;
+  font-size: clamp(1.7rem, 5.5vw, 2.6rem);
+  color: var(--color-acento);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.lac-hero .lac-ico { color: var(--color-acento); opacity: 0.9; }
+.lac-hero-corazon { width: 1.1em; height: 1.1em; }
+
+/* ── Íconos cute propios (SVG inline). Heredan el color con currentColor;
+      el detalle secundario usa fill-opacity para el 2do tono. ────────────── */
+.lac-ico {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.19em;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lac-ico .relleno { fill: currentColor; stroke: none; opacity: 0.16; }
+
+/* Íconos de los títulos de panel: en el color del título */
+.lac-panel-title .lac-ico { color: var(--color-acento); }
+.lac-historial-summary .lac-ico { color: var(--color-acento); }
+
+/* Un toque más suave/tierno en superficies grandes del módulo */
+body.lac-body .lac-panel { border-radius: var(--radio-borde); }
+body.lac-body .lac-item { border-radius: 12px; }
