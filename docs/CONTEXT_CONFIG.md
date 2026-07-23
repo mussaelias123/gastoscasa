@@ -24,6 +24,12 @@
 | `lactancia_aviso_freezer_dias` | `14`       | Ventana "vence pronto" freezer (días)        |
 | `lactancia_aviso_heladera_horas` | `12`     | Ventana "vence pronto" heladera (horas)      |
 | `lactancia_freezar_hasta_horas`  | `24`     | Antigüedad en heladera hasta la que el checkbox de freezar arranca tildado por defecto. Pasado el umbral nace destildado, pero no bloquea: se puede tildar igual |
+| `lactancia_descongelada_horas`   | `24`     | Vida en heladera de una bolsa BAJADA del freezer (leche que ya estuvo congelada). Corre desde que se baja (`cargada`), no desde la extracción |
+| `lactancia_aviso_descongelada_horas` | `6`  | Ventana "vence pronto" de la leche descongelada (horas) |
+| `lactancia_recordatorio_activo`  | `False`  | Interruptor del recordatorio nocturno de "bajar bolsitas" (modo jardín: off hasta que el bebé arranque) |
+| `lactancia_recordatorio_hora`    | `"21:00"`| `HH:MM` local a partir de la cual avisa el recordatorio. Aviso in-app (campana + banner), nunca bloquea |
+| `bebe_nombre`                    | `"León"` | Nombre del bebé; se usa en los textos de la app (KPIs, confirmaciones). Vacío → la UI dice "el bebé" |
+| `bebe_fecha_nacimiento`          | `""`     | `YYYY-MM-DD`. Habilita mostrar la edad y el mes de vida. A propósito NO se guarda peso/estatura ni se estima cuánta leche "debería" tomar (terreno médico) |
 | `cotizacion_valor`           | `1500.0`     | Último ARS/USD oficial conocido              |
 | `cotizacion_fecha`           | `None`       | Fecha del valor                              |
 | `cotizacion_ultimo_intento`  | `None`       | Timestamp último intento                     |

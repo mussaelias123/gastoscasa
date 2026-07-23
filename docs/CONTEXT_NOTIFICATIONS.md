@@ -60,7 +60,7 @@ Ejemplo real (provider Lactancia, partida vencida):
   `inject_lactancia_badge`/`lac_badge` (eliminados junto con
   `_lac_badge_count()`, que quedó huérfana).
 
-## 4. Provider actual: Lactancia
+## 4. Providers actuales: Lactancia
 
 `_notif_lactancia()` — un ítem por partida ABIERTA (sin `motivo_cierre`) en
 estado `vencida` o `vence_pronto`. Reusa `_lac_params()` y `_lac_enriquecer()`
@@ -74,6 +74,18 @@ heladera vencida muestra solo "venció" (sin cantidad de horas, ya que
 `horas_restantes` redondea hacia el pasado y podría subestimar cuánto hace
 que venció). Orden interno: vencidas primero, luego por vencer; dentro de
 cada grupo, por vencimiento ascendente.
+
+`_notif_recordatorio_bajar()` — recordatorio nocturno de bajar bolsitas del
+freezer a la heladera (para el día siguiente de jardín). Devuelve 0 o 1 ítem:
+icono `🌙`, severidad `alerta`, título "Bajá bolsitas para mañana". La condición
+la decide `_lac_recordatorio_pendiente()` (ver `CONTEXT_BACKEND.md`): activo +
+ya pasó la hora configurada + hay leche ABIERTA en el freezer + todavía no se
+bajó ninguna hoy. Se **autolimpia** al bajar una bolsa (nace una partida
+`descongelada` con `cargada` de hoy). Es un aviso IN-APP (campana + banner en
+`/lactancia`): el push al celular con la app cerrada requiere una app
+instalable (PWA/nativa), fuera del alcance de esta versión.
+
+`NOTIF_PROVIDERS = [_notif_lactancia, _notif_recordatorio_bajar]`.
 
 ## 5. Checklist — cómo sumar notificaciones desde un módulo nuevo
 

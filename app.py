@@ -294,11 +294,13 @@ def _lac_params(cfg=None):
         cfg = config.cargar_config(CONFIG_FILE)
     params = {}
     for clave, corta in (
-        ('lactancia_freezer_meses',        'freezer_meses'),
-        ('lactancia_heladera_horas',       'heladera_horas'),
-        ('lactancia_aviso_freezer_dias',   'aviso_freezer_dias'),
-        ('lactancia_aviso_heladera_horas', 'aviso_heladera_horas'),
-        ('lactancia_freezar_hasta_horas',  'freezar_hasta_horas'),
+        ('lactancia_freezer_meses',            'freezer_meses'),
+        ('lactancia_heladera_horas',           'heladera_horas'),
+        ('lactancia_descongelada_horas',       'descongelada_horas'),
+        ('lactancia_aviso_freezer_dias',       'aviso_freezer_dias'),
+        ('lactancia_aviso_heladera_horas',     'aviso_heladera_horas'),
+        ('lactancia_aviso_descongelada_horas', 'aviso_descongelada_horas'),
+        ('lactancia_freezar_hasta_horas',      'freezar_hasta_horas'),
     ):
         try:
             params[corta] = int(cfg.get(clave, config.DEFAULTS[clave]))
@@ -335,6 +337,10 @@ def _lac_vencimiento(p, params):
         extraccion = datetime.strptime(str(p['fecha_extraccion']), '%Y-%m-%d').date()
         venc_dia = _act_sumar_intervalo(extraccion, params['freezer_meses'], 'meses')
         return datetime.combine(venc_dia, time(23, 59, 59))
+    # Leche descongelada (bajada del freezer): la vida útil corre desde que se
+    # baja (`cargada`), no desde la extracción, que puede ser de hace meses.
+    if p.get('tipo') == 'descongelada':
+        return datetime.fromisoformat(p['cargada']) + timedelta(hours=params['descongelada_horas'])
     return _lac_extraccion_dt(p) + timedelta(hours=params['heladera_horas'])
 
 
@@ -351,21 +357,26 @@ def _lac_estado(p, params, ahora):
         dias = (venc.date() - ahora.date()).days
         return 'vence_pronto' if dias <= params['aviso_freezer_dias'] else 'disponible'
     horas = (venc - ahora).total_seconds() / 3600
-    return 'vence_pronto' if horas <= params['aviso_heladera_horas'] else 'en_heladera'
+    umbral = (params['aviso_descongelada_horas'] if p.get('tipo') == 'descongelada'
+              else params['aviso_heladera_horas'])
+    return 'vence_pronto' if horas <= umbral else 'en_heladera'
 
 
 def _lac_horas_en_heladera(p, ahora):
-    """Horas transcurridas desde la extracción (la leche entra a la heladera
-    al extraerse, no al cargarse en la app — mismo criterio que el
-    vencimiento, issue #48)."""
-    return (ahora - _lac_extraccion_dt(p)).total_seconds() / 3600
+    """Horas transcurridas desde que la leche entró a la heladera. Para leche
+    fresca es desde la extracción (issue #48); para la descongelada, desde que
+    se bajó del freezer (`cargada`), que es cuando arranca su vida útil."""
+    base = (datetime.fromisoformat(p['cargada']) if p.get('tipo') == 'descongelada'
+            else _lac_extraccion_dt(p))
+    return (ahora - base).total_seconds() / 3600
 
 
 def _lac_freezable(p, params, ahora):
     """True si una partida de heladera todavía puede pasar al freezer: debe
-    estar abierta y no vencida. Sin tope de antigüedad — el usuario decide
-    caso a caso (ver `_lac_freezar_reciente` para el default del checkbox)."""
-    if p['ubicacion'] != 'heladera' or p.get('motivo_cierre'):
+    estar abierta, no vencida y NO ser leche descongelada (la que ya estuvo
+    congelada no se vuelve a congelar). Sin tope de antigüedad — el usuario
+    decide caso a caso (ver `_lac_freezar_reciente` para el default del check)."""
+    if p['ubicacion'] != 'heladera' or p.get('motivo_cierre') or p.get('tipo') == 'descongelada':
         return False
     return _lac_estado(p, params, ahora) != 'vencida'
 
@@ -423,6 +434,40 @@ def _lac_payload():
     usables = [p for p in freezer if p['estado'] in ('disponible', 'vence_pronto')]
     heladera_vigente = [p for p in heladera if p['estado'] in ('en_heladera', 'vence_pronto')]
 
+    # KPIs de ciclo de vida. Se calculan sobre TODAS las partidas (abiertas +
+    # historial). La producción ("litros de amor") cuenta SOLO las 'fresca':
+    # cada extracción entra una vez como fresca; la 'congelada' y la
+    # 'descongelada' son la MISMA leche movida, no producción nueva (si no,
+    # se contaría 2-3 veces al freezar y descongelar).
+    def _consumido(p):
+        # 'usada' sin dato de consumo = se asume que se tomó toda la bolsa.
+        return p['consumido_ml'] if p.get('consumido_ml') is not None else p['volumen_ml']
+    usadas = [p for p in partidas if p['motivo_cierre'] == 'usada']
+    # Desperdicio = todo lo descartado + lo que sobró en bolsas usadas con
+    # consumo real anotado (sin anotar → no se puede saber, no suma).
+    desperdicio_ml = (
+        sum(p['volumen_ml'] for p in partidas if p['motivo_cierre'] == 'descartada')
+        + sum(p['volumen_ml'] - p['consumido_ml'] for p in usadas if p.get('consumido_ml') is not None)
+    )
+    # Tamaño sugerido de bolsita: promedio de lo que León realmente tomó en las
+    # bolsas con consumo anotado. Se auto-ajusta con cada dato nuevo (ej. de la
+    # maestra). Sin datos todavía → None (el front muestra "según consumo").
+    con_consumo = [p['consumido_ml'] for p in usadas if p.get('consumido_ml') is not None]
+    bolsa_sugerida_ml = round(sum(con_consumo) / len(con_consumo)) if con_consumo else None
+    # Días de stock: stock usable del freezer / consumo diario promedio de la
+    # última semana (promedio móvil de 7 días). Sin consumo en la ventana → None
+    # (todavía no se puede estimar; empieza cuando León tome de las bolsitas).
+    def _fecha_cierre(p):
+        try:
+            return datetime.strptime(str(p['fecha_cierre']), '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+    ventana = ahora.date() - timedelta(days=6)
+    consumo_semana = sum(_consumido(p) for p in usadas
+                         if _fecha_cierre(p) and _fecha_cierre(p) >= ventana)
+    stock_usable_ml = sum(p['volumen_ml'] for p in usables)
+    dias_stock = int(stock_usable_ml / (consumo_semana / 7)) if consumo_semana else None
+
     tablero = {
         'freezer_bolsas':        len(usables),
         'freezer_ml':            sum(p['volumen_ml'] for p in usables),
@@ -436,11 +481,29 @@ def _lac_payload():
         'heladera_bolsas':       len(heladera_vigente),
         'heladera_ml':           sum(p['volumen_ml'] for p in heladera_vigente),
         'heladera_proximo_venc': min((p['vencimiento'] for p in heladera_vigente), default=None),
+        # De lo vigente en heladera, cuánto es leche descongelada (bajada del
+        # freezer) vs fresca — para diferenciar los dos tipos en la vista.
+        'heladera_descongelada_ml': sum(p['volumen_ml'] for p in heladera_vigente
+                                        if p.get('tipo') == 'descongelada'),
+        'heladera_fresca_ml':       sum(p['volumen_ml'] for p in heladera_vigente
+                                        if p.get('tipo') != 'descongelada'),
+        # KPIs de ciclo de vida (totales históricos; los cortes por mes de
+        # vida de León y los promedios móviles se agregan en el front).
+        'producido_ml':          sum(p['volumen_ml'] for p in partidas if p.get('tipo') == 'fresca'),
+        'descongelada_ml':       sum(p['volumen_ml'] for p in partidas if p.get('tipo') == 'descongelada'),
+        'consumida_ml':          sum(_consumido(p) for p in usadas),
+        'desperdicio_ml':        desperdicio_ml,
+        'dias_stock':            dias_stock,          # None = aún sin datos
+        'bolsa_sugerida_ml':     bolsa_sugerida_ml,   # None = aún sin datos
     }
     badge = sum(1 for p in abiertas if p['estado'] in ('vencida', 'vence_pronto'))
 
+    rec = _lac_recordatorio()
+    recordatorio = {**rec, 'pendiente': _lac_recordatorio_pendiente(rec, ahora)}
+
     return {'freezer': freezer, 'heladera': heladera, 'historial': historial,
-            'tablero': tablero, 'params': params, 'badge': badge}
+            'tablero': tablero, 'params': params, 'badge': badge,
+            'recordatorio': recordatorio, 'bebe': _lac_bebe(ahora=ahora)}
 
 
 def _home_lactancia_payload():
@@ -575,7 +638,127 @@ def _notif_lactancia():
     return items
 
 
-NOTIF_PROVIDERS = [_notif_lactancia]
+def _lac_recordatorio(cfg=None):
+    """Config del recordatorio nocturno de "bajar bolsitas": activo (modo
+    jardín on/off) y hora (HH:MM). Claves faltantes o corruptas → DEFAULTS."""
+    if cfg is None:
+        cfg = config.cargar_config(CONFIG_FILE)
+    activo = bool(cfg.get('lactancia_recordatorio_activo',
+                          config.DEFAULTS['lactancia_recordatorio_activo']))
+    hora = str(cfg.get('lactancia_recordatorio_hora',
+                       config.DEFAULTS['lactancia_recordatorio_hora']))
+    try:
+        datetime.strptime(hora, '%H:%M')
+    except ValueError:
+        hora = config.DEFAULTS['lactancia_recordatorio_hora']
+    return {'activo': activo, 'hora': hora}
+
+
+def _lac_bajo_leche_hoy(ahora):
+    """True si YA se bajó al menos una bolsa a descongelar hoy (hay una partida
+    'descongelada' con `cargada` de hoy). Así el recordatorio se autolimpia
+    cuando la usuaria efectivamente baja algo."""
+    hoy = ahora.date()
+    for f in database.obtener_partidas_lactancia('heladera'):
+        p = dict(f)
+        if p.get('tipo') == 'descongelada':
+            try:
+                if datetime.fromisoformat(p['cargada']).date() == hoy:
+                    return True
+            except (TypeError, ValueError):
+                pass
+    return False
+
+
+def _lac_recordatorio_pendiente(rec=None, ahora=None):
+    """True si el recordatorio de bajar bolsitas está VIGENTE ahora: activo, ya
+    pasó la hora de hoy, hay leche ABIERTA en el freezer para bajar, y todavía
+    no se bajó ninguna hoy. Es solo un aviso — nunca bloquea nada."""
+    if ahora is None:
+        ahora = datetime.now()
+    if rec is None:
+        rec = _lac_recordatorio()
+    if not rec['activo']:
+        return False
+    hh, mm = rec['hora'].split(':')
+    hora_dt = ahora.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+    if ahora < hora_dt:
+        return False
+    hay_freezer = any(not f['motivo_cierre']
+                      for f in database.obtener_partidas_lactancia('freezer'))
+    if not hay_freezer:
+        return False
+    return not _lac_bajo_leche_hoy(ahora)
+
+
+def _notif_recordatorio_bajar():
+    """Provider: recordatorio nocturno de bajar bolsitas del freezer a la
+    heladera (para el día siguiente de jardín). Aviso in-app (la campana); el
+    ping al celular con la app cerrada llega con la futura app instalable."""
+    if not _lac_recordatorio_pendiente():
+        return []
+    rec = _lac_recordatorio()
+    return [{
+        'modulo':        'lactancia',
+        'modulo_nombre': 'Lactancia',
+        'icono':         '🌙',
+        'titulo':        'Bajá bolsitas para mañana',
+        'detalle':       f"Pasá leche del freezer a la heladera para que se descongele "
+                         f"(recordatorio de las {rec['hora']}).",
+        'url':           '/lactancia',
+        'severidad':     'alerta',
+    }]
+
+
+def _lac_bebe(cfg=None, ahora=None):
+    """Perfil del bebé para la UI: nombre (se usa en los textos) + fecha de
+    nacimiento, con la edad y el mes de vida derivados. A propósito NO guarda
+    ni calcula nada médico (peso, estatura, cuánta leche "debería" tomar)."""
+    if cfg is None:
+        cfg = config.cargar_config(CONFIG_FILE)
+    if ahora is None:
+        ahora = datetime.now()
+    nombre = (str(cfg.get('bebe_nombre', config.DEFAULTS['bebe_nombre'])).strip()
+              or 'el bebé')
+    fnac = str(cfg.get('bebe_fecha_nacimiento',
+                       config.DEFAULTS['bebe_fecha_nacimiento']) or '').strip()
+    edad_texto, mes_de_vida = '', None
+    try:
+        nac = datetime.strptime(fnac, '%Y-%m-%d').date()
+    except ValueError:
+        nac = None
+    if nac is not None:
+        hoy = ahora.date()
+        if (hoy - nac).days >= 0:
+            meses = (hoy.year - nac.year) * 12 + (hoy.month - nac.month)
+            if hoy.day < nac.day:
+                meses -= 1
+            meses = max(meses, 0)
+            mes_de_vida = meses + 1        # el 1er mes de vida es el mes 1
+            # Días sueltos desde el último "cumple-mes" (clamp fin de mes vía
+            # _act_sumar_intervalo, el mismo helper que usa el vencimiento).
+            dias_resto = (hoy - _act_sumar_intervalo(nac, meses, 'meses')).days
+
+            def _plur(n, sing, plur):
+                return f"{n} {sing}" if n == 1 else f"{n} {plur}"
+
+            if meses < 24:
+                partes = []
+                if meses:
+                    partes.append(_plur(meses, 'mes', 'meses'))
+                if dias_resto or not meses:
+                    partes.append(_plur(dias_resto, 'día', 'días'))
+                edad_texto = ' y '.join(partes)
+            else:
+                anios, resto = divmod(meses, 12)
+                edad_texto = _plur(anios, 'año', 'años')
+                if resto:
+                    edad_texto += ' y ' + _plur(resto, 'mes', 'meses')
+    return {'nombre': nombre, 'fecha_nacimiento': fnac,
+            'edad_texto': edad_texto, 'mes_de_vida': mes_de_vida}
+
+
+NOTIF_PROVIDERS = [_notif_lactancia, _notif_recordatorio_bajar]
 
 
 def _notificaciones():
@@ -1488,7 +1671,22 @@ def api_lactancia_cerrar(id):
         fecha_cierre = _lac_parsear_fecha_cierre(request.form.get('fecha_cierre'))
         notas = (request.form.get('notas') or '').strip()[:200] or None
 
-        database.cerrar_partida_lactancia(id, motivo, fecha_cierre, notas)
+        # Consumo real de León (opcional, solo 'usada'): cuántos ml tomó de la
+        # bolsa. El resto es desperdicio. Sin dato = se asume que tomó todo.
+        consumido_ml = None
+        if motivo == 'usada':
+            crudo = (request.form.get('consumido_ml') or '').strip()
+            if crudo:
+                try:
+                    consumido_ml = int(crudo)
+                except ValueError:
+                    raise ValueError("El consumo (ml) debe ser un número entero.")
+                if not 0 <= consumido_ml <= partida['volumen_ml']:
+                    raise ValueError(
+                        f"El consumo debe estar entre 0 y {partida['volumen_ml']} ml "
+                        "(lo que tenía la bolsa).")
+
+        database.cerrar_partida_lactancia(id, motivo, fecha_cierre, notas, consumido_ml)
         if _es_ajax():
             return jsonify({'ok': True, **_lac_payload()})
         return redirect(url_for('lactancia'))
@@ -1556,6 +1754,89 @@ def api_lactancia_freezar():
         database.combinar_partidas_lactancia(
             ids, mas_vieja['fecha_extraccion'], mas_vieja['hora_extraccion'],
             volumen_ml, date.today().isoformat())
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/<int:id>/bajar', methods=['POST'])
+def api_lactancia_bajar(id):
+    """Baja una bolsa del freezer a la heladera para descongelar: crea una
+    partida de heladera tipo 'descongelada' (vence a las N horas de bajarla,
+    no desde la extracción) y cierra la de freezer como trasladada. Como todo
+    aviso del módulo, el vencimiento NO bloquea: una bolsa que 'vence pronto' o
+    ya venció igual se puede bajar — la usuaria decide."""
+    from datetime import date
+    try:
+        database.bajar_partida_lactancia(id, date.today().isoformat())
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/recordatorio', methods=['POST'])
+def api_lactancia_recordatorio():
+    """Guarda la config del recordatorio nocturno de bajar bolsitas: activo
+    (modo jardín) + hora (HH:MM). Devuelve el payload fresco para re-renderizar
+    y refrescar la campana."""
+    try:
+        activo = request.form.get('activo') in ('1', 'true', 'on', 'True')
+        hora = (request.form.get('hora') or '').strip()
+        try:
+            datetime.strptime(hora, '%H:%M')
+        except ValueError:
+            raise ValueError("La hora del recordatorio debe ser HH:MM (ej. 21:00).")
+        config.guardar_config({
+            'lactancia_recordatorio_activo': activo,
+            'lactancia_recordatorio_hora':   hora,
+        }, CONFIG_FILE)
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/bebe', methods=['POST'])
+def api_lactancia_bebe():
+    """Guarda el perfil del bebé: nombre + fecha de nacimiento (YYYY-MM-DD,
+    opcional, no futura). Devuelve el payload fresco para re-renderizar."""
+    try:
+        nombre = (request.form.get('nombre') or '').strip()[:40]
+        fnac = (request.form.get('fecha_nacimiento') or '').strip()
+        if fnac:
+            try:
+                nac = datetime.strptime(fnac, '%Y-%m-%d').date()
+            except ValueError:
+                raise ValueError("La fecha de nacimiento debe ser una fecha válida (día/mes/año).")
+            if nac > datetime.now().date():
+                raise ValueError("La fecha de nacimiento no puede ser futura.")
+        config.guardar_config({
+            'bebe_nombre': nombre,           # vacío → la UI usa "el bebé"
+            'bebe_fecha_nacimiento': fnac,
+        }, CONFIG_FILE)
         if _es_ajax():
             return jsonify({'ok': True, **_lac_payload()})
         return redirect(url_for('lactancia'))

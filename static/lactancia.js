@@ -34,7 +34,9 @@ opciones" (⋯) de cada partida.
 
     // ── Estado del módulo ────────────────────────────────────────────────────
     var DATOS = window.LAC_DATOS ||
-        { freezer: [], heladera: [], historial: [], tablero: {}, params: {}, badge: 0 };
+        { freezer: [], heladera: [], historial: [], tablero: {}, params: {}, badge: 0,
+          recordatorio: { activo: false, hora: '21:00', pendiente: false },
+          bebe: { nombre: 'León', fecha_nacimiento: '', edad_texto: '', mes_de_vida: null } };
 
     var cfPartidaId = null;      // id en el modal Cerrar con fecha
     var cfMotivo = 'usada';      // 'usada' | 'descartada' en ese modal
@@ -48,6 +50,14 @@ opciones" (⋯) de cada partida.
     var fpEdFecha = null;
     var fpExHora = null;   // hora extracción alta (24h)
     var fpEdHora = null;   // hora extracción editor (24h)
+    var fpRecHora = null;  // hora del recordatorio nocturno (24h)
+    var fpBebeNac = null;  // fecha de nacimiento del bebé
+
+    // Nombre del bebé (configurable): reemplaza el "León" que antes estaba fijo
+    // en el código, para que la app sirva para cualquier bebé.
+    function nombreBebe() {
+        return (DATOS.bebe && DATOS.bebe.nombre) || 'el bebé';
+    }
 
     function $(id) { return document.getElementById(id); }
 
@@ -184,7 +194,11 @@ opciones" (⋯) de cada partida.
                 historial: data.historial || [],
                 tablero: data.tablero || {},
                 params: data.params || {},
-                badge: data.badge || 0
+                badge: data.badge || 0,
+                recordatorio: data.recordatorio || DATOS.recordatorio ||
+                    { activo: false, hora: '21:00', pendiente: false },
+                bebe: data.bebe || DATOS.bebe ||
+                    { nombre: 'León', fecha_nacimiento: '', edad_texto: '', mes_de_vida: null }
             };
             renderTodo();
             if (onOk) onOk(data);
@@ -266,6 +280,17 @@ opciones" (⋯) de cada partida.
         '</div>';
     }
 
+    // Tarjeta de KPI de ciclo de vida (emoji + número grande + etiqueta, con un
+    // sub-texto opcional). `clase` permite resaltar (ej. "litros de amor").
+    function kpiCard(emoji, num, label, sub, clase) {
+        return '<div class="lac-kpi' + (clase ? ' ' + clase : '') + '">' +
+            '<span class="lac-kpi-emoji">' + emoji + '</span>' +
+            '<span class="lac-kpi-num">' + num + '</span>' +
+            '<span class="lac-kpi-label">' + label +
+                (sub ? ' <small>' + sub + '</small>' : '') + '</span>' +
+        '</div>';
+    }
+
     function renderTablero() {
         var cont = $('lac-tablero');
         var t = DATOS.tablero || {};
@@ -284,7 +309,7 @@ opciones" (⋯) de cada partida.
             stat(t.freezer_bolsas || 0, 'Bolsas disponibles') +
             stat(fmtMl(t.freezer_ml), 'Stock freezer (' + fmtLitros(t.freezer_ml) + ')') +
             stat(t.freezer_vence_pronto || 0, 'Vencen pronto', t.freezer_vence_pronto ? 'is-alerta' : '') +
-            stat(t.freezer_vencidas || 0, 'Vencidas sin cerrar', t.freezer_vencidas ? 'is-peligro' : '') +
+            stat(t.freezer_vencidas || 0, 'Vencidas', t.freezer_vencidas ? 'is-peligro' : '') +
             stat(t.freezer_proximo_venc ? fmtFechaCorta(t.freezer_proximo_venc) : '—', 'Próxima a vencer') +
             stat(t.usadas_total || 0, 'Usadas') +
             stat(t.descartadas_total || 0, 'Descartadas') +
@@ -308,6 +333,28 @@ opciones" (⋯) de cada partida.
             hel = '🥛 Heladera vacía';
         }
         html += '<div class="lac-stats-heladera">' + hel + '</div>';
+
+        // KPIs de ciclo de vida: producción ("litros de amor", resaltado),
+        // consumo de León, leche descongelada, desperdicio, y los dos de
+        // promedio móvil (días de stock y bolsita sugerida) que se ajustan solos
+        // con el consumo real. Los que aún no tienen datos muestran "—".
+        var dias = (t.dias_stock !== null && t.dias_stock !== undefined)
+            ? t.dias_stock + (t.dias_stock === 1 ? ' día' : ' días') : '—';
+        var bolsa = (t.bolsa_sugerida_ml !== null && t.bolsa_sugerida_ml !== undefined)
+            ? fmtMl(t.bolsa_sugerida_ml) : '—';
+        html += '<div class="lac-kpis-titulo">Ciclo de la leche</div>' +
+            '<div class="lac-kpis">' +
+            kpiCard('💧', fmtLitros(t.producido_ml), 'Producción total',
+                    'todo lo que produjiste', 'lac-kpi--amor') +
+            kpiCard('🍼', fmtMl(t.consumida_ml || 0), 'Consumida por ' + nombreBebe()) +
+            kpiCard('🧊→🥛', fmtMl(t.descongelada_ml || 0), 'Descongelada') +
+            kpiCard('🚱', fmtMl(t.desperdicio_ml || 0), 'Desperdicio', null,
+                    (t.desperdicio_ml ? 'is-alerta' : '')) +
+            kpiCard('📅', dias, 'Alcanza para',
+                    (t.dias_stock == null ? 'cuando ' + nombreBebe() + ' tome de las bolsitas' : 'al ritmo actual')) +
+            kpiCard('📏', bolsa, 'Bolsita sugerida',
+                    (t.bolsa_sugerida_ml == null ? 'según el consumo de ' + nombreBebe() : 'promedio real')) +
+        '</div>';
 
         cont.innerHTML = html;
     }
@@ -335,7 +382,8 @@ opciones" (⋯) de cada partida.
                 '</div>' + notasHtml(p) +
             '</div>' +
             '<div class="lac-item-actions">' +
-                '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="Se le dio a León (fecha de hoy)">✓ Usada</button>' +
+                '<button type="button" class="lac-btn-bajar" data-lac-bajar="' + p.id + '" title="Bajar a la heladera para descongelar">⬇ Bajar</button>' +
+                '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="Se le dio a ' + nombreBebe() + ' (fecha de hoy)">✓ Usada</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-tirar="' + p.id + '" title="Descartar (fecha de hoy)">🗑</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-mas="' + p.id + '" title="Más opciones">⋯</button>' +
             '</div>' +
@@ -358,17 +406,29 @@ opciones" (⋯) de cada partida.
         '</label>';
     }
 
+    // Etiqueta que diferencia leche recién extraída ("Fresca") de la bajada del
+    // freezer para descongelar ("Descongelada"). Pedido de Mari: en la heladera
+    // van a convivir los dos tipos (ej. cuando León arranque el jardín).
+    function tipoTag(p) {
+        if (p.tipo === 'descongelada') {
+            return '<span class="lac-tipo lac-tipo--desc" title="Bajada del freezer para descongelar">❄→🥛 Descongelada</span>';
+        }
+        return '<span class="lac-tipo lac-tipo--fresca" title="Extraída y puesta directo en la heladera">🥛 Fresca</span>';
+    }
+
     function itemHeladera(p) {
-        return '<div class="lac-item is-' + p.estado + '">' +
+        var esDesc = p.tipo === 'descongelada';
+        return '<div class="lac-item is-' + p.estado + (esDesc ? ' lac-item--desc' : ' lac-item--fresca') + '">' +
             '<div class="lac-item-body">' +
-                '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' + pill(p.estado) + '</div>' +
+                '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' +
+                    tipoTag(p) + pill(p.estado) + '</div>' +
                 '<div class="lac-item-meta">' + extraidaTxt(p) +
                     ' <span class="lac-sep">·</span> <span class="lac-venc t-' + p.estado + '">' +
                     textoVencHeladera(p.horas_restantes) + '</span>' +
                 '</div>' + notasHtml(p) +
             '</div>' +
             '<div class="lac-item-actions">' +
-                '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="Se le dio a León (fecha de hoy)">✓ Usada</button>' +
+                '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="Se le dio a ' + nombreBebe() + ' (fecha de hoy)">✓ Usada</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-tirar="' + p.id + '" title="Descartar (fecha de hoy)">🗑</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-mas="' + p.id + '" title="Más opciones">⋯</button>' +
                 checkHeladera(p) +
@@ -417,6 +477,8 @@ opciones" (⋯) de cada partida.
 
     function renderTodo() {
         renderAviso();
+        renderBebe();
+        renderRecordatorio();
         renderTablero();
         renderListas();
         // Estándar de notificaciones: refrescar la campana del header tras
@@ -448,10 +510,14 @@ opciones" (⋯) de cada partida.
         });
     }
 
-    function cerrarDirecto(id, motivo) {
+    function cerrarDirecto(id, motivo, consumido) {
         var p = buscarPartida(id);
         var params = new URLSearchParams();
         params.append('motivo', motivo);   // fecha_cierre vacía → hoy en el server
+        // Consumo real de León (opcional, solo 'usada'): cuántos ml tomó.
+        if (motivo === 'usada' && consumido !== undefined && consumido !== null && consumido !== '') {
+            params.append('consumido_ml', consumido);
+        }
         postAccion('/api/lactancia/' + id + '/cerrar', params, function () {
             var vol = p ? fmtMl(p.volumen_ml) : 'Partida';
             var texto = (motivo === 'usada')
@@ -558,6 +624,33 @@ opciones" (⋯) de cada partida.
         }, function () { btn.disabled = false; });
     }
 
+    // ── Bajar del freezer a la heladera para descongelar ─────────────────────
+    // Acción nueva: doble confirmación (modal + checkbox obligatorio). Crea una
+    // partida de heladera 'descongelada' (vence a las N h de bajarla, no se
+    // vuelve a congelar). Deshacer llama a /reabrir del id de freezer (borra la
+    // descongelada y repone la bolsa al freezer).
+    function pedirBajar(id) {
+        var p = buscarPartida(id);
+        if (!p) return;
+        var horas = DATOS.params.descongelada_horas || 24;
+        abrirConfirm({
+            emoji: '⬇️', titulo: 'Bajar a descongelar', peligro: false, boton: 'Sí, bajar',
+            msg: 'Bajás ' + fmtMl(p.volumen_ml) + ' del freezer a la heladera para ' +
+                'descongelar. Va a estar lista por ' + horas + ' h y no se puede volver a congelar.',
+            check: 'Confirmo que bajé (o bajo ahora) esta bolsita a la heladera.',
+            accion: function () { bajarPost(id); }
+        });
+    }
+
+    function bajarPost(id) {
+        var p = buscarPartida(id);
+        var vol = p ? fmtMl(p.volumen_ml) : 'La bolsita';
+        postAccion('/api/lactancia/' + id + '/bajar', new URLSearchParams(), function () {
+            toast('⬇️ ' + vol + ' a la heladera para descongelar.',
+                'ok', function () { deshacerCierre(id, '↩ Deshecho: volvió al freezer.'); });
+        });
+    }
+
     // ── Hoja "Más opciones" ──────────────────────────────────────────────────
     function abrirMas(id) {
         var p = buscarPartida(id);
@@ -606,10 +699,29 @@ opciones" (⋯) de cada partida.
     // Mari 2026-07-13). `confirmAccion` es la función que corre al confirmar.
     var confirmAccion = null;
 
+    // Preferencia por DISPOSITIVO (localStorage, no se sincroniza entre
+    // teléfonos): si está en '0', las confirmaciones se saltan. Por defecto
+    // activadas. Envuelto en try/catch por si localStorage no está disponible.
+    function confirmacionesActivadas() {
+        try { return localStorage.getItem('lac-confirmar') !== '0'; }
+        catch (e) { return true; }
+    }
+    function setConfirmaciones(on) {
+        try { localStorage.setItem('lac-confirmar', on ? '1' : '0'); } catch (e) {}
+    }
+
     // opts.check (opcional): texto de un checkbox OBLIGATORIO — el botón de
     // confirmar queda deshabilitado hasta tildarlo (ej. freezar una vencida:
     // hay que declarar que se pasó al freezer antes de vencerse).
     function abrirConfirm(opts) {
+        // Preferencia "sin confirmación" (por dispositivo): ejecuta la acción
+        // directo, sin modal ni checkbox ni input opcional. Aplica a TODAS.
+        if (!confirmacionesActivadas()) {
+            var inSalto = $('lac-confirm-input');
+            if (inSalto) inSalto.value = '';
+            if (opts.accion) opts.accion();
+            return;
+        }
         $('lac-confirm-emoji').textContent = opts.emoji || '⚠️';
         $('lac-confirm-titulo').textContent = opts.titulo;
         $('lac-confirm-msg').textContent = opts.msg;
@@ -627,6 +739,19 @@ opciones" (⋯) de cada partida.
         } else {
             wrap.hidden = true;
             btn.disabled = false;
+        }
+
+        // Input numérico OPCIONAL (ej. ml que tomó León). Dejarlo vacío es
+        // válido — no toca el estado del botón. opts.input = {label, max}.
+        var inWrap = $('lac-confirm-input-wrap');
+        var inEl = $('lac-confirm-input');
+        inEl.value = '';
+        if (opts.input) {
+            $('lac-confirm-input-label').textContent = opts.input.label || '';
+            if (opts.input.max != null) inEl.max = opts.input.max; else inEl.removeAttribute('max');
+            inWrap.hidden = false;
+        } else {
+            inWrap.hidden = true;
         }
 
         confirmAccion = opts.accion;
@@ -648,8 +773,12 @@ opciones" (⋯) de cada partida.
         if (motivo === 'usada') {
             abrirConfirm({
                 emoji: '✓', titulo: 'Marcar como usada', peligro: false, boton: 'Sí, usada',
-                msg: 'Se le dio a León: ' + det + '. Se cierra con fecha de hoy.',
-                accion: function () { cerrarDirecto(id, 'usada'); }
+                msg: 'Se le dio a ' + nombreBebe() + ': ' + det + '. Se cierra con fecha de hoy.',
+                input: { label: '¿Cuántos ml tomó ' + nombreBebe() + '? (opcional — ej. dato de la maestra)',
+                         max: p.volumen_ml },
+                accion: function () {
+                    cerrarDirecto(id, 'usada', $('lac-confirm-input').value.trim());
+                }
             });
         } else {
             abrirConfirm({
@@ -758,6 +887,88 @@ opciones" (⋯) de cada partida.
             enableTime: true, noCalendar: true, dateFormat: 'H:i',
             time_24hr: true, allowInput: true, disableMobile: true
         });
+        fpRecHora = flatpickr($('lac-rec-hora'), {
+            enableTime: true, noCalendar: true, dateFormat: 'H:i',
+            time_24hr: true, allowInput: true, disableMobile: true
+        });
+        fpBebeNac = flatpickr($('lac-bebe-nac'), {
+            locale: 'es', dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
+            allowInput: true, maxDate: 'today'
+        });
+    }
+
+    // ── Recordatorio nocturno de bajar bolsitas ──────────────────────────────
+    // Refleja la config guardada (toggle + hora) y muestra el banner cuando el
+    // recordatorio está VIGENTE (el server decide `pendiente`: activo + pasó la
+    // hora + hay leche en freezer + no se bajó ninguna hoy). Es solo un aviso.
+    function renderRecordatorio() {
+        var rec = DATOS.recordatorio || { activo: false, hora: '21:00', pendiente: false };
+        var chk = $('lac-rec-activo');
+        if (chk) chk.checked = !!rec.activo;
+        if (fpRecHora) fpRecHora.setDate(rec.hora || '21:00', true);
+        else { var h = $('lac-rec-hora'); if (h) h.value = rec.hora || '21:00'; }
+
+        var banner = $('lac-rec-banner');
+        if (banner) {
+            if (rec.pendiente) {
+                banner.innerHTML = '🌙 Acordate de <strong>bajar bolsitas del freezer ' +
+                    'a la heladera</strong> para mañana.';
+                banner.hidden = false;
+            } else {
+                banner.hidden = true;
+                banner.innerHTML = '';
+            }
+        }
+    }
+
+    function guardarRecordatorio() {
+        var params = new URLSearchParams();
+        params.append('activo', $('lac-rec-activo').checked ? '1' : '0');
+        params.append('hora', ($('lac-rec-hora').value || '').trim());
+        var btn = $('lac-rec-guardar');
+        btn.disabled = true;
+        postAccion('/api/lactancia/recordatorio', params, function () {
+            toast('🌙 Recordatorio guardado.');
+        }, function () { btn.disabled = false; });
+    }
+
+    // ── Perfil del bebé (nombre + fecha de nacimiento) ───────────────────────
+    function renderBebe() {
+        var b = DATOS.bebe || { nombre: '', fecha_nacimiento: '', edad_texto: '' };
+        var nom = $('lac-bebe-nombre');
+        if (nom && document.activeElement !== nom) nom.value = b.nombre || '';
+        if (fpBebeNac) fpBebeNac.setDate(b.fecha_nacimiento || '', false);
+        var edad = $('lac-bebe-edad');
+        if (edad) edad.textContent = b.edad_texto ? '· ' + b.edad_texto : '';
+    }
+
+    function guardarBebe() {
+        var params = new URLSearchParams();
+        params.append('nombre', ($('lac-bebe-nombre').value || '').trim());
+        params.append('fecha_nacimiento', $('lac-bebe-nac').value || '');
+        var btn = $('lac-bebe-guardar');
+        btn.disabled = true;
+        postAccion('/api/lactancia/bebe', params, function () {
+            toast('👶 Datos del bebé guardados.');
+        }, function () { btn.disabled = false; });
+    }
+
+    // ── Selector de sección (SOLO mobile) ────────────────────────────────────
+    // Cambia data-lac-sec en .lac-wrap (el CSS muestra solo esa sección) y, si
+    // la sección elegida es un <details> (bebé/recordatorio/historial), la abre.
+    // En escritorio el selector está oculto y no afecta nada.
+    function initNavMobile() {
+        var sel = $('lac-nav-sel');
+        var wrap = document.querySelector('.lac-wrap');
+        if (!sel || !wrap) return;
+        function activar(sec) {
+            wrap.setAttribute('data-lac-sec', sec);
+            var el = document.querySelector('.lac-sec--' + sec);
+            if (el && el.tagName === 'DETAILS') el.open = true;
+            if (sel.value !== sec) sel.value = sec;
+        }
+        sel.addEventListener('change', function () { activar(sel.value); });
+        activar(sel.value || 'cargar');
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
@@ -769,6 +980,7 @@ opciones" (⋯) de cada partida.
 
         initFlatpickrs();
         initForms();
+        initNavMobile();
 
         // Botones fijos
         $('lac-cf-guardar').addEventListener('click', guardarCierre);
@@ -779,6 +991,20 @@ opciones" (⋯) de cada partida.
             $('lac-confirm-si').disabled = !this.checked;
         });
         $('lac-btn-freezar').addEventListener('click', freezarSeleccionadas);
+        $('lac-rec-guardar').addEventListener('click', guardarRecordatorio);
+        $('lac-bebe-guardar').addEventListener('click', guardarBebe);
+
+        // Toggle "pedir confirmación" (preferencia por dispositivo)
+        var ctog = $('lac-confirmar-toggle');
+        if (ctog) {
+            ctog.checked = confirmacionesActivadas();
+            ctog.addEventListener('change', function () {
+                setConfirmaciones(this.checked);
+                toast(this.checked
+                    ? '🔒 Te voy a pedir confirmación en cada acción.'
+                    : '⚡ Acciones sin confirmación (en este dispositivo).', 'info');
+            });
+        }
 
         // Hoja "Más opciones" → acciones sobre masPartidaId
         $('lac-mas-usada').addEventListener('click', function () {
@@ -804,6 +1030,8 @@ opciones" (⋯) de cada partida.
             if (btn) { pedirCierre(parseInt(btn.getAttribute('data-lac-usar'), 10), 'usada'); return; }
             btn = e.target.closest('[data-lac-tirar]');
             if (btn) { pedirCierre(parseInt(btn.getAttribute('data-lac-tirar'), 10), 'descartada'); return; }
+            btn = e.target.closest('[data-lac-bajar]');
+            if (btn) { pedirBajar(parseInt(btn.getAttribute('data-lac-bajar'), 10)); return; }
             btn = e.target.closest('[data-lac-mas]');
             if (btn) { abrirMas(parseInt(btn.getAttribute('data-lac-mas'), 10)); return; }
             btn = e.target.closest('[data-lac-reabrir]');

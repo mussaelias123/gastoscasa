@@ -4751,12 +4751,9 @@ body.has-dev-banner .settings-aside {
   min-width: 0;
 }
 
-/* Mobile apilado (<900px): Heladera antes que Freezer (es la que se opera
-   a diario). Desktop mantiene el orden físico Freezer arriba / Heladera
-   abajo (grid-template-areas, ver media query 900px) sin tocar el DOM. */
-@media (max-width: 899px) {
-  .lac-panel--heladera { order: -1; }
-}
+/* Freezer SIEMPRE arriba y heladera abajo, en desktop y mobile: la columna
+   central se dibuja como una heladera con freezer superior (.lac-fridge), así
+   que el orden físico se respeta en todos los tamaños. */
 
 /* Aviso al entrar (solo si hay vencidas / por vencer) */
 .lac-aviso {
@@ -5375,15 +5372,24 @@ body.has-dev-banner .settings-aside {
 
   .lac-col { min-height: 0; }
 
-  /* Izquierda: alta + resumen, cada uno a su alto natural (arriba). */
+  /* Izquierda: cada panel a su alto NATURAL; si el conjunto (bebé + cargar +
+     recordatorio + resumen) no entra en la pantalla, scrollea la COLUMNA
+     entera. Así el Resumen se ve completo en vez de quedar aplastado al fondo
+     (los flatpickr se anclan al body, no los recorta este overflow). */
+  .lac-col--izq {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 3px;
+  }
   .lac-col--izq .lac-panel { flex: 0 0 auto; }
 
-  /* Centro: freezer y heladera parten el alto 50/50 y scrollean adentro. */
-  .lac-panel--freezer,
-  .lac-panel--heladera {
-    flex: 1 1 0;
-    min-height: 0;
-  }
+  /* Centro: el cuerpo de la heladera (.lac-fridge) llena la columna; adentro,
+     el freezer (arriba) y la heladera (abajo) se reparten 40/60 — proporción
+     de una heladera con freezer superior — y cada uno scrollea adentro. */
+  .lac-col--centro { min-height: 0; }
+  .lac-fridge { flex: 1 1 auto; min-height: 0; }
+  .lac-panel--freezer  { flex: 2 1 0; min-height: 0; }
+  .lac-panel--heladera { flex: 3 1 0; min-height: 0; }
 
   .lac-panel--freezer .lac-lista-scroll,
   .lac-panel--heladera .lac-lista-scroll {
@@ -5411,6 +5417,364 @@ body.has-dev-banner .settings-aside {
   .lac-item { grid-template-columns: 1fr; }
   .lac-item-actions { justify-content: flex-end; }
   .lac-btn-icono { width: 36px; height: 36px; }
+}
+
+/* ── Lactancia v2: bajar a descongelar, tipos de leche, KPIs, disclaimer ──── */
+
+/* Botón "⬇ Bajar" (freezer → heladera): acción principal de una bolsa de
+   freezer, en acento coral (misma familia que .lac-btn-usar pero acento). */
+.lac-btn-bajar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-acento);
+  color: var(--color-texto-invertido);
+  border: none;
+  border-radius: var(--radio-borde);
+  padding: 0.32rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 0.15s, transform 0.15s;
+}
+.lac-btn-bajar:hover { filter: brightness(1.08); transform: translateY(-1px); }
+
+/* Etiqueta de tipo de leche en la heladera (Fresca vs Descongelada) */
+.lac-tipo {
+  display: inline-block;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.lac-tipo--fresca { color: var(--color-exito);  border-color: var(--color-exito); }
+.lac-tipo--desc   { color: var(--color-acento); border-color: var(--color-acento); }
+
+/* La bolsa descongelada, marcada con un filito de acento a la izquierda (sin
+   correr el layout — box-shadow inset, no border) */
+.lac-item--desc { box-shadow: inset 3px 0 0 var(--color-acento); }
+
+/* KPIs de ciclo de la leche */
+.lac-kpis-titulo {
+  margin-top: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-texto-muted);
+}
+.lac-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+.lac-kpi {
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+.lac-kpi-emoji { font-size: 0.95rem; line-height: 1; }
+.lac-kpi-num {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--color-texto);
+  line-height: 1.1;
+}
+.lac-kpi-label { font-size: 0.72rem; color: var(--color-texto-muted); }
+.lac-kpi-label small { display: block; font-size: 0.64rem; opacity: 0.85; }
+.lac-kpi.is-alerta .lac-kpi-num { color: var(--color-alerta); }
+
+/* "Litros de amor" resaltado: mismo tamaño, pero destaca (borde acento,
+   número en acento y un glow suave). Pedido de Mari. */
+.lac-kpi--amor {
+  border: 1.5px solid var(--color-acento);
+  box-shadow: 0 2px 12px -5px var(--color-acento);
+}
+.lac-kpi--amor .lac-kpi-num { color: var(--color-acento); }
+
+/* Cartel fijo: los tiempos son orientativos, ajustar con el profesional */
+.lac-disclaimer {
+  margin: 0.7rem 0 0;
+  padding: 0.5rem 0.1rem 0;
+  border-top: 1px dashed var(--color-borde);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--color-texto-muted);
+}
+
+/* Input numérico opcional del modal de confirmación (ej. ml que tomó León) */
+.lac-confirm-input-wrap {
+  display: block;
+  margin-top: 0.7rem;
+  font-size: 0.85rem;
+  color: var(--color-texto);
+}
+.lac-confirm-input-wrap[hidden] { display: none; }
+.lac-confirm-input-row {
+  margin-top: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+#lac-confirm-input {
+  width: 110px;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.lac-confirm-input-suf { color: var(--color-texto-muted); font-size: 0.85rem; }
+
+/* ── La heladera dibujada: cuerpo del electrodoméstico + dos puertas ──────────
+   Un solo cuerpo (.lac-fridge) con el freezer (arriba) y la heladera (abajo)
+   como dos puertas, cada una con su manija metálica cerca de la junta central,
+   con patitas abajo y un toque de escarcha en el freezer. */
+.lac-fridge {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;                 /* la "junta" entre las dos puertas */
+  min-height: 0;
+  margin-bottom: 9px;        /* deja lugar a las patitas */
+  padding: 13px;
+  border-radius: 28px;
+  /* Cuerpo con más contraste que las puertas: tinte cálido apenas más oscuro
+     sobre el fondo, para que se lea como el "gabinete" del electrodoméstico. */
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.015), rgba(0, 0, 0, 0.06)),
+    var(--color-fondo);
+  border: 1.5px solid var(--color-borde);
+  box-shadow: var(--sombra-card), inset 0 2px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* Patitas del electrodoméstico */
+.lac-fridge::before,
+.lac-fridge::after {
+  content: "";
+  position: absolute;
+  bottom: -7px;
+  width: 42px;
+  height: 9px;
+  border-radius: 0 0 7px 7px;
+  background: linear-gradient(180deg, var(--color-borde), var(--color-texto-muted));
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.18);
+  opacity: 0.65;
+}
+.lac-fridge::before { left: 26px; }
+.lac-fridge::after  { right: 26px; }
+
+/* Cada compartimento es una "puerta": más clara que el cuerpo (contraste),
+   con un canal a la derecha reservado para la manija (que no pise contenido
+   ni scroll). */
+.lac-door {
+  position: relative;
+  padding-right: 22px;
+  border-radius: 16px;
+  border: 1px solid var(--color-borde);
+  background: var(--color-superficie);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  overflow: hidden;
+}
+
+/* Escarcha del freezer: un velo frío y claro en la parte de arriba de la puerta
+   (capa de fondo, no tapa el contenido). */
+.lac-door--freezer {
+  background:
+    linear-gradient(180deg, rgba(203, 231, 243, 0.40), rgba(203, 231, 243, 0) 36%),
+    var(--color-superficie);
+}
+
+/* Manija: barra vertical metálica, gruesa, sobre el canal derecho */
+.lac-door::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  right: 7px;
+  width: 9px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b6afa8 0%, #f4f0eb 45%, #ada69f 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30), inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  pointer-events: none;
+}
+/* Manijas largas que flanquean la junta central (freezer arriba / heladera
+   abajo), como en una heladera con freezer superior. */
+.lac-door--freezer::after  { top: 24%; bottom: 12px; }
+.lac-door--heladera::after { top: 12px; bottom: 24%; }
+
+/* ── Recordatorio nocturno (panel de config + banner cuando está vigente) ──── */
+.lac-recordatorio {
+  padding: 0.7rem 0.9rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.lac-rec-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  color: var(--color-texto);
+  cursor: pointer;
+}
+.lac-rec-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--color-acento);
+}
+.lac-rec-hora-row { display: flex; align-items: center; gap: 0.5rem; }
+.lac-rec-hora-label { font-size: 0.82rem; color: var(--color-texto-muted); }
+.lac-rec-hora-input {
+  width: 78px;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+}
+.lac-rec-guardar {
+  margin-left: auto;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+  border-radius: var(--radio-borde);
+}
+.lac-rec-hint {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--color-texto-muted);
+}
+
+/* ── Perfil del bebé (nombre + fecha de nacimiento) ───────────────────────── */
+.lac-bebe {
+  padding: 0.7rem 0.9rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lac-bebe-nombre,
+.lac-bebe-nac {
+  padding: 0.42rem 0.55rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-size: 0.9rem;
+}
+.lac-bebe-nombre { width: 100%; font-weight: 700; }
+.lac-bebe-row { display: flex; align-items: center; gap: 0.5rem; }
+.lac-bebe-label { font-size: 0.82rem; color: var(--color-texto-muted); white-space: nowrap; }
+.lac-bebe-nac { flex: 1 1 auto; min-width: 0; }
+.lac-bebe-guardar { padding: 0.42rem 0.8rem; font-size: 0.82rem; border-radius: var(--radio-borde); }
+.lac-bebe-edad { font-size: 0.78rem; font-weight: 600; color: var(--color-texto-muted); }
+
+/* Toggle de preferencia (ej. "pedir confirmación") en el pie del Resumen */
+.lac-pref-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.55rem 0.1rem 0;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--color-borde);
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--color-texto-muted);
+  cursor: pointer;
+}
+.lac-pref-toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--color-acento);
+}
+.lac-pref-toggle strong { color: var(--color-texto); }
+
+/* Banner: aparece arriba cuando el recordatorio está vigente esta noche */
+.lac-rec-banner {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-texto);
+  border-radius: var(--radio-borde);
+  padding: 0.6rem 0.85rem;
+  border-left: 4px solid var(--color-acento);
+  background: var(--color-alerta-suave);
+}
+.lac-rec-banner[hidden] { display: none; }
+
+
+/* ── Paneles plegables (Bebé/Recordatorio): summary tipo header + chevron ──── */
+.lac-panel-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.7rem 0.9rem;
+}
+.lac-panel-summary::-webkit-details-marker { display: none; }
+.lac-panel-summary::after {
+  content: '▾';
+  margin-left: auto;
+  color: var(--color-texto-muted);
+  font-size: 0.85rem;
+}
+details[open] > .lac-panel-summary::after { content: '▴'; }
+details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde); }
+
+/* El bebé gateando: un pelín más grande para que se lea el gesto */
+.lac-ico-bebe { width: 1.4em; height: 1.4em; }
+
+/* ── Selector de sección (SOLO mobile; en escritorio se ven las 3 columnas) ── */
+.lac-nav-mobile { display: none; }
+
+@media (max-width: 899px) {
+  .lac-nav-mobile {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.2rem;
+  }
+  .lac-nav-label { font-size: 0.85rem; font-weight: 700; color: var(--color-texto-muted); }
+  .lac-nav-sel {
+    flex: 1 1 auto;
+    padding: 0.55rem 0.6rem;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-borde);
+    background: var(--color-superficie);
+    color: var(--color-texto);
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  /* Columnas transparentes: los paneles fluyen directo en .lac-page y así
+     mostramos SOLO la sección elegida (data-lac-sec en .lac-wrap). */
+  .lac-col { display: contents; }
+  .lac-wrap[data-lac-sec] .lac-sec { display: none; }
+  .lac-wrap[data-lac-sec="cargar"]       .lac-sec--cargar,
+  .lac-wrap[data-lac-sec="heladera"]     .lac-sec--heladera,
+  .lac-wrap[data-lac-sec="resumen"]      .lac-sec--resumen,
+  .lac-wrap[data-lac-sec="historial"]    .lac-sec--historial,
+  .lac-wrap[data-lac-sec="bebe"]         .lac-sec--bebe,
+  .lac-wrap[data-lac-sec="recordatorio"] .lac-sec--recordatorio { display: flex; }
 }
 
 
@@ -7655,8 +8019,8 @@ body:has(.home-page) .contenido-principal {
 body.lac-body,
 body:has(.lac-wrap) {
   /* Acento coral (atardecer) — deep enough for blanco legible en botones */
-  --color-acento:          #D3653F;
-  --color-acento-oscuro:   #BC5636;
+  --color-acento:          #DB6A54;
+  --color-acento-oscuro:   #C55D49;
   /* Superficies crema */
   --color-fondo:           #FBF3E9;
   --color-superficie:      #FFFDF9;
@@ -7666,11 +8030,11 @@ body:has(.lac-wrap) {
   --color-texto-invertido: #FFF6EE;
   /* Estructura */
   --color-borde:           #ECDDCD;
-  /* Estado (verde salvia · miel · terracota) */
-  --color-exito:           #6E9873;
+  /* Estado (azul marino clarito · miel · terracota) */
+  --color-exito:           #6884B3;
   --color-alerta:          #D79A46;
   --color-peligro:         #C85D4E;
-  --color-exito-suave:     #E4EEE1;
+  --color-exito-suave:     #E6ECF5;
   --color-alerta-suave:    #F8E9D2;
   --color-peligro-suave:   #F8E1DA;
   /* Personas (familia cálida) */
@@ -7679,7 +8043,7 @@ body:has(.lac-wrap) {
   --color-persona-leon:    #E0A94E;
   /* Monedas (por si algún componente compartido aparece) */
   --color-moneda-ars:      #8FAEBE;
-  --color-moneda-usd:      #6E9873;
+  --color-moneda-usd:      #6884B3;
   /* Grises decorativos → marrones cálidos */
   --color-deco-1:          #3E2E27;
   --color-deco-2:          #6E5346;
@@ -7699,25 +8063,25 @@ body:has(.lac-wrap) {
    Misma familia, predominancia oscura/intensa. */
 html[data-theme="dark"] body.lac-body,
 html[data-theme="dark"] body:has(.lac-wrap) {
-  --color-acento:          #F0977B;
-  --color-acento-oscuro:   #D2725A;
+  --color-acento:          #F2907C;
+  --color-acento-oscuro:   #D96F5D;
   --color-fondo:           #241A16;
   --color-superficie:      #33251F;
   --color-texto:           #F3E6D8;
   --color-texto-muted:     #C0A492;
   --color-texto-invertido: #2A1C16;
   --color-borde:           #4A362D;
-  --color-exito:           #8CB690;
+  --color-exito:           #99B4DD;
   --color-alerta:          #EBB56A;
   --color-peligro:         #DE7A69;
-  --color-exito-suave:     #2E3A2C;
+  --color-exito-suave:     #28323F;
   --color-alerta-suave:    #3E3120;
   --color-peligro-suave:   #3E2620;
   --color-persona-elias:   #82A7B0;
   --color-persona-mari:    #EE9E86;
   --color-persona-leon:    #E7BE6E;
   --color-moneda-ars:      #9EBBC9;
-  --color-moneda-usd:      #8CB690;
+  --color-moneda-usd:      #99B4DD;
   --color-deco-1:          #1B1310;
   --color-deco-2:          #2E211C;
   --color-deco-3:          #7A5E4F;

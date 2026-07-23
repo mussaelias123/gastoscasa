@@ -36,7 +36,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
 {% block titulo %}Lactancia{% endblock %}
 
 {% block contenido %}
-<div class="lac-wrap">
+<div class="lac-wrap" data-lac-sec="cargar">
 
   <!-- Frase de mamá para el bebé (hero). Cambiar el texto es una sola línea. -->
   <div class="lac-hero">
@@ -47,6 +47,24 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
   <!-- Aviso al entrar (lo llena el JS solo si hay vencidas / por vencer) -->
   <div class="lac-aviso" id="lac-aviso" hidden></div>
 
+  <!-- Recordatorio nocturno de bajar bolsitas (lo muestra el JS si está vigente) -->
+  <div class="lac-rec-banner" id="lac-rec-banner" hidden></div>
+
+  {# Selector de sección — SOLO mobile (en escritorio se ven las 3 columnas).
+     Abre por defecto en "Cargar" (lo más usado). El JS cambia data-lac-sec de
+     .lac-wrap y el CSS muestra solo la sección elegida. #}
+  <div class="lac-nav-mobile">
+    <label class="lac-nav-label" for="lac-nav-sel">Ver</label>
+    <select id="lac-nav-sel" class="lac-nav-sel">
+      <option value="cargar">➕ Cargar</option>
+      <option value="heladera">🧊 Heladera</option>
+      <option value="resumen">📊 Resumen</option>
+      <option value="historial">📖 Historial</option>
+      <option value="bebe">👶 Datos del bebé</option>
+      <option value="recordatorio">🌙 Recordatorio</option>
+    </select>
+  </div>
+
   {# Flujo izquierda → derecha: se carga a la izquierda, el stock queda en el
      centro (freezer arriba / heladera abajo, como una heladera de casa) y el
      historial a la derecha. En mobile las 3 columnas se apilan en ese orden. #}
@@ -55,9 +73,25 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
     <!-- ══ Columna izquierda: cargar + resumen ═══════════════════════════════ -->
     <div class="lac-col lac-col--izq">
 
+      <!-- ── Perfil del bebé: nombre + fecha de nacimiento (habilita la edad y
+           los cortes por mes de vida). NO se guarda peso/estatura. ──────────── -->
+      <details class="lac-panel lac-panel--bebe lac-sec lac-sec--bebe">
+        <summary class="lac-panel-summary">
+          <div class="lac-panel-title"><svg class="lac-ico lac-ico-bebe" viewBox="0 0 24 24" aria-hidden="true"><circle class="relleno" cx="16.7" cy="8.3" r="2.7"/><circle cx="16.7" cy="8.3" r="2.7"/><path d="M14.4 9.4C11 9.5 8.3 10.6 6.8 12.4"/><path d="M14.3 10.8 14.9 17.7"/><path d="M10.7 11.4 11 17.7"/><path d="M6.8 12.4C6 13.2 5.7 14.2 6.1 15.3 6.4 16.2 7.2 16.9 8.2 17.7"/><path d="M4.6 17.9h15.2"/></svg> Bebé <span class="lac-bebe-edad" id="lac-bebe-edad"></span></div>
+        </summary>
+        <div class="lac-bebe">
+          <input type="text" id="lac-bebe-nombre" class="lac-bebe-nombre" placeholder="Nombre del bebé" maxlength="40">
+          <div class="lac-bebe-row">
+            <label for="lac-bebe-nac" class="lac-bebe-label">Nació el</label>
+            <input type="text" id="lac-bebe-nac" class="lac-bebe-nac" placeholder="dd/mm/aaaa">
+            <button type="button" class="btn-acento lac-bebe-guardar" id="lac-bebe-guardar">Guardar</button>
+          </div>
+        </div>
+      </details>
+
       <!-- ── Alta rápida (siempre a la vista, primero en mobile).
            Un solo form: toda extracción entra por HELADERA. ────────────────── -->
-      <section class="lac-panel lac-panel--alta">
+      <section class="lac-panel lac-panel--alta lac-sec lac-sec--cargar">
         <div class="lac-panel-header">
           <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M9.3 13.6a2.7 2.7 0 0 0 2 2.3"/></svg> Cargar</div>
         </div>
@@ -69,21 +103,51 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
         </div>
       </section>
 
+      <!-- ── Recordatorio nocturno: bajar bolsitas del freezer para mañana ──── -->
+      <details class="lac-panel lac-panel--recordatorio lac-sec lac-sec--recordatorio">
+        <summary class="lac-panel-summary">
+          <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M15 3.2a7.2 7.2 0 1 0 6.1 10.1A5.7 5.7 0 0 1 15 3.2Z"/><path d="M15 3.2a7.2 7.2 0 1 0 6.1 10.1A5.7 5.7 0 0 1 15 3.2Z"/></svg> Recordatorio</div>
+        </summary>
+        <div class="lac-recordatorio">
+          <label class="lac-rec-toggle">
+            <input type="checkbox" id="lac-rec-activo">
+            <span>Recordarme de noche <strong>bajar bolsitas</strong> del freezer a la heladera (para el jardín)</span>
+          </label>
+          <div class="lac-rec-hora-row">
+            <label for="lac-rec-hora" class="lac-rec-hora-label">A las</label>
+            <input type="text" id="lac-rec-hora" class="lac-rec-hora-input" placeholder="21:00" inputmode="numeric">
+            <button type="button" class="btn-acento lac-rec-guardar" id="lac-rec-guardar">Guardar</button>
+          </div>
+          <p class="lac-rec-hint">Es un aviso dentro de la app (la 🔔). El aviso al
+            celular con la app cerrada va a llegar cuando la hagamos app instalable.</p>
+        </div>
+      </details>
+
       <!-- ── Resumen de stock ─────────────────────────────────────────────── -->
-      <section class="lac-panel lac-panel--tablero">
+      <section class="lac-panel lac-panel--tablero lac-sec lac-sec--resumen">
         <div class="lac-panel-header">
           <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><rect x="5.5" y="11" width="3.4" height="7" rx="1.5"/><rect x="10.3" y="7" width="3.4" height="11" rx="1.5"/><rect x="15.1" y="13.5" width="3.4" height="4.5" rx="1.5"/></svg> Resumen</div>
         </div>
         <div class="lac-tablero" id="lac-tablero"></div>
+        <p class="lac-disclaimer">🩺 Ajustá los tiempos de conservación según la
+          recomendación de tu profesional de confianza. Los avisos de la app son
+          orientativos y nunca te bloquean.</p>
+        <label class="lac-pref-toggle" title="Si lo desactivás, las acciones se hacen al toque, sin el cartel de confirmación. Es por dispositivo (no afecta el otro teléfono).">
+          <input type="checkbox" id="lac-confirmar-toggle" checked>
+          <span>Pedirme <strong>confirmación</strong> antes de cada acción</span>
+        </label>
       </section>
 
     </div>
 
-    <!-- ══ Columna central: el stock, como una heladera de casa ══════════════ -->
+    <!-- ══ Columna central: el stock, dibujado como una heladera de casa ═════
+         Un solo cuerpo (.lac-fridge) con dos puertas: freezer arriba,
+         heladera abajo — tal como una heladera con freezer superior. ═════════ -->
     <div class="lac-col lac-col--centro">
+     <div class="lac-fridge lac-sec lac-sec--heladera">
 
       <!-- ── Freezer arriba (FIFO: usar siempre la primera) ────────────────── -->
-      <section class="lac-panel lac-panel--freezer">
+      <section class="lac-panel lac-panel--freezer lac-door lac-door--freezer">
         <div class="lac-panel-header">
           <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/><path d="M12 6.5 10 4.7M12 6.5l2-1.8M12 17.5l-2 1.8M12 17.5l2 1.8"/><path d="M5.6 8.2 5.2 5.7M5.6 8.2 3.1 8.6M18.4 8.2l2.5.4M18.4 8.2l.4-2.5M5.6 15.8l-2.5.4M5.6 15.8l-.4 2.5M18.4 15.8l.4 2.5M18.4 15.8l2.5-.4"/></svg> Freezer <span class="lac-count" id="lac-freezer-count"></span></div>
           <span class="lac-fifo-hint" title="Lo primero que entra, primero que sale">FIFO: usar la primera</span>
@@ -93,7 +157,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
 
       <!-- ── Heladera abajo (lo operativo de las próximas 48 h).
            El botón ⬆ freeza la combinación de las partidas tildadas. ───────── -->
-      <section class="lac-panel lac-panel--heladera">
+      <section class="lac-panel lac-panel--heladera lac-door lac-door--heladera">
         <div class="lac-panel-header">
           <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M8 12.5h8l-.7 6.4a1 1 0 0 1-1 .9H9.7a1 1 0 0 1-1-.9L8 12.5Z"/><path d="M7.4 6h9.2l-1.3 12.9a1 1 0 0 1-1 .9H9.7a1 1 0 0 1-1-.9L7.4 6Z"/><path d="M7.7 9h8.6"/></svg> Heladera <span class="lac-count" id="lac-heladera-count"></span></div>
           <button type="button" class="lac-btn-freezar" id="lac-btn-freezar"
@@ -102,11 +166,12 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
         <div class="lac-lista-scroll" id="lac-lista-heladera"></div>
       </section>
 
+     </div><!-- /.lac-fridge -->
     </div>
 
     <!-- ══ Columna derecha: historial ════════════════════════════════════════ -->
     <div class="lac-col lac-col--der">
-      <details class="lac-panel lac-panel--historial" open>
+      <details class="lac-panel lac-panel--historial lac-sec lac-sec--historial" open>
         <summary class="lac-historial-summary"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 4.8 20 8l-8 3.2L4 8Z"/><path d="M4 8 12 4.8 20 8l-8 3.2L4 8Z"/><path d="M4 8v8l8 3.2 8-3.2V8"/><path d="M12 11.2V19.2"/></svg> Historial <span class="lac-count" id="lac-historial-count"></span></summary>
         <div class="lac-lista-scroll lac-lista-historial" id="lac-lista-historial"></div>
       </details>
@@ -203,6 +268,15 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
       <label class="lac-confirm-check" id="lac-confirm-check-wrap" hidden>
         <input type="checkbox" id="lac-confirm-check">
         <span id="lac-confirm-check-txt"></span>
+      </label>
+      {# Input numérico OPCIONAL (ej. cuántos ml tomó León al marcar Usada).
+         Dejarlo vacío es válido: no bloquea el botón de confirmar. #}
+      <label class="lac-confirm-input-wrap" id="lac-confirm-input-wrap" hidden>
+        <span id="lac-confirm-input-label"></span>
+        <span class="lac-confirm-input-row">
+          <input type="number" id="lac-confirm-input" min="0" step="1" inputmode="numeric" placeholder="—">
+          <span class="lac-confirm-input-suf">ml</span>
+        </span>
       </label>
     </div>
     <div class="lac-modal-foot">

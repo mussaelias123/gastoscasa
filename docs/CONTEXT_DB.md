@@ -84,10 +84,16 @@ Nota: capa de datos PURA. `database.py` NO calcula próximas fechas ni estados
 | `motivo_cierre`    | TEXT    | NULL (abierta) \| `usada` \| `descartada` \| `trasladada`    |
 | `fecha_cierre`     | TEXT    | `YYYY-MM-DD`. NULL si abierta                                |
 | `notas`            | TEXT    | Libre. Default `''`                                          |
-| `origen_id`        | INTEGER | En heladeras cerradas `trasladada`: id de la partida de freezer nacida de la combinación (N heladeras → 1 freezer). NULL ok |
+| `origen_id`        | INTEGER | En heladeras cerradas `trasladada`: id de la partida de freezer nacida de la combinación (N heladeras → 1 freezer). En una FREEZER cerrada `trasladada` (bajada a descongelar): id de la heladera `descongelada` que nació de ella (1 → 1). NULL ok |
+| `tipo`             | TEXT    | `fresca` (extracción directa a heladera) \| `congelada` (agregado de freezer, nace de combinar) \| `descongelada` (bajada del freezer a la heladera). Base de los KPIs y del vencimiento |
+| `consumido_ml`     | INTEGER | ml que el bebé realmente tomó de la bolsa (solo `usada`). NULL = no se anotó → se asume que se consumió todo. Base del desperdicio |
 | `actualizado`      | TEXT    | Timestamp ISO al modificar                                   |
 
 Nota: capa PURA — vencimiento/estado se calculan en `app.py` (`_lac_*`), nunca se almacenan. Cerradas (`motivo_cierre` no NULL) = historial, misma tabla.
+
+Migración `tipo`/`consumido_ml`: `ALTER TABLE ... ADD COLUMN` en try/except (mismo patrón que `movimientos`), + backfill de `tipo` en filas viejas (`freezer`→`congelada`, `heladera`→`fresca`).
+
+Por qué `tipo` importa para los KPIs: la producción total cuenta SOLO las `fresca` — cada extracción entra una vez como fresca; `congelada` y `descongelada` son la MISMA leche movida de lugar (si no, se contaría 2-3 veces al freezar y descongelar).
 
 ### Tabla `rutina_ajustes` (módulo Rutina — ajustes de horario)
 | Columna       | Tipo    | Notas                                                        |
@@ -170,10 +176,11 @@ la cadena ANTES de la cascada (los siguientes se re-encadenan, en el front).
 | `obtener_historial(actividad_id=None)` | `list[Row]`                  | `None`=todo. Orden `fecha_hecha` DESC |
 | `obtener_partidas_lactancia(ubicacion=None)` | `list[Row]`             | Orden crudo `fecha_extraccion, id`; FIFO final en app.py |
 | `obtener_partida_lactancia(id)`  | `Row` o None                       |                                    |
-| `agregar_partida_lactancia(ubicacion, fecha, hora, volumen_ml, notas='', origen_id=None)` | id | `cargada` se setea SIEMPRE acá (timestamp servidor) |
+| `agregar_partida_lactancia(ubicacion, fecha, hora, volumen_ml, notas='', origen_id=None, tipo='fresca')` | id | `cargada` se setea SIEMPRE acá (timestamp servidor). `tipo` default `fresca` porque toda alta es extracción directa |
 | `editar_partida_lactancia(id, fecha, hora, volumen_ml, notas)` | None  | NO toca `ubicacion` ni `cargada`   |
-| `cerrar_partida_lactancia(id, motivo, fecha_cierre, notas=None)` | None | Solo `usada`\|`descartada`         |
-| `combinar_partidas_lactancia(ids, fecha, hora, volumen_ml, fecha_cierre)` | id nuevo | Atómica: inserta 1 freezer combinada + cierra N heladeras como `trasladada` con `origen_id`=hija |
+| `cerrar_partida_lactancia(id, motivo, fecha_cierre, notas=None, consumido_ml=None)` | None | Solo `usada`\|`descartada`. `consumido_ml` se setea SIEMPRE (NULL si no viene) para que un re-cierre no arrastre un valor viejo |
+| `combinar_partidas_lactancia(ids, fecha, hora, volumen_ml, fecha_cierre)` | id nuevo | Atómica: inserta 1 freezer combinada (`tipo='congelada'`) + cierra N heladeras como `trasladada` con `origen_id`=hija |
+| `bajar_partida_lactancia(freezer_id, fecha_cierre)` | id nuevo | Atómica, inversa de combinar (1 → 1): inserta 1 heladera `tipo='descongelada'` (mismo volumen y datos de extracción; su `cargada`=ahora es la base del vencimiento) + cierra la de freezer como `trasladada` con `origen_id`=hija. Compatible con `reabrir` (deshace la bajada) |
 | `reabrir_partida_lactancia(id)`  | None                               | Atómica. Freezada: borra la hija y reabre TODA la combinación; ValueError si la hija ya se cerró |
 | `eliminar_partida_lactancia(id)` | None                               | DELETE definitivo                  |
 | `obtener_ajustes_rutina(desde, hasta)` | `list[Row]`                  | Ajustes con `fecha` en `[desde, hasta]` (strings ISO) |

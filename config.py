@@ -27,11 +27,28 @@ DEFAULTS = {
     # freezar_hasta_horas: antigüedad máxima en heladera para poder pasar la
     # partida al freezer (regla de seguridad: leche muy refrigerada no se
     # congela). Pasado ese umbral, el checkbox de freezar se bloquea.
-    "lactancia_freezer_meses":         6,
-    "lactancia_heladera_horas":        48,
-    "lactancia_aviso_freezer_dias":    14,
-    "lactancia_aviso_heladera_horas":  12,
-    "lactancia_freezar_hasta_horas":   24,
+    # descongelada_horas: vida en heladera de una bolsa BAJADA del freezer
+    # (leche que ya estuvo congelada y se descongela). Corre desde que se
+    # baja, no desde la extracción. Guía típica: usar dentro de 24 h.
+    "lactancia_freezer_meses":            6,
+    "lactancia_heladera_horas":           48,
+    "lactancia_descongelada_horas":       24,
+    "lactancia_aviso_freezer_dias":       14,
+    "lactancia_aviso_heladera_horas":     12,
+    "lactancia_aviso_descongelada_horas":  6,
+    "lactancia_freezar_hasta_horas":      24,
+    # Recordatorio nocturno de "bajar bolsitas" del freezer a la heladera (para
+    # el día siguiente de jardín). activo = interruptor (modo jardín off hasta
+    # que León arranque); hora = HH:MM local a partir de la cual avisa. Es un
+    # aviso in-app (la campana); nunca bloquea nada.
+    "lactancia_recordatorio_activo":      False,
+    "lactancia_recordatorio_hora":        "21:00",
+    # Perfil del bebé: nombre (se usa en los textos de la app) y fecha de
+    # nacimiento (YYYY-MM-DD; habilita mostrar la edad y los cortes por mes de
+    # vida). Deliberadamente NO se guarda peso ni estatura ni se estima cuánta
+    # leche "debería" tomar: eso es terreno médico y la app no lo hace.
+    "bebe_nombre":                        "León",
+    "bebe_fecha_nacimiento":              "",
     # ── Cotización USD oficial ──────────────────────────────────────────────
     # Se obtiene de dolarapi.com (módulo cotizacion.py) y se refresca 1 vez/día.
     # El 1500.0 es solo un bootstrap inicial; se sobrescribe en la primera

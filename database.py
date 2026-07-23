@@ -257,7 +257,30 @@ def inicializar_db():
     # motivo_cierre: NULL (abierta) | 'usada' | 'descartada' | 'trasladada'.
     # origen_id: en una heladera cerrada por traslado ('trasladada'), id de la
     #            partida de freezer que nació de la combinación (N heladeras
-    #            → 1 freezer). Permite deshacer la combinación completa.
+    #            → 1 freezer). Permite deshacer la combinación completa. En una
+    #            FREEZER cerrada por traslado (bajada a descongelar), id de la
+    #            heladera 'descongelada' que nació de ella (1 → 1, mismo undo).
+
+    # Migración: columnas nuevas para bases ya existentes.
+    #  tipo: 'fresca' (extracción directa a heladera) | 'congelada' (agregado
+    #        de freezer, nace de combinar) | 'descongelada' (bajada del freezer
+    #        a la heladera para descongelar). Base de KPIs y del vencimiento (la
+    #        descongelada corre desde que se baja, no desde la extracción).
+    #  consumido_ml: ml que León realmente tomó de la bolsa (solo 'usada';
+    #        NULL = se asume que se consumió todo). Base del desperdicio.
+    for columna, definicion in [('tipo', 'TEXT'), ('consumido_ml', 'INTEGER')]:
+        try:
+            cursor.execute(f'ALTER TABLE lactancia_partidas ADD COLUMN {columna} {definicion}')
+        except Exception:
+            pass  # La columna ya existe, ignorar el error
+    # Backfill del tipo en filas viejas (previas a esta columna): toda partida
+    # de freezer es un agregado 'congelada'; toda partida de heladera nació de
+    # una extracción directa 'fresca' (la descongelada es nueva, no hay viejas).
+    cursor.execute(
+        "UPDATE lactancia_partidas SET tipo = "
+        "CASE WHEN ubicacion = 'freezer' THEN 'congelada' ELSE 'fresca' END "
+        "WHERE tipo IS NULL"
+    )
 
     # -------------------------------------------------------------------
     # Tabla rutina_ajustes: ajustes de horario del módulo Rutina.
@@ -965,22 +988,25 @@ def obtener_partida_lactancia(partida_id):
 
 
 def agregar_partida_lactancia(ubicacion, fecha_extraccion, hora_extraccion, volumen_ml,
-                              notas='', origen_id=None):
+                              notas='', origen_id=None, tipo='fresca'):
     """Inserta una partida nueva y devuelve su id.
 
     `cargada` se setea SIEMPRE acá con el timestamp real del servidor (nunca
     viene del caller) y no se mueve jamás. Es solo auditoría: el vencimiento
-    se calcula desde fecha/hora de extracción (issue #48)."""
+    se calcula desde fecha/hora de extracción (issue #48).
+
+    `tipo` por defecto 'fresca' porque toda alta es una extracción directa a
+    la heladera; las 'congelada'/'descongelada' las crean combinar/bajar."""
     conn = conectar()
     cursor = conn.cursor()
     ahora = _ahora_iso()
     cursor.execute('''
         INSERT INTO lactancia_partidas (
-            ubicacion, cargada, fecha_extraccion, hora_extraccion,
+            ubicacion, tipo, cargada, fecha_extraccion, hora_extraccion,
             volumen_ml, notas, origen_id, actualizado
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (ubicacion, ahora, fecha_extraccion, hora_extraccion, volumen_ml,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (ubicacion, tipo, ahora, fecha_extraccion, hora_extraccion, volumen_ml,
           notas, origen_id, ahora))
     conn.commit()
     nuevo_id = cursor.lastrowid
@@ -1001,22 +1027,22 @@ def editar_partida_lactancia(partida_id, fecha_extraccion, hora_extraccion, volu
     conn.close()
 
 
-def cerrar_partida_lactancia(partida_id, motivo, fecha_cierre, notas=None):
+def cerrar_partida_lactancia(partida_id, motivo, fecha_cierre, notas=None, consumido_ml=None):
     """Cierra una partida como 'usada' o 'descartada' (la saca del stock sin
-    borrarla). El cierre por traslado va por trasladar_partida_lactancia."""
+    borrarla). El cierre por traslado va por combinar/bajar.
+
+    consumido_ml: ml que León realmente tomó de la bolsa (solo tiene sentido
+    en 'usada'). NULL = no se anotó → se asume que se consumió todo. Se setea
+    SIEMPRE (a NULL si no viene) para que un re-cierre no arrastre un valor
+    viejo. `notas` se actualiza solo si viene (None = no tocar)."""
     conn = conectar()
-    if notas is None:
-        conn.execute('''
-            UPDATE lactancia_partidas
-            SET motivo_cierre=?, fecha_cierre=?, actualizado=?
-            WHERE id=?
-        ''', (motivo, fecha_cierre, _ahora_iso(), partida_id))
-    else:
-        conn.execute('''
-            UPDATE lactancia_partidas
-            SET motivo_cierre=?, fecha_cierre=?, notas=?, actualizado=?
-            WHERE id=?
-        ''', (motivo, fecha_cierre, notas, _ahora_iso(), partida_id))
+    sets = ['motivo_cierre=?', 'fecha_cierre=?', 'consumido_ml=?', 'actualizado=?']
+    args = [motivo, fecha_cierre, consumido_ml, _ahora_iso()]
+    if notas is not None:
+        sets.append('notas=?')
+        args.append(notas)
+    args.append(partida_id)
+    conn.execute(f"UPDATE lactancia_partidas SET {', '.join(sets)} WHERE id=?", args)
     conn.commit()
     conn.close()
 
@@ -1039,10 +1065,10 @@ def combinar_partidas_lactancia(ids, fecha_extraccion, hora_extraccion, volumen_
     ahora = _ahora_iso()
     cursor.execute('''
         INSERT INTO lactancia_partidas (
-            ubicacion, cargada, fecha_extraccion, hora_extraccion,
+            ubicacion, tipo, cargada, fecha_extraccion, hora_extraccion,
             volumen_ml, notas, origen_id, actualizado
         )
-        VALUES ('freezer', ?, ?, ?, ?, '', NULL, ?)
+        VALUES ('freezer', 'congelada', ?, ?, ?, ?, '', NULL, ?)
     ''', (ahora, fecha_extraccion, hora_extraccion, volumen_ml, ahora))
     nuevo_id = cursor.lastrowid
     for partida_id in ids:
@@ -1054,6 +1080,55 @@ def combinar_partidas_lactancia(ids, fecha_extraccion, hora_extraccion, volumen_
     conn.commit()
     conn.close()
     return nuevo_id
+
+
+def bajar_partida_lactancia(freezer_id, fecha_cierre):
+    """
+    Baja una bolsa del FREEZER a la HELADERA para descongelar (el paso previo
+    a que León se la lleve al jardín). Es el inverso de combinar, 1 → 1:
+
+      1. Inserta una partida nueva de heladera tipo='descongelada', con el
+         mismo volumen y datos de extracción de la bolsa de freezer. Su
+         `cargada`=ahora es la base del vencimiento (la leche descongelada
+         corre desde que se baja, no desde la extracción — la calcula app.py).
+      2. Cierra la de freezer: motivo_cierre='trasladada', fecha_cierre y
+         origen_id = id de la nueva heladera (el vínculo que permite deshacer
+         la bajada con reabrir, mismo mecanismo que la combinación).
+
+    Devuelve el id de la partida nueva de heladera. Operación atómica.
+    """
+    conn = conectar()
+    try:
+        cursor = conn.cursor()
+        f = cursor.execute(
+            'SELECT ubicacion, motivo_cierre, fecha_extraccion, hora_extraccion, '
+            'volumen_ml, notas FROM lactancia_partidas WHERE id = ?', (freezer_id,)
+        ).fetchone()
+        if f is None:
+            raise ValueError('La partida no existe.')
+        if f['ubicacion'] != 'freezer':
+            raise ValueError('Solo se pueden bajar bolsas del freezer.')
+        if f['motivo_cierre'] is not None:
+            raise ValueError('Esa bolsa ya no está en el freezer.')
+        ahora = _ahora_iso()
+        cursor.execute('''
+            INSERT INTO lactancia_partidas (
+                ubicacion, tipo, cargada, fecha_extraccion, hora_extraccion,
+                volumen_ml, notas, origen_id, actualizado
+            )
+            VALUES ('heladera', 'descongelada', ?, ?, ?, ?, ?, NULL, ?)
+        ''', (ahora, f['fecha_extraccion'], f['hora_extraccion'],
+              f['volumen_ml'], f['notas'], ahora))
+        nueva_id = cursor.lastrowid
+        cursor.execute('''
+            UPDATE lactancia_partidas
+            SET motivo_cierre='trasladada', fecha_cierre=?, origen_id=?, actualizado=?
+            WHERE id=?
+        ''', (fecha_cierre, nueva_id, ahora, freezer_id))
+        conn.commit()
+        return nueva_id
+    finally:
+        conn.close()
 
 
 def reabrir_partida_lactancia(partida_id):
