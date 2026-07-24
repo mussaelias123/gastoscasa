@@ -8193,16 +8193,18 @@ html[data-theme="dark"] body:has(.lac-wrap)::before {
    así que el panel tiene que tapar más para no perder contraste. */
 body.lac-body .lac-panel,
 body:has(.lac-wrap) .lac-panel {
-  background: rgba(255, 253, 249, 0.70);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 253, 249, 0.55);
+  /* Desenfoque suave: apenas lo justo para limpiar el detalle fino sin cortar
+     la continuidad del dibujo (que se lea como una sola imagen a través). */
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
 /* La puerta del freezer conserva su escarcha sobre el panel translúcido */
 body.lac-body .lac-door--freezer,
 body:has(.lac-wrap) .lac-door--freezer {
   background:
     linear-gradient(180deg, rgba(203, 231, 243, 0.40), rgba(203, 231, 243, 0) 36%),
-    rgba(255, 253, 249, 0.70);
+    rgba(255, 253, 249, 0.55);
 }
 body.lac-body .lac-fridge,
 body:has(.lac-wrap) .lac-fridge {
@@ -8215,19 +8217,19 @@ body:has(.lac-wrap) .lac-fridge {
 
 html[data-theme="dark"] body.lac-body .lac-panel,
 html[data-theme="dark"] body:has(.lac-wrap) .lac-panel {
-  background: rgba(51, 37, 31, 0.80);
+  background: rgba(51, 37, 31, 0.62);
 }
 html[data-theme="dark"] body.lac-body .lac-door--freezer,
 html[data-theme="dark"] body:has(.lac-wrap) .lac-door--freezer {
   background:
     linear-gradient(180deg, rgba(203, 231, 243, 0.14), rgba(203, 231, 243, 0) 36%),
-    rgba(51, 37, 31, 0.80);
+    rgba(51, 37, 31, 0.62);
 }
 html[data-theme="dark"] body.lac-body .lac-fridge,
 html[data-theme="dark"] body:has(.lac-wrap) .lac-fridge {
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.14)),
-    rgba(36, 26, 22, 0.72);
+    rgba(36, 26, 22, 0.58);
 }
 
 /* ── Hero: frase de mamá para el bebé (Parisienne) ────────────────────────── */
