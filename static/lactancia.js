@@ -957,18 +957,52 @@ opciones" (⋯) de cada partida.
     // Cambia data-lac-sec en .lac-wrap (el CSS muestra solo esa sección) y, si
     // la sección elegida es un <details> (bebé/recordatorio/historial), la abre.
     // En escritorio el selector está oculto y no afecta nada.
+    // Menú PROPIO (no <select> nativo): el nativo solo admite texto y no podía
+    // mostrar nuestros íconos dibujados. Acá la lista la dibuja la app.
     function initNavMobile() {
-        var sel = $('lac-nav-sel');
-        var wrap = document.querySelector('.lac-wrap');
-        if (!sel || !wrap) return;
+        var trigger = $('lac-nav-trigger');
+        var lista   = $('lac-nav-lista');
+        var actual  = $('lac-nav-actual');
+        var wrap    = document.querySelector('.lac-wrap');
+        if (!trigger || !lista || !actual || !wrap) return;
+        var opciones = [].slice.call(lista.querySelectorAll('.lac-nav-opt'));
+
+        function abrir(si) {
+            lista.hidden = !si;
+            trigger.setAttribute('aria-expanded', si ? 'true' : 'false');
+        }
+
         function activar(sec) {
             wrap.setAttribute('data-lac-sec', sec);
             var el = document.querySelector('.lac-sec--' + sec);
             if (el && el.tagName === 'DETAILS') el.open = true;
-            if (sel.value !== sec) sel.value = sec;
+            opciones.forEach(function (o) {
+                var esta = o.getAttribute('data-sec') === sec;
+                o.classList.toggle('is-activa', esta);
+                o.setAttribute('aria-selected', esta ? 'true' : 'false');
+                if (esta) actual.innerHTML = o.innerHTML;   // ícono + nombre
+            });
+            abrir(false);
         }
-        sel.addEventListener('change', function () { activar(sel.value); });
-        activar(sel.value || 'cargar');
+
+        trigger.addEventListener('click', function (e) {
+            e.stopPropagation();
+            abrir(lista.hidden);
+        });
+        opciones.forEach(function (o) {
+            o.addEventListener('click', function () {
+                activar(o.getAttribute('data-sec'));
+            });
+        });
+        // Cerrar tocando afuera o con Escape
+        document.addEventListener('click', function (e) {
+            if (!lista.hidden && !e.target.closest('.lac-nav-menu')) abrir(false);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !lista.hidden) abrir(false);
+        });
+
+        activar(wrap.getAttribute('data-lac-sec') || 'cargar');
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────

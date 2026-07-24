@@ -144,14 +144,14 @@ Misma arquitectura que calendario.js: IIFE, estado local desde `window.LAC_DATOS
 | `confirmacionesActivadas()` / `setConfirmaciones(on)` | Preferencia POR DISPOSITIVO en `localStorage` (`lac-confirmar`; `'0'` = sin confirmación). No se sincroniza entre teléfonos: cada uno elige. Toggle al pie del Resumen |
 | `renderRecordatorio()` / `guardarRecordatorio()` | Refleja `DATOS.recordatorio` (toggle + hora) y muestra el banner cuando `pendiente` (lo decide el server); guarda vía POST `/api/lactancia/recordatorio` |
 | `renderBebe()` / `guardarBebe()` / `nombreBebe()` | Perfil del bebé (nombre + fecha de nacimiento, muestra la edad); `nombreBebe()` reemplaza el "León" que antes estaba fijo en el código, en todos los textos |
-| `initNavMobile()` | Selector de sección de mobile: cambia `data-lac-sec` en `.lac-wrap` (el CSS muestra UNA sección) y abre el `<details>` si la sección elegida lo es |
+| `initNavMobile()` | Menú de secciones de mobile: cambia `data-lac-sec` en `.lac-wrap` (el CSS muestra UNA sección) y abre el `<details>` si la sección elegida lo es. Es un menú **propio** (no `<select>` nativo): el nativo solo admite texto, así que no podía mostrar los íconos dibujados del módulo. Copia el ícono+nombre de la opción activa al botón; cierra al elegir, al tocar afuera o con Escape |
 | `abrirCerrarFecha/abrirMas/abrirEditor/abrirConfirmEliminar` + `guardar*` | Modales y mutaciones (`postAccion()` = fetch + `X-Requested-With`) |
 
 ### Layout del módulo Lactancia (`templates/lactancia.html` + `style.css`)
 
 - **La heladera dibujada**: freezer y heladera viven dentro de UN cuerpo `.lac-fridge` (electrodoméstico con dos "puertas" `.lac-door--freezer` / `.lac-door--heladera`, manija metálica cerca de la junta, patitas y escarcha en el freezer). El freezer va SIEMPRE arriba (también en mobile: se quitó el viejo `order:-1`). Desktop: 40/60 con scroll interno en cada puerta.
 - **Plegables**: `Bebé` y `Recordatorio` son `<details>` (se tocan una vez), colapsados por defecto, con `summary.lac-panel-summary` + chevron.
-- **Secciones y selector mobile** (<900px): cada bloque lleva `.lac-sec .lac-sec--{cargar|heladera|resumen|historial|bebe|recordatorio}`. `.lac-col { display: contents }` aplana las columnas y el CSS muestra SOLO la sección de `data-lac-sec` (default `cargar`, lo más usado). En desktop el selector está oculto y se ven las 3 columnas.
+- **Secciones y menú mobile** (<900px): cada bloque lleva `.lac-sec .lac-sec--{cargar|heladera|resumen|historial|bebe|recordatorio}`. `.lac-col { display: contents }` aplana las columnas y el CSS muestra SOLO la sección de `data-lac-sec` (default `cargar`, lo más usado). El menú es propio (`.lac-nav-trigger` + `.lac-nav-lista`/`.lac-nav-opt`, con los SVG del módulo — incluye un ícono de heladera dibujado para esa sección), NO un `<select>` nativo. En desktop está oculto y se ven las 3 columnas.
 - **Columna izquierda desktop**: paneles a su alto natural y la COLUMNA scrollea (`overflow-y:auto`) si no entra todo — así el Resumen nunca queda aplastado.
 - **Cartel fijo** al pie del Resumen: los tiempos de conservación son orientativos, ajustarlos con el profesional de confianza. Los avisos del módulo NUNCA bloquean una acción.
 
