@@ -8151,19 +8151,83 @@ html[data-theme="dark"] body:has(.lac-wrap) {
 }
 
 /* ── "Rayo de sol": glow cálido sutil en la esquina superior de la hoja ──── */
+/* Fondo de la hoja: ilustración de mamá + bebé como MARCA DE AGUA. El velo
+   (primera capa, la de más arriba) la apaga lo suficiente para que el texto
+   siga legible; sin el velo la ilustración competiría con el contenido. */
 body.lac-body,
-body:has(.lac-wrap) {
+body:has(.lac-wrap) { background: var(--color-fondo); }
+
+/* La ilustración va en un pseudo-elemento FIJO, no con `background-attachment:
+   fixed`: iOS Safari no respeta esa propiedad y el fondo quedaba invisible en
+   el iPhone. Así cubre siempre el viewport, detrás de todo el contenido.
+   El velo (primera capa) la baja lo justo para que el texto se lea. */
+body.lac-body::before,
+body:has(.lac-wrap)::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
+    linear-gradient(rgba(251, 243, 233, 0.92) 0%, rgba(251, 243, 233, 0.60) 26%,
+                    rgba(251, 243, 233, 0.68) 100%),
     radial-gradient(1100px 460px at 78% -8%, rgba(255, 214, 170, 0.40), transparent 62%),
-    var(--color-fondo);
-  background-attachment: fixed;
+    url('img/fondo-lactancia.jpg') center / cover no-repeat;
 }
 html[data-theme="dark"] body.lac-body,
-html[data-theme="dark"] body:has(.lac-wrap) {
+html[data-theme="dark"] body:has(.lac-wrap) { background: var(--color-fondo); }
+html[data-theme="dark"] body.lac-body::before,
+html[data-theme="dark"] body:has(.lac-wrap)::before {
   background:
+    linear-gradient(rgba(36, 26, 22, 0.90) 0%, rgba(36, 26, 22, 0.62) 26%,
+                    rgba(36, 26, 22, 0.72) 100%),
     radial-gradient(1100px 460px at 78% -8%, rgba(240, 151, 123, 0.16), transparent 62%),
-    var(--color-fondo);
-  background-attachment: fixed;
+    url('img/fondo-lactancia.jpg') center / cover no-repeat;
+}
+
+/* ── Paneles translúcidos ("vidrio esmerilado") ────────────────────────────────
+   Dejan ver la ilustración de fondo, pero con DESENFOQUE detrás: el fondo se
+   vuelve una mancha suave y el texto queda siempre legible. La legibilidad
+   manda — si hace falta, se sube la opacidad, no se baja.
+   En modo noche la opacidad es mayor: la ilustración es clara y el texto claro,
+   así que el panel tiene que tapar más para no perder contraste. */
+body.lac-body .lac-panel,
+body:has(.lac-wrap) .lac-panel {
+  background: rgba(255, 253, 249, 0.70);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+/* La puerta del freezer conserva su escarcha sobre el panel translúcido */
+body.lac-body .lac-door--freezer,
+body:has(.lac-wrap) .lac-door--freezer {
+  background:
+    linear-gradient(180deg, rgba(203, 231, 243, 0.40), rgba(203, 231, 243, 0) 36%),
+    rgba(255, 253, 249, 0.70);
+}
+body.lac-body .lac-fridge,
+body:has(.lac-wrap) .lac-fridge {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.015), rgba(0, 0, 0, 0.06)),
+    rgba(251, 243, 233, 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+html[data-theme="dark"] body.lac-body .lac-panel,
+html[data-theme="dark"] body:has(.lac-wrap) .lac-panel {
+  background: rgba(51, 37, 31, 0.80);
+}
+html[data-theme="dark"] body.lac-body .lac-door--freezer,
+html[data-theme="dark"] body:has(.lac-wrap) .lac-door--freezer {
+  background:
+    linear-gradient(180deg, rgba(203, 231, 243, 0.14), rgba(203, 231, 243, 0) 36%),
+    rgba(51, 37, 31, 0.80);
+}
+html[data-theme="dark"] body.lac-body .lac-fridge,
+html[data-theme="dark"] body:has(.lac-wrap) .lac-fridge {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.14)),
+    rgba(36, 26, 22, 0.72);
 }
 
 /* ── Hero: frase de mamá para el bebé (Parisienne) ────────────────────────── */
