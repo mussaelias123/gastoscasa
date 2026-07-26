@@ -79,4 +79,36 @@ Reportar siempre:
 **Antes de mergear un PR:**
 0. **Permiso del usuario (obligatorio, regla 2026-07-13)**: ningún agente mergea a main por su cuenta. Abrir el PR, avisar al usuario qué hay para verificar en DEV, y esperar su autorización explícita. Lección: en la reestructuración del home se mergearon 7 PRs sin pedir permiso — el usuario quería verificar en DEV primero.
 1. `git fetch origin`. Si `origin/main` avanzó: mergear `origin/main` EN LA RAMA, resolver conflictos ahí, re-verificar que la app sigue sana (mínimo `python -c "import app"` + smoke en dev) y recién entonces mergear el PR.
-2. Tras el merge: `git checkout main && git pull`, borrar la rama, y al desplegar sincronizar el clon PROD (`E:\Fondo`).
+2. Tras el merge: `git checkout main && git pull`, **borrar la rama local Y la
+   remota** (ver abajo), y al desplegar sincronizar el clon PROD (`E:\Fondo`).
+
+**Borrar la rama mergeada — local Y remota (regla 2026-07-26):**
+
+No alcanza con borrar la local. Lección: se acumularon 8 ramas mergeadas en
+`origin` porque los agentes borraban solo la copia local (o ni eso), y la
+redacción vieja de este punto decía "borrar la rama" sin aclarar cuál.
+
+Lo más simple es que lo haga el merge en un paso:
+
+```
+gh pr merge <N> --merge --delete-branch
+```
+
+`--delete-branch` borra la remota y la local. Si el PR se mergeó por la web o
+sin ese flag, limpiar a mano:
+
+```
+git push origin --delete <rama>
+git branch -d <rama>          # -d, nunca -D: si se niega, la rama NO estaba mergeada
+git fetch origin --prune      # barre las referencias locales muertas
+```
+
+Auditoría — listar ramas de `origin` ya contenidas en main (candidatas a borrar):
+
+```
+git fetch origin --prune
+git branch -r --merged origin/main | grep -v 'origin/main$'
+```
+
+Nada se pierde: el historial queda en `main` y en el PR. Si `git branch -d` se
+niega, la rama tiene commits propios — no forzar con `-D`, avisar al usuario.

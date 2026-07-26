@@ -67,7 +67,7 @@
 2. **Verificación**: tras cualquier cambio en dev, ingresar a `http://localhost:5050/` y confirmar que la app no se rompe. El dominio ngrok (`https://miller-unventured-courtly.ngrok-free.dev/`) es SOLO producción — no probar cambios de dev ahí. Cambios de rutas requieren reiniciar `python app.py`. Detalle en `docs/CONTEXT_DEPLOY.md`.
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.
-5. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. Detalle en `docs/METODOLOGIA.md` §5.
+5. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. **Tras mergear, borrar la rama local Y la remota** (regla 2026-07-26) — lo más simple es `gh pr merge <N> --merge --delete-branch`, que hace las dos. Detalle en `docs/METODOLOGIA.md` §5.
 6. **Merge a main SOLO con permiso del usuario** (regla 2026-07-13): los agentes pueden crear ramas, commitear y abrir PRs, pero **NUNCA mergear un PR a main** sin que el usuario lo autorice explícitamente. Flujo: implementar → verificar en DEV → abrir PR → **avisar al usuario y esperar su OK** → recién ahí mergear. La verificación en DEV no reemplaza la aprobación del usuario.
 
 ---
