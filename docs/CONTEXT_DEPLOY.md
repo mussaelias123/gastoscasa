@@ -71,6 +71,33 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - NO se loguea: URL pública de ngrok, aviso de first_run (el modo va dentro de la línea "App iniciada").
 - Decisión 2026-06: se evaluó migrar a Event Viewer de Windows y se descartó — los archivos de texto en `logs/` son directamente grepeables por agentes IA.
 
+## codebase-memory-mcp (opcional, herramienta local)
+
+Indexa el código en un grafo consultable por agentes IA, con visor web. **No es
+dependencia de la app**: FondoDev corre igual sin esto. Instalado por máquina,
+no viaja en el repo (nada suyo se commitea).
+
+- **Versión: 0.8.1 — NO actualizar.** La 0.9.0 crashea al indexar en Windows 11
+  (worker muere con log de 0 bytes; [issue #1267](https://github.com/DeusData/codebase-memory-mcp/issues/1267),
+  abierto). Verificado acá: 0.8.1 indexa bien, 0.9.0 no. **No correr
+  `codebase-memory-mcp update`** hasta que salga 0.9.1+ y se pruebe.
+- **Binario**: `%LOCALAPPDATA%\Programs\codebase-memory-mcp\codebase-memory-mcp.exe`
+  (variante UI, 270 MB). Índices en `~/.cache/codebase-memory-mcp/`.
+- **Abrir el grafo**: con Claude Code abierto (levanta el MCP server solo), ir a
+  **`http://localhost:9749`**. No choca con el 5050 de la app. Si no responde,
+  el server no está corriendo: arrancarlo con el binario sin argumentos.
+- **Sin watcher de archivos**: 0.8.1 no lo trae (es feature de la 0.9.0 rota).
+  `auto_index=true` reindexa al abrir sesión MCP, no al guardar un archivo.
+  Decisión 2026-07-26: se evaluó una tarea programada de Windows y se descartó
+  — reindexar a mano cuando haga falta.
+- **Reindexar a mano** (el auto-index solo corre al abrir sesión MCP):
+  `codebase-memory-mcp cli index_repository '{"repo_path":"E:/FondoDev"}'`
+  Es incremental, ~0,5 s. Respeta `.gitignore` (deja afuera `fondo.db`,
+  `backupsdev/`, `logs/`, `__pycache__/`).
+- **Desinstalar**: `codebase-memory-mcp uninstall -y`. Ojo: deja colgados el
+  binario, `~/.cache/codebase-memory-mcp/`, `~/.profile` y los scripts
+  `~/.claude/hooks/cbm-*` — borrarlos a mano.
+
 ## Reglas específicas
 1. **Verificación obligatoria** post-cambio en la URL del entorno correcto (ver "URLs de verificación": dev → `http://localhost:5050/`, prod → ngrok), salvo que el usuario diga lo contrario.
 2. **Restart del servicio** es operación con permisos elevados. Confirmar con usuario antes.
