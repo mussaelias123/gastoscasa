@@ -214,6 +214,106 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return typeof CFG.noche_min === 'number' ? CFG.noche_min : 1200;
     }
 
+    function amanecerMin() {
+        return typeof CFG.amanecer_min === 'number' ? CFG.amanecer_min : 390;
+    }
+
+    // ── Dibujos ─────────────────────────────────────────────────────────────
+    // Devuelve el SVG del dibujo que corresponda; si lo guardado no es una
+    // clave conocida ni un emoji traducible, deja el emoji tal cual (así nunca
+    // se pierde lo que el usuario haya escrito a mano).
+    function dibujoHtml(valor, fallback) {
+        var lib = window.RutinaDibujos;
+        if (lib) {
+            var clave = lib.resolver(valor) || lib.resolver(fallback);
+            if (clave) return lib.html(clave);
+        }
+        return valor || fallback || '';
+    }
+
+    // El emoji de un ítem de la línea de tiempo: dibujo propio si lo hay.
+    function itemEmoji(it) {
+        return dibujoHtml(it.dibujo, it.emoji);
+    }
+
+    // ── Fondo día/noche ─────────────────────────────────────────────────────
+    // El sol y la luna recorren un arco. Qué hora se refleja depende de qué
+    // estés mirando: si es el día de hoy manda el reloj real; si estás viendo
+    // otro día, manda la hora a la que llegaste con el scroll de la línea de
+    // tiempo (fue la decisión de Mari: "las dos cosas").
+    var horaFondo = null;   // minuto que se está reflejando (null = todavía nada)
+
+    function pintarFondo(min) {
+        var fondo = document.querySelector('.rut-fondo');
+        if (!fondo) return;
+        var m = ((min % 1440) + 1440) % 1440;
+        horaFondo = m;
+
+        var alba = amanecerMin();
+        var ocaso = nocheMin();
+        if (ocaso <= alba) ocaso = alba + 60;   // config incoherente: no romper
+
+        var raiz = document.documentElement;
+        // Luz: 1 de día, 0 de noche, con media hora de transición en cada
+        // punta para que el amanecer y el atardecer no sean un interruptor.
+        var borde = 45;
+        var luz;
+        if (m <= alba - borde || m >= ocaso + borde) luz = 0;
+        else if (m >= alba + borde && m <= ocaso - borde) luz = 1;
+        else if (m < alba + borde) luz = (m - (alba - borde)) / (borde * 2);
+        else luz = ((ocaso + borde) - m) / (borde * 2);
+        luz = Math.max(0, Math.min(1, luz));
+
+        // Arco del sol: de un borde al otro entre el amanecer y el anochecer,
+        // con la altura máxima al mediodía solar.
+        function arco(desde, hasta, ahora) {
+            var t = (ahora - desde) / (hasta - desde);
+            t = Math.max(0, Math.min(1, t));
+            return { x: (6 + t * 88).toFixed(1) + '%',
+                     y: (72 - Math.sin(t * Math.PI) * 60).toFixed(1) + '%' };
+        }
+
+        var esDeDia = m >= alba && m <= ocaso;
+        var sol = arco(alba, ocaso, m);
+        // La noche cruza la medianoche: se la lleva a una recta continua.
+        var largoNoche = (1440 - ocaso) + alba;
+        var tNoche = (m > ocaso) ? (m - ocaso) : (m + (1440 - ocaso));
+        var luna = arco(0, largoNoche, tNoche);
+
+        raiz.style.setProperty('--rut-luz', luz.toFixed(3));
+        raiz.style.setProperty('--rut-sol-x', sol.x);
+        raiz.style.setProperty('--rut-sol-y', sol.y);
+        raiz.style.setProperty('--rut-sol-op', esDeDia ? '1' : '0');
+        raiz.style.setProperty('--rut-luna-x', luna.x);
+        raiz.style.setProperty('--rut-luna-y', luna.y);
+        raiz.style.setProperty('--rut-luna-op', esDeDia ? '0' : '1');
+    }
+
+    // Qué hora refleja el fondo: hoy → el reloj; otro día → lo que estés
+    // mirando en la línea de tiempo (se recalcula al scrollear).
+    function actualizarFondo() {
+        var hoyIdx = new Date().getDay();
+        if (UI.dia === hoyIdx) return pintarFondo(ahoraMin());
+        pintarFondo(horaVisibleTimeline());
+    }
+
+    // Minuto que está en el centro del área visible del lienzo. El eje lo
+    // dibuja renderTimeline con data-eje-ini / data-escala.
+    function horaVisibleTimeline() {
+        var cont = $('rut-filas');
+        var canvas = cont ? cont.querySelector('.rut-canvas') : null;
+        if (!canvas) return 12 * 60;
+        var ejeIni = Number(canvas.dataset.ejeIni);
+        var escala = Number(canvas.dataset.escala);
+        if (!escala) return 12 * 60;
+        // El contenedor que scrollea es el timeline en escritorio y la página
+        // en mobile: se toma la posición del canvas respecto del viewport.
+        var caja = canvas.getBoundingClientRect();
+        var centro = window.innerHeight / 2;
+        var px = Math.max(0, Math.min(caja.height, centro - caja.top));
+        return ejeIni + px / escala;
+    }
+
     // ── Fechas y formato ─────────────────────────────────────────────────────
     // SIEMPRE fecha local armada a mano (nunca toISOString → corre a UTC).
     function isoLocal(d) {
@@ -416,7 +516,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var slot = 0;
             var cadena = plan.dia.filter(function (it) {
                 if (!ocultos[it.id]) return true;
-                quitados.push({ id: it.id, emoji: it.emoji, t: it.t, user: u });
+                quitados.push({ id: it.id, emoji: it.emoji, dibujo: it.dibujo, t: it.t, user: u });
                 return false;
             });
 
@@ -444,7 +544,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var noct = [];
             (plan.nocturnas || []).forEach(function (n) {
                 if (ocultos[n.id]) {
-                    quitados.push({ id: n.id, emoji: n.emoji, t: n.t, user: u });
+                    quitados.push({ id: n.id, emoji: n.emoji, dibujo: n.dibujo, t: n.t, user: u });
                     return;
                 }
                 var start = (aj[n.id] !== undefined) ? aj[n.id] : (noche ? noche.start : 0) + n.off;
@@ -468,7 +568,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 var aid = 'a' + act.id;
                 var emoji = escapeHtml(act.dibujo) || '📌';
                 if (ocultos[aid]) {
-                    quitados.push({ id: aid, emoji: emoji, t: act.titulo, user: u });
+                    quitados.push({ id: aid, emoji: emoji, dibujo: act.dibujo, t: act.titulo, user: u });
                     return;
                 }
                 var start = (aj[aid] !== undefined) ? aj[aid] : act.inicio_min;
@@ -880,8 +980,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var irId = cur ? cur.id : (sig ? sig.id : null);
             var emojiHtml = irId
                 ? '<button type="button" class="rut-ahora-emoji" data-ir="' + irId + '" ' +
-                      'title="Ver en la línea de tiempo">' + el.emoji + '</button>'
-                : '<span class="rut-ahora-emoji">' + el.emoji + '</span>';
+                      'title="Ver en la línea de tiempo">' + itemEmoji(el) + '</button>'
+                : '<span class="rut-ahora-emoji">' + itemEmoji(el) + '</span>';
             html += '<div class="rut-card-ahora rut--persona"' + styleColor(u) + '>' +
                 '<div class="rut-ahora-head">' +
                     '<span class="rut-ahora-quien">' + emojiDe(u) + ' ' +
@@ -1099,7 +1199,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     y(it.start) + 'px;height:' + h + 'px;left:' + izq + ';width:' + ancho + '">' +
                     '<span class="rut-item-linea">' +
                         '<span class="rut-item-hora">' + fmt(it.start) + '</span>' +
-                        '<span class="rut-item-emoji">' + it.emoji + '</span>' +
+                        '<span class="rut-item-emoji">' + itemEmoji(it) + '</span>' +
                         '<span class="rut-item-titulo">' + escapeHtml(it.t) + '</span>' +
                         (it.compartida && h >= 24 ? '<span class="rut-item-candado" title="Compartida con otro miembro">🔗</span>' : '') +
                         (it.dur && h >= 38 ? '<span class="rut-item-dur">' + fmtDur(it.dur) + '</span>' : '') +
@@ -1121,7 +1221,10 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 '<span>' + fmt(now) + '</span></div>';
         }
 
-        html += '<div class="rut-canvas" style="height:' + altoCanvas + 'px;max-width:' + anchoMax + 'px">' +
+        // data-eje-* los lee el fondo día/noche para saber qué hora estás
+        // mirando cuando scrolleás un día que no es hoy.
+        html += '<div class="rut-canvas" data-eje-ini="' + ejeIni + '" data-escala="' + ESCALA + '"' +
+            ' style="height:' + altoCanvas + 'px;max-width:' + anchoMax + 'px">' +
             grid +
             '<div class="rut-gutter">' + horas + '</div>' +
             '<div class="rut-cols">' + cols + '</div>' +
@@ -1154,7 +1257,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             return '<div class="rut-popover rut--persona" data-q-cancelar="1" style="--rut-color: var(--color-' +
                 colorTokenDe(it.user) + ');top:' + top + 'px">' +
                 '<div class="rut-popover-head">' +
-                    '<span class="rut-popover-titulo">' + it.emoji + ' ' + escapeHtml(it.t) + '</span>' +
+                    '<span class="rut-popover-titulo">' + itemEmoji(it) + ' ' + escapeHtml(it.t) + '</span>' +
                 '</div>' +
                 '<div class="rut-popover-botones">' +
                     '<span class="rut-quitar-txt">Quitar:</span>' +
@@ -1172,7 +1275,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return '<div class="rut-popover rut--persona" data-cerrar="1" style="--rut-color: var(--color-' +
             colorTokenDe(it.user) + ');top:' + top + 'px">' +
             '<div class="rut-popover-head">' +
-                '<span class="rut-popover-titulo">' + it.emoji + ' ' + escapeHtml(it.t) + '</span>' +
+                '<span class="rut-popover-titulo">' + itemEmoji(it) + ' ' + escapeHtml(it.t) + '</span>' +
                 '<span class="rut-popover-rango">' + rango + '</span>' +
             '</div>' +
             (it.sub ? '<div class="rut-popover-sub">' + escapeHtml(it.sub) + '</div>' : '') +
@@ -1221,7 +1324,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     '<div class="rut-fila-tap"' + tapAttr + '>' +
                         '<span class="rut-fila-hora">' + fmt(it.start) + '</span>' +
                         '<span class="rut-fila-dot"></span>' +
-                        '<span class="rut-fila-emoji">' + it.emoji + '</span>' +
+                        '<span class="rut-fila-emoji">' + itemEmoji(it) + '</span>' +
                         '<div class="rut-fila-cuerpo">' +
                             '<div class="rut-fila-titulo">' + escapeHtml(it.t) +
                                 (activa ? '<span class="rut-badge-ahora">ahora</span>' : '') +
@@ -1375,7 +1478,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             visibles.map(function (q) {
                 return '<div class="rut-quitado-fila rut--persona"' + styleColor(q.user) + '>' +
                     '<span class="rut-fila-dot"></span>' +
-                    '<span class="rut-fila-emoji">' + q.emoji + '</span>' +
+                    '<span class="rut-fila-emoji">' + dibujoHtml(q.dibujo, q.emoji) + '</span>' +
                     '<span class="rut-quitado-titulo">' + escapeHtml(q.t) + '</span>' +
                     '<button type="button" class="rut-btn-restaurar" data-restaurar="' + q.id + '">↩ Restaurar</button>' +
                 '</div>';
@@ -1730,6 +1833,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         renderTips(calc.bebe);
         renderFamilia();
         renderAjustes();
+        actualizarFondo();   // el cielo sigue la hora que se está mirando
 
         var btnEditar = $('rut-editar');
         if (btnEditar) {
@@ -1809,6 +1913,32 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         document.body.classList.add('rut-body');
 
         initNavMenu();
+
+        // ── Fondo día/noche ────────────────────────────────────────────────
+        // Mirando otro día, el cielo sigue el scroll de la línea de tiempo.
+        // rAF para no recalcular en cada píxel.
+        var pidiendo = false;
+        function alScrollear() {
+            if (pidiendo) return;
+            pidiendo = true;
+            requestAnimationFrame(function () {
+                pidiendo = false;
+                var hoyIdx = new Date().getDay();
+                if (UI.dia !== hoyIdx) actualizarFondo();
+            });
+        }
+        window.addEventListener('scroll', alScrollear, { passive: true });
+        var cajaTl = $('rut-filas');
+        if (cajaTl && cajaTl.parentElement) {
+            cajaTl.parentElement.addEventListener('scroll', alScrollear, { passive: true });
+        }
+
+        // Pestaña oculta → animaciones en pausa (batería)
+        function ajustarMovimiento() {
+            document.body.classList.toggle('rut-quieto', document.hidden);
+        }
+        document.addEventListener('visibilitychange', ajustarMovimiento);
+        ajustarMovimiento();
 
         // Panel Familia: alta / edición / baja de miembros.
         var panelFam = $('rut-familia');

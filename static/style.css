@@ -8573,3 +8573,306 @@ html[data-theme="dark"] body:has(.lac-wrap) .lac-fridge {
 /* Un toque más suave/tierno en superficies grandes del módulo */
 body.lac-body .lac-panel { border-radius: var(--radio-borde); }
 body.lac-body .lac-item { border-radius: 12px; }
+
+
+/* ============================================================================
+   RUTINA — TEMA VISUAL (fondo día/noche + dibujos propios)
+   ============================================================================
+   Scoped a la hoja, igual que el tema cálido de Lactancia: `body.rut-body` lo
+   agrega rutina.js y `body:has(.rut-wrap)` cubre el primer pintado para que no
+   haya un parpadeo antes de que corra el JS.
+
+   FONDO: un paisaje de bloques dibujado por nosotros (nada de assets ajenos),
+   con el sol y la luna recorriendo el cielo según la hora. Vive en una capa
+   `position: fixed` detrás de todo — no `background-attachment: fixed`, que
+   iOS Safari ignora (mismo motivo que en Lactancia).
+
+   Cuánta luz hay lo decide rutina.js con estas custom properties:
+     --rut-luz     0 = noche cerrada · 1 = pleno día  → cruza los dos cielos
+     --rut-sol-x/y --rut-luna-x/y    posición en el arco, en %
+     --rut-sol-op  --rut-luna-op     opacidad de cada astro
+   Cross-fade por opacidad en vez de interpolar colores: es más barato y
+   funciona en todos los navegadores.
+
+   Todo el fondo va MUY suave (ver --rut-fondo-fuerza): tiene que leerse como
+   una textura detrás del contenido, no competir con él. El texto nunca se
+   apoya sobre el paisaje: las tarjetas siguen en `--color-superficie`, apenas
+   translúcidas.
+
+   ANIMACIONES: solo transform y opacity. Se apagan enteras con
+   prefers-reduced-motion y se pausan cuando la pestaña no está visible
+   (`body.rut-quieto`, que pone rutina.js) para no gastar batería.
+   ============================================================================ */
+
+body.rut-body,
+body:has(.rut-wrap) {
+  /* La misma tipografía que Lactancia (Archivo Narrow, self-host, OFL) */
+  --fuente-principal: 'Archivo Narrow', 'Segoe UI', Tahoma, sans-serif;
+  --radio-borde: 14px;
+
+  /* Cielo */
+  --rut-cielo-dia-alto:   #A9D3E8;
+  --rut-cielo-dia-bajo:   #E4EEDC;
+  --rut-cielo-noche-alto: #1C2440;
+  --rut-cielo-noche-bajo: #38405E;
+
+  /* Paisaje de bloques */
+  --rut-pasto:      #8FB56A;
+  --rut-pasto-osc:  #6F9450;
+  --rut-tierra:     #A87B57;
+  --rut-tierra-osc: #85603F;
+  --rut-agua:       #7FB0C4;
+  --rut-hoja:       #5E8B4C;
+  --rut-tronco:     #7A5A3C;
+  --rut-piedra:     #9AA0A6;
+
+  /* Astros */
+  --rut-sol:  #F2C46B;
+  --rut-luna: #EDEFF5;
+
+  /* Cuánto se ve el fondo. Suavecito, como lo pediste. */
+  --rut-fondo-fuerza: 0.34;
+
+  /* Valores por defecto por si el JS todavía no corrió (mediodía) */
+  --rut-luz: 1;
+  --rut-sol-x: 50%;
+  --rut-sol-y: 18%;
+  --rut-sol-op: 1;
+  --rut-luna-x: 50%;
+  --rut-luna-y: 80%;
+  --rut-luna-op: 0;
+}
+
+/* Con el paisaje detrás, las tarjetas se despegan mejor con un poco de
+   translucidez (mismo recurso que los paneles de Lactancia). */
+body.rut-body .rut-filas,
+body.rut-body .rut-panel,
+body.rut-body .rut-card-ahora,
+body.rut-body .rut-tips-card {
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) 88%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+/* ── La capa del fondo ───────────────────────────────────────────────────── */
+.rut-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: -1;                 /* detrás de todo el contenido de la app */
+  overflow: hidden;
+  pointer-events: none;
+  opacity: var(--rut-fondo-fuerza);
+}
+
+.rut-fondo-cielo {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom,
+              var(--rut-cielo-dia-alto), var(--rut-cielo-dia-bajo));
+}
+
+/* El cielo de noche se cruza por encima según cuánta luz haya */
+.rut-fondo-cielo--noche {
+  background: linear-gradient(to bottom,
+              var(--rut-cielo-noche-alto), var(--rut-cielo-noche-bajo));
+  opacity: calc(1 - var(--rut-luz));
+  transition: opacity 1.2s linear;
+}
+
+/* ── Sol y luna ──────────────────────────────────────────────────────────── */
+.rut-astro {
+  position: absolute;
+  width: 74px;
+  height: 74px;
+  margin: -37px 0 0 -37px;      /* centrado en su punto */
+  border-radius: 50%;
+  transition: left 1.2s linear, top 1.2s linear, opacity 1.2s linear;
+}
+
+.rut-astro--sol {
+  left: var(--rut-sol-x);
+  top: var(--rut-sol-y);
+  opacity: var(--rut-sol-op);
+  background: var(--rut-sol);
+  box-shadow: 0 0 44px 20px color-mix(in srgb, var(--rut-sol) 55%, transparent);
+}
+
+.rut-astro--luna {
+  left: var(--rut-luna-x);
+  top: var(--rut-luna-y);
+  opacity: var(--rut-luna-op);
+  background: var(--rut-luna);
+  box-shadow: 0 0 34px 14px color-mix(in srgb, var(--rut-luna) 40%, transparent);
+}
+
+/* El brillo late despacio, como respirando */
+.rut-astro::after {
+  content: '';
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.28;
+  animation: rutBrillo 6s ease-in-out infinite;
+}
+
+@keyframes rutBrillo {
+  0%, 100% { transform: scale(1);    opacity: 0.28; }
+  50%      { transform: scale(1.14); opacity: 0.14; }
+}
+
+/* ── Nubes ───────────────────────────────────────────────────────────────── */
+.rut-nube {
+  position: absolute;
+  height: 16px;
+  border-radius: 8px;
+  background: #FFFFFF;
+  opacity: 0.5;
+  box-shadow: 22px -9px 0 -1px #FFFFFF, 48px 2px 0 -3px #FFFFFF;
+}
+
+.rut-nube--1 { top: 14%; width: 60px; animation: rutNube 150s linear infinite; }
+.rut-nube--2 { top: 26%; width: 44px; opacity: 0.34; animation: rutNube 210s linear infinite -70s; }
+.rut-nube--3 { top:  8%; width: 52px; opacity: 0.28; animation: rutNube 260s linear infinite -160s; }
+
+@keyframes rutNube {
+  from { transform: translateX(-90px); }
+  to   { transform: translateX(102vw); }
+}
+
+/* ── El paisaje de bloques, pegado abajo ─────────────────────────────────── */
+.rut-mapa {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46vh;
+  min-height: 220px;
+}
+
+.rut-mapa svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  shape-rendering: crispEdges;   /* bordes duros: es dibujo de bloques */
+}
+
+/* De noche el paisaje se apaga: un velo azulado encima */
+.rut-mapa::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--rut-cielo-noche-alto);
+  opacity: calc((1 - var(--rut-luz)) * 0.62);
+  transition: opacity 1.2s linear;
+}
+
+/* ── Dibujos propios ─────────────────────────────────────────────────────── */
+/* Mismo sistema que los íconos de Lactancia: viewBox 24, stroke currentColor
+   (heredan el color de la persona) y un segundo tono con .relleno. */
+.rut-dib {
+  width: 1.25em;
+  height: 1.25em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.22em;
+  overflow: visible;
+}
+
+.rut-dib .relleno { fill: currentColor; stroke: none; opacity: 0.18; }
+
+/* En la línea de tiempo el dibujo toma el color de la persona */
+.rut-item-emoji .rut-dib,
+.rut-fila-emoji .rut-dib { color: var(--rut-color); }
+
+.rut-ahora-emoji .rut-dib { width: 1.6em; height: 1.6em; }
+.rut-miembro-emoji .rut-dib { width: 1.35em; height: 1.35em; color: var(--rut-color); }
+.rut-chip .rut-dib { width: 1.05em; height: 1.05em; }
+
+/* ── Animaciones de los dibujos ──────────────────────────────────────────── */
+/* Movimientos chicos y lentos: la hoja se mira muchas veces por día, una
+   animación llamativa cansa enseguida. */
+
+.an-zzz            { animation: rutZzz 3.4s ease-in-out infinite; transform-origin: 20% 30%; }
+.an-zzz-2          { animation-delay: -1.7s; }
+@keyframes rutZzz  { 0%,100% { opacity: 0.25; transform: translateY(2px); }
+                     50%     { opacity: 1;    transform: translateY(-2px); } }
+
+.an-titila         { animation: rutTitila 2.8s ease-in-out infinite; }
+.an-titila-2       { animation-delay: -0.9s; }
+.an-titila-3       { animation-delay: -1.8s; }
+@keyframes rutTitila { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+.an-rayos          { animation: rutRayos 4s ease-in-out infinite; transform-origin: 12px 14px; }
+@keyframes rutRayos { 0%,100% { opacity: 0.55; transform: scale(0.94); }
+                      50%     { opacity: 1;    transform: scale(1.04); } }
+
+.an-late           { animation: rutLate 3.2s ease-in-out infinite; transform-origin: 12px 13px; }
+@keyframes rutLate { 0%,100% { transform: scale(1); } 45% { transform: scale(1.07); } }
+
+.an-gota           { animation: rutGota 3.6s ease-in-out infinite; }
+@keyframes rutGota { 0%,60%,100% { opacity: 0.35; transform: translateY(0); }
+                     80%         { opacity: 1;    transform: translateY(2.5px); } }
+
+.an-leche          { animation: rutLeche 5s ease-in-out infinite; transform-origin: 12px 21px; }
+@keyframes rutLeche { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(0.9); } }
+
+.an-vapor          { animation: rutVapor 3.8s ease-in-out infinite; }
+@keyframes rutVapor { 0%,100% { opacity: 0.3; transform: translateY(1px); }
+                      50%     { opacity: 0.9; transform: translateY(-2px); } }
+
+.an-burbuja        { animation: rutBurbuja 4.2s ease-in-out infinite; }
+.an-burbuja-2      { animation-delay: -1.4s; }
+.an-burbuja-3      { animation-delay: -2.8s; }
+@keyframes rutBurbuja { 0%   { opacity: 0;   transform: translateY(3px) scale(0.7); }
+                        35%  { opacity: 0.9; }
+                        100% { opacity: 0;   transform: translateY(-5px) scale(1.1); } }
+
+.an-lluvia         { animation: rutLluvia 1.9s linear infinite; }
+.an-lluvia-2       { animation-delay: -0.6s; }
+.an-lluvia-3       { animation-delay: -1.2s; }
+@keyframes rutLluvia { 0%   { opacity: 0; transform: translateY(-3px); }
+                       30%  { opacity: 1; }
+                       100% { opacity: 0; transform: translateY(4px); } }
+
+.an-pica           { animation: rutPica 2.6s ease-in-out infinite; transform-origin: 8.6px 13px; }
+@keyframes rutPica { 0%,100% { transform: translateY(0); }
+                     45%     { transform: translateY(-2.2px); } }
+
+.an-rueda          { animation: rutRueda 4.5s linear infinite; transform-origin: 10px 18.4px; }
+.an-rueda-2        { transform-origin: 17.4px 18.4px; }
+@keyframes rutRueda { to { transform: rotate(360deg); } }
+
+.an-bandera        { animation: rutBandera 3s ease-in-out infinite; transform-origin: 12px 5px; }
+@keyframes rutBandera { 0%,100% { transform: skewY(0deg); } 50% { transform: skewY(-5deg); } }
+
+.an-cierre         { animation: rutCierre 5s ease-in-out infinite; transform-origin: 12px 13.6px; }
+@keyframes rutCierre { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(0.5); } }
+
+.an-pesa           { animation: rutPesa 3s ease-in-out infinite; transform-origin: 12px 12px; }
+@keyframes rutPesa { 0%,100% { transform: translateY(1.2px); } 50% { transform: translateY(-1.2px); } }
+
+.an-hoja           { animation: rutHoja 6s ease-in-out infinite; transform-origin: 12px 12px; }
+@keyframes rutHoja { 0%,70%,100% { transform: rotateY(0deg); } 85% { transform: rotateY(-32deg); } }
+
+.an-respira        { animation: rutRespira 4.4s ease-in-out infinite; transform-origin: 12px 16px; }
+@keyframes rutRespira { 0%,100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+
+.an-llama          { animation: rutLlama 1.5s ease-in-out infinite; transform-origin: 12px 9px; }
+@keyframes rutLlama { 0%,100% { transform: scale(1) rotate(-2deg); opacity: 1; }
+                      50%     { transform: scale(1.12) rotate(2deg); opacity: 0.85; } }
+
+/* Pestaña oculta o el usuario pidió menos movimiento → todo quieto. */
+body.rut-quieto .rut-fondo *,
+body.rut-quieto .rut-dib * { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rut-fondo *,
+  .rut-dib * { animation: none !important; }
+  .rut-astro,
+  .rut-fondo-cielo--noche,
+  .rut-mapa::after { transition: none; }
+}

@@ -883,6 +883,7 @@ def _static_version():
             os.path.join(app.static_folder, 'rutina.js'),
             os.path.join(app.static_folder, 'rutina-actividades.js'),
             os.path.join(app.static_folder, 'rutina-sueno.js'),
+            os.path.join(app.static_folder, 'rutina-dibujos.js'),
             os.path.join(app.static_folder, 'home.js'),
         ]
         return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))

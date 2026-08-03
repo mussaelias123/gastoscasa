@@ -35,6 +35,76 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
 {% block titulo %}Rutina{% endblock %}
 
 {% block contenido %}
+{# ══ Fondo día/noche ═══════════════════════════════════════════════════════
+   Paisaje de bloques dibujado acá con rectángulos: nada de imágenes ni de
+   assets de terceros. Un estilo visual no es registrable; lo que sí lo está
+   son las texturas y la marca de un juego, y no se usa ninguna.
+   El sol y la luna los mueve rutina.js con --rut-sol-x/y y --rut-luna-x/y
+   según la hora que se esté mirando. Es decorativo → aria-hidden. #}
+<div class="rut-fondo" aria-hidden="true">
+  <div class="rut-fondo-cielo"></div>
+  <div class="rut-fondo-cielo rut-fondo-cielo--noche"></div>
+
+  <div class="rut-astro rut-astro--sol"></div>
+  <div class="rut-astro rut-astro--luna"></div>
+
+  <div class="rut-nube rut-nube--1"></div>
+  <div class="rut-nube rut-nube--2"></div>
+  <div class="rut-nube rut-nube--3"></div>
+
+  <div class="rut-mapa">
+    <svg viewBox="0 0 240 90" preserveAspectRatio="xMidYMax slice">
+      <!-- Sierras del fondo, apagadas para que no compitan -->
+      <g fill="var(--rut-pasto-osc)" opacity="0.45">
+        <rect x="12" y="42" width="48" height="6"/>
+        <rect x="18" y="36" width="36" height="6"/>
+        <rect x="24" y="30" width="24" height="6"/>
+        <rect x="30" y="24" width="12" height="6"/>
+        <rect x="120" y="42" width="66" height="6"/>
+        <rect x="126" y="36" width="54" height="6"/>
+        <rect x="132" y="30" width="42" height="6"/>
+        <rect x="144" y="24" width="18" height="6"/>
+        <rect x="150" y="18" width="6"  height="6"/>
+      </g>
+
+      <!-- Tierra, con una capa más oscura abajo y algo de piedra -->
+      <rect x="0" y="54" width="240" height="36" fill="var(--rut-tierra)"/>
+      <rect x="0" y="72" width="240" height="18" fill="var(--rut-tierra-osc)"/>
+      <g fill="var(--rut-piedra)" opacity="0.5">
+        <rect x="24"  y="78" width="12" height="6"/>
+        <rect x="108" y="72" width="6"  height="6"/>
+        <rect x="186" y="78" width="18" height="6"/>
+      </g>
+
+      <!-- Pasto, cortado donde está la laguna -->
+      <rect x="0"   y="48" width="156" height="6" fill="var(--rut-pasto)"/>
+      <rect x="198" y="48" width="42"  height="6" fill="var(--rut-pasto)"/>
+      <rect x="156" y="48" width="42"  height="12" fill="var(--rut-agua)"/>
+
+      <!-- Árboles -->
+      <g fill="var(--rut-tronco)">
+        <rect x="36"  y="36" width="6" height="12"/>
+        <rect x="96"  y="30" width="6" height="18"/>
+        <rect x="216" y="36" width="6" height="12"/>
+      </g>
+      <g fill="var(--rut-hoja)">
+        <rect x="30"  y="24" width="18" height="12"/>
+        <rect x="36"  y="18" width="6"  height="6"/>
+        <rect x="84"  y="12" width="30" height="18"/>
+        <rect x="90"  y="6"  width="18" height="6"/>
+        <rect x="210" y="24" width="18" height="12"/>
+      </g>
+
+      <!-- Matitas sueltas, para que el pasto no quede una línea recta -->
+      <g fill="var(--rut-pasto-osc)">
+        <rect x="66"  y="42" width="6" height="6"/>
+        <rect x="126" y="42" width="6" height="6"/>
+        <rect x="204" y="42" width="6" height="6"/>
+      </g>
+    </svg>
+  </div>
+</div>
+
 <div class="rut-wrap" data-rut-sec="hoy">
 
   <!-- ══ 1. Topbar sticky del módulo ══════════════════════════════════════ -->
@@ -176,5 +246,6 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
 </script>
 <script src="{{ url_for('static', filename='rutina-actividades.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='rutina-sueno.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='rutina-dibujos.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='rutina.js') }}?v={{ static_version }}"></script>
 {% endblock %}
