@@ -76,8 +76,6 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
     </div>
   </div>
 
-  <div class="rut-col">
-
     <!-- ══ 3. Sección HOY ═════════════════════════════════════════════════ -->
     <section class="rut-sec rut-sec--hoy">
       <div class="rut-selectores">
@@ -110,6 +108,11 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
         <div class="rut-tips" id="rut-tips"></div>
       </div>
     </section>
+
+  {# Los tres paneles de configuración van juntos en un contenedor propio: en
+     escritorio ocupan su columna (se ven los tres a la vez, hay lugar); en
+     mobile el contenedor es transparente y el menú muestra uno por vez. #}
+  <div class="rut-paneles">
 
     <!-- ══ 4. Sección FAMILIA ═════════════════════════════════════════════ -->
     <section class="rut-sec rut-sec--familia">

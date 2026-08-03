@@ -5884,11 +5884,11 @@ details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde)
   --color-rut-p8: #A88BC0;   /* lila */
 }
 
-/* ── Selector de sección ──────────────────────────────────────────────────
-   A diferencia de Lactancia (donde en escritorio se ven las 3 columnas), acá
-   el menú vale en TODOS los anchos: Hoy / Familia / Actividades / Ajustes son
-   pantallas distintas, no columnas de una misma vista. Mismo markup y misma
-   mecánica (data-rut-sec en .rut-wrap). */
+/* ── Selector de sección (SOLO mobile) ───────────────────────────────────
+   Mismo criterio que Lactancia: en mobile el menú muestra una sección por vez;
+   en escritorio hay lugar para verlas todas y el menú se esconde (si no, queda
+   media pantalla vacía). Mismo markup y misma mecánica: data-rut-sec en
+   .rut-wrap, que el CSS de abajo usa para mostrar solo la sección elegida. */
 .rut-nav-mobile {
   display: flex;
   align-items: center;
@@ -5975,11 +5975,17 @@ details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde)
 
 .rut-nav-ico { font-size: 1.05rem; line-height: 1; }
 
-/* Solo la sección elegida se muestra. .rut-col es transparente para que las
-   secciones fluyan directo en el flex de .rut-wrap. */
-.rut-col { display: contents; }
+/* Solo la sección elegida se muestra (mobile). `.rut-paneles` es transparente
+   para que los paneles fluyan directo en el flex de .rut-wrap; en escritorio
+   pasa a ser una columna de verdad (ver la media query de ≥900px).
+   OJO: la sección "Hoy" va SIEMPRE en `display: contents`. Sus tres piezas
+   (.rut-selectores, .rut-ahora, .rut-dia-completo) tienen `grid-area` propia
+   en la grilla de escritorio, y `grid-area` solo funciona sobre hijos DIRECTOS
+   de la grilla: si la sección fuera una caja, quedarían de nietas y el layout
+   de escritorio se derrumba (todo apilado en la columna izquierda). */
+.rut-paneles { display: contents; }
 .rut-wrap[data-rut-sec] .rut-sec { display: none; }
-.rut-wrap[data-rut-sec="hoy"]         .rut-sec--hoy,
+.rut-wrap[data-rut-sec="hoy"] .rut-sec--hoy { display: contents; }
 .rut-wrap[data-rut-sec="familia"]     .rut-sec--familia,
 .rut-wrap[data-rut-sec="actividades"] .rut-sec--actividades,
 .rut-wrap[data-rut-sec="ajustes"]     .rut-sec--ajustes {
@@ -7290,18 +7296,41 @@ span.rut-ahora-emoji { cursor: default; }
     min-height: 0;
   }
 
+  /* En escritorio no hay menú de secciones: se ven todas a la vez */
+  .rut-nav-mobile { display: none; }
+
   .rut-wrap {
     flex: 1 1 auto;
     min-height: 0;
     max-width: none;
     display: grid;
     grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     grid-template-areas:
-      'top  tl'
-      'sel  tl'
-      'ahora tl';
+      'top     tl'
+      'sel     tl'
+      'ahora   tl'
+      'paneles tl';
     gap: 0.55rem 1.2rem;
+  }
+
+  /* Los paneles de configuración pasan a ser una columna real y scrollean
+     solos, para no estirar la columna izquierda más allá del viewport. */
+  .rut-paneles {
+    grid-area: paneles;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* En escritorio los tres paneles se ven siempre, sin importar data-rut-sec */
+  .rut-wrap[data-rut-sec] .rut-sec--familia,
+  .rut-wrap[data-rut-sec] .rut-sec--actividades,
+  .rut-wrap[data-rut-sec] .rut-sec--ajustes {
+    display: flex;
+    flex-direction: column;
   }
 
   /* El topbar deja de ser sticky: la columna izquierda ya no scrollea */
@@ -7330,6 +7359,21 @@ span.rut-ahora-emoji { cursor: default; }
     background: var(--color-fondo);
     margin-bottom: 0;
     padding: 0.15rem 0 0.5rem;
+  }
+}
+
+/* ── Pantallas anchas: tres columnas ─────────────────────────────────────
+   Izquierda = quién y qué está pasando ahora · centro = el día completo ·
+   derecha = la configuración (familia, actividades, ajustes). Así la hoja
+   ocupa el ancho en vez de dejar medio monitor vacío. */
+@media (min-width: 1280px) {
+  .rut-wrap {
+    grid-template-columns: minmax(340px, 400px) minmax(0, 1fr) minmax(320px, 400px);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      'top   tl paneles'
+      'sel   tl paneles'
+      'ahora tl paneles';
   }
 }
 
