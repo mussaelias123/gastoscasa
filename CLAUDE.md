@@ -26,7 +26,7 @@
 | Cotización    | `cotizacion.py`, `tests/test_cotizacion.py`            | `docs/CONTEXT_COTIZACION.md`     |
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
-| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/rutina.js`, `static/rutina-actividades.js`, `static/home.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
+| Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/rutina.js`, `static/rutina-sueno.js`, `static/rutina-actividades.js`, `static/home.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
 | Notificaciones| `app.py` (providers + `/api/notificaciones`), `static/app.js` (`window.Notif`), `templates/base.html` (campana/panel) | `docs/CONTEXT_NOTIFICATIONS.md`  |
 | Deploy/serv   | NSSM (`E:\Fondo\nssm.exe`, fuera de git), ngrok, `logs/`, `logutil.py` | `docs/CONTEXT_DEPLOY.md` |
 | Scripts ad-hoc| `TempScripts/`                                         | (one-shot, no producción)        |
@@ -50,7 +50,7 @@
 | Verificación final en navegador        | `CLAUDE.md` + `CONTEXT_DEPLOY.md` (sección ngrok)             | `verifier`              |
 | Script one-shot (backfill, migración)  | `CLAUDE.md` + `CONTEXT_DB.md`                                 | `db-engineer`           |
 | Módulo Lactancia (banco de leche)      | `CLAUDE.md` + `CONTEXT_BACKEND.md` + `CONTEXT_DB.md` + `CONTEXT_FRONTEND.md` (+ `CONTEXT_CONFIG.md` si tocás parámetros) | según capa |
-| Módulo Rutina (rutina diaria de León)  | `CLAUDE.md` + `CONTEXT_FRONTEND.md` (la lógica y las definiciones viven en `static/rutina.js`) + `CONTEXT_BACKEND.md`/`CONTEXT_DB.md` si tocás los ajustes persistidos | según capa |
+| Módulo Rutina (rutina diaria de la familia) | `CLAUDE.md` + `CONTEXT_FRONTEND.md` (la lógica vive en `static/rutina.js`; el motor de ventanas de sueño en `static/rutina-sueno.js`) + `CONTEXT_DB.md` (familia y actividades) + `CONTEXT_BACKEND.md` si tocás rutas (+ `CONTEXT_CONFIG.md` para las horas de día/noche) | según capa |
 | Notificaciones (sumar provider de un módulo, campana, panel) | `CLAUDE.md` + `CONTEXT_NOTIFICATIONS.md` (+ `CONTEXT_BACKEND.md` o `CONTEXT_FRONTEND.md` según la capa que toques) | según capa |
 
 **Regla**: si la tarea entra en una sola fila, **no leer los demás `CONTEXT_*.md`**. Eso es el ahorro.
@@ -62,7 +62,7 @@
 1. **Paleta de colores**: todos los colores se referencian con `var(--color-...)`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres de color). Arquitectura:
    - **Valores runtime**: `config.json → paleta_light / paleta_dark` (23 vars c/u). `base.html` los inyecta en `<style>` en el `<head>` como `:root { ... }` y `html[data-theme="dark"] { ... }`.
    - **Fallbacks**: `static/style.css → :root` define los mismos valores por si `config.json` no carga.
-   - **Excepciones documentadas** (hardcode intencional): `login.html` (página standalone sin acceso a config); `.dash-toggle-btn.activo { color: #ffffff }` (blanco intencional: mejor contraste que `var(--color-superficie)` en dark mode, 4.47:1 vs 3.27:1).
+   - **Excepciones documentadas** (hardcode intencional): `login.html` (página standalone sin acceso a config); `.dash-toggle-btn.activo { color: #ffffff }` (blanco intencional: mejor contraste que `var(--color-superficie)` en dark mode, 4.47:1 vs 3.27:1); el tema cálido de Lactancia (bloque scoped `body.lac-body`, redefine las mismas vars con su propia paleta); y `--color-rut-p4`..`p8` en el bloque scoped `.rut-wrap, .home-card--rutina` (identificadores de miembro para familias de más de 3 — no son colores de marca, la paleta configurable sigue siendo de 23 vars).
    - Definición y leyenda en página Settings → Paleta.
 2. **Verificación**: tras cualquier cambio en dev, ingresar a `http://localhost:5050/` y confirmar que la app no se rompe. El dominio ngrok (`https://miller-unventured-courtly.ngrok-free.dev/`) es SOLO producción — no probar cambios de dev ahí. Cambios de rutas requieren reiniciar `python app.py`. Detalle en `docs/CONTEXT_DEPLOY.md`.
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.

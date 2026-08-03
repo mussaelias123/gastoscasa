@@ -5837,16 +5837,19 @@ details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde)
 
 
 /* ============================================================================
-   RUTINA — módulo rutina diaria de León (templates/rutina.html)
-   Port hifi del design handoff "Rutina". Clases con prefijo rut-. Columna
-   única mobile-first (max 480px centrada). El color identificador de cada
-   persona lo fija --rut-color en los modificadores .rut--leon / .rut--mama /
-   .rut--papa (León = --color-persona-leon, variable 23 de la paleta).
-   TINTES (técnica nueva en el repo): fondos suaves por tipo de fila con
-   color-mix(in srgb, var(--color-X) N%, var(--color-superficie)). Regla:
-   SOLO var() adentro del color-mix (sigue valiendo "cero hardcode") y se
-   adapta solo a light/dark. La base .rut-fila queda en superficie como
-   fallback si el browser no soporta color-mix.
+   RUTINA — módulo rutina diaria de la familia (templates/rutina.html)
+   Clases con prefijo rut-. Columna única mobile-first (max 480px centrada).
+   El color identificador de cada persona lo fija --rut-color. Antes lo hacían
+   tres clases fijas (.rut--leon / .rut--mama / .rut--papa); ahora la familia
+   es de tamaño variable y el token sale de rutina_miembros.color_token, así
+   que rutina.js escribe --rut-color inline sobre .rut--persona. Los tokens
+   posibles están en _RUT_COLORES (app.py): los tres persona-* de la paleta
+   global más rut-p4..rut-p8, definidos abajo.
+   TINTES: fondos suaves por tipo de fila con color-mix(in srgb,
+   var(--color-X) N%, var(--color-superficie)). Regla: SOLO var() adentro del
+   color-mix (sigue valiendo "cero hardcode") y se adapta solo a light/dark.
+   La base .rut-fila queda en superficie como fallback si el browser no
+   soporta color-mix.
    Los translúcidos rgba(255,255,255,…) de los chips van sobre el chrome
    oscuro deco-2 — mismo patrón existente de la nav.
    Única animación del módulo: rutinaPulso (badge AHORA).
@@ -5860,10 +5863,271 @@ details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde)
   gap: 0.55rem;
 }
 
-/* Color identificador por persona (dot, borde, barra, tinte de tarjeta) */
-.rut--leon { --rut-color: var(--color-persona-leon); }
-.rut--mama { --rut-color: var(--color-persona-mari); }
-.rut--papa { --rut-color: var(--color-persona-elias); }
+/* Color identificador por persona (dot, borde, barra, tinte de tarjeta).
+   .rut--persona no fija nada: recibe --rut-color inline desde rutina.js.
+   El fallback evita que un miembro sin color válido quede sin identificador. */
+.rut--persona { --rut-color: var(--color-persona-leon); }
+
+/* Colores extra para familias de más de 3 integrantes. Van acá y no en la
+   paleta de config.json a propósito: son identificadores internos de este
+   módulo, no colores de marca de la app (la paleta configurable sigue siendo
+   de 23 variables). Misma excepción documentada que el tema cálido de
+   Lactancia — ver CLAUDE.md §4.1.
+   Se declaran también en la tarjeta Rutina del Inicio, que pinta a los mismos
+   miembros con los mismos tokens. */
+.rut-wrap,
+.home-card--rutina {
+  --color-rut-p4: #7BA05B;   /* verde salvia */
+  --color-rut-p5: #C97B84;   /* rosa viejo */
+  --color-rut-p6: #B08968;   /* tierra */
+  --color-rut-p7: #6C8EA4;   /* azul apagado */
+  --color-rut-p8: #A88BC0;   /* lila */
+}
+
+/* ── Selector de sección ──────────────────────────────────────────────────
+   A diferencia de Lactancia (donde en escritorio se ven las 3 columnas), acá
+   el menú vale en TODOS los anchos: Hoy / Familia / Actividades / Ajustes son
+   pantallas distintas, no columnas de una misma vista. Mismo markup y misma
+   mecánica (data-rut-sec en .rut-wrap). */
+.rut-nav-mobile {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.rut-nav-label { font-size: 0.85rem; font-weight: 700; color: var(--color-texto-muted); }
+
+.rut-nav-menu { position: relative; flex: 1 1 auto; min-width: 0; }
+
+.rut-nav-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rut-nav-actual { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.rut-nav-actual span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rut-nav-chevron {
+  margin-left: auto;
+  display: inline-block;
+  color: var(--color-texto-muted);
+  font-size: 0.8rem;
+  transition: transform 0.15s;
+}
+
+.rut-nav-trigger[aria-expanded="true"] .rut-nav-chevron { transform: rotate(180deg); }
+
+.rut-nav-lista {
+  position: absolute;
+  z-index: 950;          /* sobre drawers (810), bajo modales (1000) */
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-modal);
+}
+
+.rut-nav-lista[hidden] { display: none; }
+.rut-nav-lista li { list-style: none; }
+
+.rut-nav-opt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.65rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-texto);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rut-nav-opt:hover { background: var(--color-fondo); }
+
+.rut-nav-opt.is-activa {
+  background: var(--color-fondo);
+  font-weight: 800;
+  box-shadow: inset 3px 0 0 var(--color-acento);
+}
+
+.rut-nav-ico { font-size: 1.05rem; line-height: 1; }
+
+/* Solo la sección elegida se muestra. .rut-col es transparente para que las
+   secciones fluyan directo en el flex de .rut-wrap. */
+.rut-col { display: contents; }
+.rut-wrap[data-rut-sec] .rut-sec { display: none; }
+.rut-wrap[data-rut-sec="hoy"]         .rut-sec--hoy,
+.rut-wrap[data-rut-sec="familia"]     .rut-sec--familia,
+.rut-wrap[data-rut-sec="actividades"] .rut-sec--actividades,
+.rut-wrap[data-rut-sec="ajustes"]     .rut-sec--ajustes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 0;
+}
+
+/* ── Paneles de las secciones que no son "Hoy" ───────────────────────────── */
+.rut-panel {
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rut-panel-titulo { font-size: 1rem; font-weight: 800; color: var(--color-texto); }
+
+.rut-panel-ayuda,
+.rut-panel-vacio {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-texto-muted);
+}
+
+/* ── Ficha de un miembro de la familia ───────────────────────────────────── */
+.rut-miembro {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radio-borde);
+  border-left: 4px solid var(--rut-color);
+  background: var(--color-fondo);
+  background: color-mix(in srgb, var(--rut-color) 8%, var(--color-superficie));
+}
+
+.rut-miembro-emoji { font-size: 1.35rem; line-height: 1; }
+.rut-miembro-texto { flex: 1 1 auto; min-width: 0; }
+.rut-miembro-nombre { font-weight: 700; font-size: 0.95rem; }
+.rut-miembro-cumple { font-weight: 800; color: var(--color-acento); }
+
+.rut-miembro-sub {
+  font-size: 0.75rem;
+  color: var(--color-texto-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Formulario de miembro ───────────────────────────────────────────────── */
+.rut-fm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px dashed var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+}
+
+.rut-fm-linea,
+.rut-cfg-linea {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.rut-fm-pills { gap: 0.35rem; }
+
+.rut-fm-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--color-texto);
+  cursor: pointer;
+}
+
+.rut-fm-check input { margin-top: 0.15rem; flex: 0 0 auto; }
+
+.rut-fm-nota {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-texto-muted);
+}
+
+.rut-fm-error {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-peligro);
+  background: var(--color-peligro-suave);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+}
+
+.rut-fm-fecha,
+.rut-fm-hora { flex: 0 1 auto; min-width: 8.5rem; }
+
+.rut-fm-colores { gap: 0.4rem; }
+
+.rut-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: 0 0 0 1px var(--color-borde);
+  cursor: pointer;
+  padding: 0;
+}
+
+.rut-swatch.activo {
+  border-color: var(--color-superficie);
+  box-shadow: 0 0 0 2px var(--color-texto);
+}
+
+/* ── Tarjeta de cumpleaños ───────────────────────────────────────────────── */
+.rut-cumple { display: flex; flex-direction: column; gap: 0.4rem; }
+.rut-cumple[hidden] { display: none; }
+
+.rut-cumple-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radio-borde);
+  border-left: 4px solid var(--rut-color);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--rut-color) 12%, var(--color-superficie));
+}
+
+.rut-cumple-emoji { font-size: 1.6rem; line-height: 1; }
+.rut-cumple-titulo { font-weight: 800; font-size: 0.95rem; }
+.rut-cumple-sub { font-size: 0.78rem; color: var(--color-texto-muted); }
+
+.rut-chips-vacio {
+  font-size: 0.8rem;
+  color: var(--color-texto-invertido);
+  opacity: 0.85;
+}
 
 /* ── Topbar sticky del módulo (se pega debajo del .site-topbar; el top
       exacto lo mide rutina.js porque depende del banner DEV) ──────────────── */
@@ -7804,34 +8068,22 @@ body:has(.home-page) .contenido-principal {
 
 /* ── Tarjeta Rutina: qué hace cada uno AHORA + qué viene después ── */
 /* Filas compactas, mismo patrón que .home-lac-item (borde izq 3px + tinte
-   color-mix SOLO con var() adentro, fallback superficie previo). Color por
-   persona con las MISMAS variables que el módulo /rutina (.rut--leon/mama/
-   papa): León = persona-leon, mamá = persona-mari, papá = persona-elias. */
+   color-mix SOLO con var() adentro, fallback superficie previo). El color por
+   persona ya no puede ser una clase fija (.home-rut--leon/mama/papa): la
+   familia es de tamaño variable y sale de rutina_miembros. Ahora
+   window.Rutina.hoyAhora() devuelve el token y home.js lo escribe inline en
+   --home-rut-color; los tokens rut-p4..p8 se declaran en .home-card--rutina,
+   junto al bloque del módulo Rutina. */
 .home-rut-item {
+  --home-rut-color: var(--color-persona-leon);
   padding: 0.4rem 0.55rem;
   margin-bottom: 0.4rem;
   background: var(--color-superficie);
   border: 1px solid var(--color-borde);
   border-left-width: 3px;
+  border-left-color: var(--home-rut-color);
   border-radius: var(--radio-borde);
-}
-
-.home-rut--leon {
-  border-left-color: var(--color-persona-leon);
-  background: var(--color-superficie);
-  background: color-mix(in srgb, var(--color-persona-leon) 6%, var(--color-superficie));
-}
-
-.home-rut--mama {
-  border-left-color: var(--color-persona-mari);
-  background: var(--color-superficie);
-  background: color-mix(in srgb, var(--color-persona-mari) 6%, var(--color-superficie));
-}
-
-.home-rut--papa {
-  border-left-color: var(--color-persona-elias);
-  background: var(--color-superficie);
-  background: color-mix(in srgb, var(--color-persona-elias) 6%, var(--color-superficie));
+  background: color-mix(in srgb, var(--home-rut-color) 6%, var(--color-superficie));
 }
 
 /* Línea principal: quién · actividad actual · rango horario */

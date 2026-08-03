@@ -95,20 +95,73 @@ Migración `tipo`/`consumido_ml`: `ALTER TABLE ... ADD COLUMN` en try/except (mi
 
 Por qué `tipo` importa para los KPIs: la producción total cuenta SOLO las `fresca` — cada extracción entra una vez como fresca; `congelada` y `descongelada` son la MISMA leche movida de lugar (si no, se contaría 2-3 veces al freezar y descongelar).
 
+### Tabla `rutina_miembros` (módulo Rutina — la familia)
+| Columna            | Tipo    | Notas                                                   |
+|--------------------|---------|---------------------------------------------------------|
+| `id`               | INTEGER | PK autoincremental. En el front el "usuario" es `String(id)` |
+| `nombre`           | TEXT    | 1..40 chars                                             |
+| `rol`              | TEXT    | `mama` \| `papa` \| `hijo` \| `otro`                    |
+| `es_bebe`          | INTEGER | 1 → su rutina se GENERA con las ventanas de sueño. Solo válido con `rol='hijo'` |
+| `fecha_nacimiento` | TEXT    | `YYYY-MM-DD`; `''` = sin cargar. Obligatoria si `es_bebe` |
+| `dibujo`           | TEXT    | Clave de la librería de dibujos; `''` → emoji por rol   |
+| `color_token`      | TEXT    | Var CSS sin el prefijo `--color-`: `persona-leon\|mari\|elias`, `rut-p4`..`rut-p8` (validado contra `_RUT_COLORES` en `app.py`) |
+| `ancla_min`        | INTEGER | SOLO bebés: minutos de la primera toma del día (0..1439). 390 = 06:30 |
+| `orden`            | INTEGER | Orden de la familia en chips y columnas                 |
+| `activo`           | INTEGER | 0 = archivado (no se muestra)                           |
+| `creado` / `actualizado` | TEXT | Timestamps ISO                                       |
+
+Reemplaza a los tres strings fijos (`leon`/`mama`/`papa`) que estaban
+hardcodeados en `app.py` y `static/rutina.js`. Borrar un miembro limpia a mano
+sus actividades y todos los ajustes/duraciones/ocultos de sus ítems: no hay
+foreign keys declaradas en este esquema.
+
+### Tabla `rutina_actividades` (módulo Rutina — actividades con frecuencia)
+| Columna      | Tipo    | Notas                                                        |
+|--------------|---------|--------------------------------------------------------------|
+| `id`         | INTEGER | PK autoincremental. En el front el ítem es `a<id>`           |
+| `miembro_id` | INTEGER | Dueño (da el color y la columna principal)                   |
+| `titulo`     | TEXT    | 1..60 chars                                                  |
+| `dibujo`     | TEXT    | Clave de dibujo / emoji; `''` → 📌                           |
+| `inicio_min` | INTEGER | Minutos desde 00:00 (0..1439). Horario FIJO: NO entra en la cascada |
+| `dur_min`    | INTEGER | 5..720                                                       |
+| `dias`       | TEXT    | 7 chars `0`/`1`, **lunes primero**: L M X J V S D. `1111100` = L a V |
+| `meses`      | TEXT    | 12 chars `0`/`1`, enero primero                              |
+| `desde` / `hasta` | TEXT | `YYYY-MM-DD`; `''` = sin límite por ese lado                |
+| `anual`      | INTEGER | 1 → de `desde`/`hasta` se comparan SOLO día y mes (la escuela revive sola cada marzo) |
+| `nota`       | TEXT    | Texto libre que se muestra como subtítulo                    |
+| `activo`     | INTEGER | 0 = no se muestra                                            |
+| `creado` / `actualizado` | TEXT | Timestamps ISO                                   |
+
+Qué día cae cada actividad NO se resuelve en la DB: la regla combinada (días →
+meses → rango/anual → recesos) vive en `actividadAplica()` de
+`static/rutina.js`, porque el que sabe qué día está mirando es el cliente.
+
+### Tabla `rutina_actividad_miembros` (participantes extra)
+`id`, `actividad_id`, `miembro_id`, `UNIQUE (actividad_id, miembro_id)`. Una
+actividad compartida ("teta" involucra al bebé y a mamá) aparece en la línea de
+tiempo de todos sus participantes, pero es UN solo ítem `a<id>`: moverla desde
+cualquiera la mueve en todas. El dueño NO se repite acá.
+
+### Tabla `rutina_pausas` (recesos de una actividad)
+`id`, `actividad_id`, `desde`, `hasta`, `anual`, `motivo`. Sub-rangos donde la
+actividad NO va: las vacaciones de invierno dentro del ciclo lectivo. Para
+faltar UN día suelto (un feriado) se usa `rutina_ocultos` con fecha.
+
 ### Tabla `rutina_ajustes` (módulo Rutina — ajustes de horario)
 | Columna       | Tipo    | Notas                                                        |
 |---------------|---------|--------------------------------------------------------------|
 | `id`          | INTEGER | PK autoincremental                                           |
 | `fecha`       | TEXT    | `YYYY-MM-DD` **local del cliente** (el teléfono define la fecha-clave) |
-| `etapa`       | TEXT    | `actual` \| `tres` \| `guarderia`                            |
-| `item_id`     | TEXT    | Id del ítem editable (`siesta2`, `t-noct1`, `gm-ext`, ...). Los ids derivados de adultos vinculados a León (prefijos `mama-`/`papa-`) NO son editables y nunca se persisten |
+| `etapa`       | TEXT    | `plan` (todo lo nuevo). Los valores viejos `actual`/`tres`/`guarderia` se siguen aceptando solo por las filas históricas |
+| `item_id`     | TEXT    | `b<miembro>-siesta1` (generado del bebé), `a<actividad>` (actividad cargada), `c-<rowid>` (tarea añadida) |
 | `inicio_min`  | INTEGER | Minutos desde 00:00, rango 0..2879 (las tomas nocturnas cruzan la medianoche) |
 | `actualizado` | TEXT    | Timestamp ISO al insertar/pisar                              |
 
 `UNIQUE (fecha, etapa, item_id)` → habilita el upsert (último ajuste gana).
 Nota: capa PURA — la cascada de horarios (re-encadenar los ítems que siguen a
-un ajuste) se calcula en el FRONT (`static/rutina.js`); las definiciones de
-rutina por etapa son constantes JS, no viven en la DB.
+un ajuste) se calcula en el FRONT (`static/rutina.js`), igual que la generación
+de la rutina del bebé (`static/rutina-sueno.js`). En la DB se guardan solo las
+DESVIACIONES del plan generado.
 
 ### Tabla `rutina_dur` (módulo Rutina — duraciones estiradas)
 Espejo de `rutina_ajustes` pero para la DURACIÓN (drag estilo Teams: estirar un
@@ -121,8 +174,8 @@ borra TAMBIÉN estas filas.
 | Columna      | Tipo    | Notas                                                        |
 |--------------|---------|--------------------------------------------------------------|
 | `id`         | INTEGER | PK autoincremental. En el front el ítem es `c-<id>`          |
-| `etapa`      | TEXT    | `actual` \| `tres` \| `guarderia`                            |
-| `usuario`    | TEXT    | `leon` \| `mama` \| `papa`                                   |
+| `etapa`      | TEXT    | `plan` (las filas viejas pueden tener `actual`/`tres`/`guarderia`) |
+| `usuario`    | TEXT    | Id del miembro guardado como string (antes: `leon`/`mama`/`papa`) |
 | `titulo`     | TEXT    | 1..60 chars                                                  |
 | `emoji`      | TEXT    | Opcional (`''` → el front muestra 📌)                        |
 | `inicio_min` | INTEGER | Minutos desde 00:00 (0..1439). Horario FIJO: NO entra en la cascada |
@@ -135,13 +188,14 @@ borra TAMBIÉN estas filas.
 |-----------|---------|--------------------------------------------------------------|
 | `id`      | INTEGER | PK autoincremental                                           |
 | `etapa`   | TEXT    | Como arriba                                                  |
-| `item_id` | TEXT    | Id del plan base (`siesta2`), derivado (`mama-siesta1`) o tarea añadida (`c-12`) |
+| `item_id` | TEXT    | Generado del bebé (`b1-siesta2`), actividad (`a17`) o tarea añadida (`c-12`) |
 | `fecha`   | TEXT    | `''` = quitado siempre \| `YYYY-MM-DD` = solo ese día        |
 | `creado`  | TEXT    | Timestamp ISO                                                |
 
 `UNIQUE (etapa, item_id, fecha)` con sentinela `''` (no NULL) para que el
-insert-idempotente (`DO NOTHING`) funcione. Un ítem de León quitado sale de
+insert-idempotente (`DO NOTHING`) funcione. Un ítem del bebé quitado sale de
 la cadena ANTES de la cascada (los siguientes se re-encadenan, en el front).
+Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 
 ### Migraciones
 `inicializar_db()` ejecuta `ALTER TABLE ADD COLUMN` en bucle silencioso (try/except). **Nunca borrar columnas**, solo agregar. Migración manual de datos → `TempScripts/`.
@@ -194,6 +248,11 @@ la cadena ANTES de la cascada (los siguientes se re-encadenan, en el front).
 | `obtener_ocultos_rutina(desde, hasta)` | `list[Row]`                   | Quitados: permanentes + fechados en rango |
 | `ocultar_item_rutina(etapa, item_id, fecha)` | None                     | Insert idempotente (`DO NOTHING`) |
 | `restaurar_item_rutina(etapa, item_id)` | None                          | Borra TODOS los ocultos del ítem (permanente y fechados) |
+| `obtener_miembros_rutina(incluir_inactivos=False)` | `list[Row]`        | La familia ordenada por `orden`, `id` |
+| `crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min)` | id nuevo | Se ubica al final (`orden` = máx + 1) |
+| `editar_miembro_rutina(id, nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min, activo)` | None | Pisa todos los campos editables |
+| `borrar_miembro_rutina(id)`      | None                               | Baja definitiva + cascada manual: sus actividades, sus participaciones, y los ajustes/duraciones/ocultos de `b<id>-*` y `a<actividad>` |
+| `obtener_actividades_rutina()`   | `list[dict]`                       | Actividades activas con `participantes` y `pausas` anidados (por eso dicts y no Rows) |
 
 ## `calcular_saldos()` — 8 claves del dict
 - `elias_ars`, `elias_usd`, `mari_ars`, `mari_usd` → saldos en moneda nativa.

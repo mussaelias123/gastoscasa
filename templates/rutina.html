@@ -2,29 +2,32 @@
 ================================================================================
 ARCHIVO: templates/rutina.html
 ================================================================================
-Módulo Rutina — rutina diaria de León (nacido 14/05/2026) junto a las agendas
-de Mamá y Papá, con horarios ajustables en cascada: corregir la hora de un
-ítem re-encadena los que siguen (inicio = fin del anterior); los anteriores
-no se mueven. Diseño del design handoff "Rutina" (hifi, una sola columna
-mobile-first, max-width 430px centrada).
+Módulo Rutina — la rutina diaria de toda la familia, con horarios ajustables
+en cascada: corregir la hora de un ítem re-encadena los que siguen (inicio =
+fin del anterior); los anteriores no se mueven.
+
+La familia se carga desde la propia hoja (tabla rutina_miembros). Para los
+hijos marcados como bebé, la rutina NO está escrita en ningún lado: la genera
+static/rutina-sueno.js a partir de tres datos —la edad, la hora de la primera
+toma del día (el ancla) y la hora de inicio de la noche—, usando la tabla de
+ventanas de sueño. Al crecer el bebé, la rutina se rearma sola.
 
 Zonas (de arriba a abajo):
-  1. Topbar sticky del módulo: header (⏰ Rutina + fecha / 🦁 León + edad)
-     y chips multi-select de usuarios (León / Mamá / Papá).
-  2. Selector de día (L M X J V S D, lunes primero).
-  3. Selector de etapa (2 meses "actual" / 3 meses "tres" / 4 meses-guardería).
-  4. Aviso contextual (solo si no se está viendo "hoy real").
-  5. Tarjetas "Ahora" por usuario (solo hoy real + etapa actual).
-  6. Línea de tiempo del día completo, con editor inline por fila editable
-     y botón "↺ Plan original".
-  7. Card de tips por etapa.
+  1. Topbar sticky: header (⏰ Rutina + fecha / bebé + edad) y chips
+     multi-select de miembros.
+  2. Menú de secciones (mobile): Hoy / Familia / Actividades / Ajustes.
+  3. Sección "Hoy": selector de día, tarjeta de cumpleaños, aviso contextual,
+     tarjetas "Ahora" por miembro, línea de tiempo del día completo con editor
+     inline y botón "↺ Plan original", y card de ventanas de sueño.
+  4. Sección "Familia": alta/edición/baja de miembros.
+  5. Sección "Actividades": las actividades cargadas (el editor completo —días
+     de la semana, meses, rangos y participantes— llega en el PR siguiente).
+  6. Sección "Ajustes": hora de inicio de noche y de amanecer + cumpleaños.
 
-Los contenedores con id rut-* los llena static/rutina.js: las definiciones de
-rutina por etapa son constantes JS ahí, las actividades de estimulación viven
-en static/rutina-actividades.js, y window.RUT_DATOS (inyectado abajo) trae
-solo los ajustes de horario persistidos (SQLite, sincronizados entre ambos
-teléfonos; ver rutina_ajustes en docs/CONTEXT_DB.md). El JS re-renderiza las
-zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
+Los contenedores con id rut-* los llena static/rutina.js. window.RUT_DATOS
+(inyectado abajo) trae la familia, las actividades, la config y los ajustes
+persistidos; ver rutina_miembros en docs/CONTEXT_DB.md. El JS re-renderiza
+cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
 ================================================================================#}
 
 {% extends "base.html" %}
@@ -32,7 +35,7 @@ zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
 {% block titulo %}Rutina{% endblock %}
 
 {% block contenido %}
-<div class="rut-wrap">
+<div class="rut-wrap" data-rut-sec="hoy">
 
   <!-- ══ 1. Topbar sticky del módulo ══════════════════════════════════════ -->
   <div class="rut-topbar" id="rut-topbar">
@@ -42,7 +45,7 @@ zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
         <p class="rut-header-fecha" id="rut-fecha"></p>
       </div>
       <div class="rut-header-leon">
-        <div class="rut-header-nombre">🦁 León</div>
+        <div class="rut-header-nombre" id="rut-header-nombre"></div>
         <div class="rut-header-edad" id="rut-edad"></div>
       </div>
     </header>
@@ -52,37 +55,115 @@ zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
     </nav>
   </div>
 
-  <!-- ══ 2-4. Selectores de día y etapa + tarjeta calendario + aviso ══════ -->
-  <div class="rut-selectores">
-    <div class="rut-dias" id="rut-dias"></div>
-    <div class="rut-etapas" id="rut-etapas"></div>
-    <div class="rut-cal" id="rut-cal" hidden></div>
-    <div class="rut-aviso" id="rut-aviso" hidden></div>
+  {# ══ 2. Selector de sección — SOLO mobile (en escritorio se ve todo).
+     Menú PROPIO (no <select> nativo): el nativo solo admite texto y las
+     opciones llevan ícono. El JS cambia data-rut-sec de .rut-wrap y el CSS
+     muestra solo la sección elegida. Mismo patrón que Lactancia. #}
+  <div class="rut-nav-mobile">
+    <span class="rut-nav-label">Ver</span>
+    <div class="rut-nav-menu">
+      <button type="button" class="rut-nav-trigger" id="rut-nav-trigger"
+              aria-haspopup="listbox" aria-expanded="false">
+        <span class="rut-nav-actual"></span>
+        <span class="rut-nav-chevron" aria-hidden="true">▾</span>
+      </button>
+      <ul class="rut-nav-lista" id="rut-nav-lista" role="listbox" hidden>
+        <li><button type="button" class="rut-nav-opt" data-sec="hoy" role="option"><span class="rut-nav-ico" aria-hidden="true">🕐</span><span>Hoy</span></button></li>
+        <li><button type="button" class="rut-nav-opt" data-sec="familia" role="option"><span class="rut-nav-ico" aria-hidden="true">👪</span><span>Familia</span></button></li>
+        <li><button type="button" class="rut-nav-opt" data-sec="actividades" role="option"><span class="rut-nav-ico" aria-hidden="true">📋</span><span>Actividades</span></button></li>
+        <li><button type="button" class="rut-nav-opt" data-sec="ajustes" role="option"><span class="rut-nav-ico" aria-hidden="true">⚙️</span><span>Ajustes</span></button></li>
+      </ul>
+    </div>
   </div>
 
-  <!-- ══ 5. Tarjetas "Ahora" (solo hoy real + etapa actual) ═══════════════ -->
-  <div class="rut-ahora" id="rut-ahora"></div>
+  <div class="rut-col">
 
-  <!-- ══ 6. Línea de tiempo del día completo ══════════════════════════════ -->
-  <section class="rut-dia-completo">
-    <div class="rut-tl-head">
-      <span class="rut-tl-titulo">📋 El día completo</span>
-      <span class="rut-tl-botones">
-        <button type="button" class="rut-btn-fantasma" id="rut-editar">✎ Editar</button>
-        <button type="button" class="rut-btn-fantasma" id="rut-reset">↺ Plan original</button>
-      </span>
-    </div>
-    <div class="rut-filas" id="rut-filas"></div>
-    <p class="rut-leyenda">Arrastrá una actividad para moverla, o estirala desde
-      su borde inferior para cambiar su duración (en el teléfono: toque sostenido
-      para mover). Las que tienen 🔗 siguen el horario de León y no se arrastran.
-      Tocá una actividad para ver el detalle. Con ✎ Editar podés añadir o quitar
-      tareas. La teta va a demanda: los horarios son orientativos.</p>
+    <!-- ══ 3. Sección HOY ═════════════════════════════════════════════════ -->
+    <section class="rut-sec rut-sec--hoy">
+      <div class="rut-selectores">
+        <div class="rut-dias" id="rut-dias"></div>
+        <div class="rut-cal" id="rut-cal" hidden></div>
+        <div class="rut-cumple" id="rut-cumple" hidden></div>
+        <div class="rut-aviso" id="rut-aviso" hidden></div>
+      </div>
 
-    <!-- ══ 7. Card de tips por etapa ══════════════════════════════════════ -->
-    <div class="rut-tips" id="rut-tips"></div>
-  </section>
+      <!-- Tarjetas "Ahora" (solo el día de hoy) -->
+      <div class="rut-ahora" id="rut-ahora"></div>
 
+      <!-- Línea de tiempo del día completo -->
+      <div class="rut-dia-completo">
+        <div class="rut-tl-head">
+          <span class="rut-tl-titulo">📋 El día completo</span>
+          <span class="rut-tl-botones">
+            <button type="button" class="rut-btn-fantasma" id="rut-editar">✎ Editar</button>
+            <button type="button" class="rut-btn-fantasma" id="rut-reset">↺ Plan original</button>
+          </span>
+        </div>
+        <div class="rut-filas" id="rut-filas"></div>
+        <p class="rut-leyenda">Arrastrá una actividad para moverla, o estirala desde
+          su borde inferior para cambiar su duración (en el teléfono: toque sostenido
+          para mover). Tocá una actividad para ver el detalle. Con ✎ Editar podés
+          añadir o quitar tareas. Las tomas van a demanda: los horarios son
+          orientativos.</p>
+
+        <!-- Card de ventanas de sueño del bebé -->
+        <div class="rut-tips" id="rut-tips"></div>
+      </div>
+    </section>
+
+    <!-- ══ 4. Sección FAMILIA ═════════════════════════════════════════════ -->
+    <section class="rut-sec rut-sec--familia">
+      <div class="rut-panel">
+        <div class="rut-panel-titulo">👪 Familia</div>
+        <p class="rut-panel-ayuda">Cargá a cada integrante con su fecha de
+          nacimiento. Si un hijo es bebé, marcá la casilla: su rutina se arma
+          sola con las ventanas de sueño que le corresponden por edad, y se va
+          actualizando a medida que crece.</p>
+        <div id="rut-familia"></div>
+      </div>
+    </section>
+
+    <!-- ══ 5. Sección ACTIVIDADES ═════════════════════════════════════════ -->
+    <section class="rut-sec rut-sec--actividades">
+      <div class="rut-panel">
+        <div class="rut-panel-titulo">📋 Actividades</div>
+        <p class="rut-panel-ayuda">Acá va a vivir el editor de actividades: los
+          días de la semana en circulitos, los meses, las fechas de inicio y fin
+          (con la opción de repetir todos los años), los recesos y los miembros
+          que participan. Por ahora, para sumar algo suelto usá
+          <strong>✎ Editar</strong> en la línea de tiempo de Hoy.</p>
+        <div id="rut-actividades"></div>
+      </div>
+    </section>
+
+    <!-- ══ 6. Sección AJUSTES ═════════════════════════════════════════════ -->
+    <section class="rut-sec rut-sec--ajustes">
+      <div class="rut-panel" id="rut-ajustes">
+        <div class="rut-panel-titulo">⚙️ Ajustes de la hoja</div>
+        <p class="rut-panel-ayuda">La hora de inicio de la noche es el tope del
+          día: hasta ahí se encadenan las siestas del bebé, y después arranca el
+          sueño nocturno.</p>
+
+        <div class="rut-cfg-linea">
+          <label class="rut-add-label" for="rut-cfg-amanecer">Empieza el día</label>
+          <input type="time" class="rut-add-input rut-fm-hora" id="rut-cfg-amanecer">
+        </div>
+        <div class="rut-cfg-linea">
+          <label class="rut-add-label" for="rut-cfg-noche">Empieza la noche</label>
+          <input type="time" class="rut-add-input rut-fm-hora" id="rut-cfg-noche">
+        </div>
+        <label class="rut-fm-check">
+          <input type="checkbox" id="rut-cfg-cumple">
+          <span>Mostrar un saludo el día del cumpleaños de cada uno</span>
+        </label>
+        <div class="rut-cfg-linea">
+          <span class="rut-add-espacio"></span>
+          <button type="button" class="rut-editor-ahora" data-cfg-guardar="1">Guardar</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
 </div>
 {% endblock %}
 
@@ -91,5 +172,6 @@ zonas cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
   window.RUT_DATOS = {{ datos|tojson }};
 </script>
 <script src="{{ url_for('static', filename='rutina-actividades.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='rutina-sueno.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='rutina.js') }}?v={{ static_version }}"></script>
 {% endblock %}

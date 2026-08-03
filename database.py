@@ -368,6 +368,110 @@ def inicializar_db():
         )
     ''')
 
+    # -------------------------------------------------------------------
+    # Tabla rutina_miembros: la familia. Reemplaza los tres strings fijos
+    # ('leon' | 'mama' | 'papa') que vivían hardcodeados en app.py y en
+    # static/rutina.js. Ahora el usuario carga los miembros que quiera
+    # desde el menú de /rutina.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_miembros (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre           TEXT    NOT NULL,
+            rol              TEXT    NOT NULL,
+            es_bebe          INTEGER NOT NULL DEFAULT 0,
+            fecha_nacimiento TEXT    NOT NULL DEFAULT '',
+            dibujo           TEXT    NOT NULL DEFAULT '',
+            color_token      TEXT    NOT NULL DEFAULT '',
+            ancla_min        INTEGER NOT NULL DEFAULT 390,
+            orden            INTEGER NOT NULL DEFAULT 0,
+            activo           INTEGER NOT NULL DEFAULT 1,
+            creado           TEXT,
+            actualizado      TEXT
+        )
+    ''')
+    # rol: 'mama' | 'papa' | 'hijo' | 'otro'.
+    # es_bebe: 1 → la rutina se GENERA sola desde las ventanas de sueño
+    #          según la edad (static/rutina-sueno.js). 0 → solo actividades.
+    # fecha_nacimiento: YYYY-MM-DD; '' = sin cargar (sin edad ni cumpleaños).
+    #          Para un bebé es obligatoria: sin ella no hay ventana de sueño.
+    # dibujo: clave de la librería de dibujos (PR3). '' = inicial del nombre.
+    # color_token: nombre de var CSS sin el prefijo --color- ('persona-leon',
+    #          'persona-mari', 'persona-elias', 'rut-p4'..'rut-p8').
+    # ancla_min: SOLO bebés. Minutos desde 00:00 de la primera toma del día
+    #          (la que ancla toda la rutina). 390 = 06:30.
+    # activo: 0 = archivado. No se borra para no romper el histórico de
+    #          rutina_ajustes/rutina_dur, que referencian ids de ítems
+    #          derivados del miembro ('b<id>-siesta1').
+
+    # -------------------------------------------------------------------
+    # Tabla rutina_actividades: actividades cargadas por el usuario, con su
+    # frecuencia. Reemplaza rutina_tareas (que queda sin uso tras la
+    # migración) y las agendas de adultos hardcodeadas en static/rutina.js.
+    # La frecuencia se resuelve en tres capas combinables: días de la
+    # semana → meses → rango de fechas (opcionalmente anual), menos los
+    # recesos de rutina_pausas.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_actividades (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            miembro_id  INTEGER NOT NULL,
+            titulo      TEXT    NOT NULL,
+            dibujo      TEXT    NOT NULL DEFAULT '',
+            inicio_min  INTEGER NOT NULL,
+            dur_min     INTEGER NOT NULL,
+            dias        TEXT    NOT NULL DEFAULT '1111111',
+            meses       TEXT    NOT NULL DEFAULT '111111111111',
+            desde       TEXT    NOT NULL DEFAULT '',
+            hasta       TEXT    NOT NULL DEFAULT '',
+            anual       INTEGER NOT NULL DEFAULT 0,
+            nota        TEXT    NOT NULL DEFAULT '',
+            activo      INTEGER NOT NULL DEFAULT 1,
+            creado      TEXT,
+            actualizado TEXT
+        )
+    ''')
+    # miembro_id: dueño de la actividad (da el color y la línea de tiempo
+    #          principal). Los participantes extra van en la tabla puente.
+    # inicio_min: 0..1439. dur_min: 5..720.
+    # dias:  7 chars '0'/'1', LUNES primero: L M X J V S D. '1111100' = L a V.
+    # meses: 12 chars '0'/'1', enero primero.
+    # desde/hasta: YYYY-MM-DD; '' = sin límite por ese lado.
+    # anual: 1 → de desde/hasta se comparan SOLO día y mes, así "escuela del
+    #          1/3 al 15/12" revive sola cada año sin recargarla.
+
+    # -------------------------------------------------------------------
+    # Tabla rutina_actividad_miembros: participantes extra de una actividad.
+    # Ej.: "Teta" pertenece al bebé y suma a mamá → aparece en las dos
+    # líneas de tiempo. El dueño (rutina_actividades.miembro_id) NO se
+    # repite acá.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_actividad_miembros (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            actividad_id INTEGER NOT NULL,
+            miembro_id   INTEGER NOT NULL,
+            UNIQUE (actividad_id, miembro_id)
+        )
+    ''')
+
+    # -------------------------------------------------------------------
+    # Tabla rutina_pausas: recesos de una actividad (sub-rangos donde NO
+    # va). Resuelve las vacaciones de invierno dentro del ciclo lectivo:
+    # "escuela pausada del 15/7 al 26/7, todos los años".
+    # Para faltar UN día suelto (feriado) se usa rutina_ocultos con fecha.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_pausas (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            actividad_id INTEGER NOT NULL,
+            desde        TEXT    NOT NULL,
+            hasta        TEXT    NOT NULL,
+            anual        INTEGER NOT NULL DEFAULT 0,
+            motivo       TEXT    NOT NULL DEFAULT ''
+        )
+    ''')
+
     conn.commit()   # Confirma los cambios (como un "guardar")
     conn.close()    # Cierra la conexión
 
@@ -1341,3 +1445,160 @@ def restaurar_item_rutina(etapa, item_id):
     )
     conn.commit()
     conn.close()
+
+
+# =============================================================================
+# FUNCIONES: Miembros de la familia (módulo Rutina)
+# =============================================================================
+#
+# Capa de datos PURA. La edad, el cumpleaños y la generación de la rutina del
+# bebé (ventanas de sueño) se calculan fuera: la edad en app.py (_rut_edad) y
+# la rutina generada en el front (static/rutina-sueno.js).
+#
+# Los ítems de la línea de tiempo derivan su id del miembro:
+#   'b<miembro_id>-siesta1', 'b<miembro_id>-toma2'  → generados del bebé
+#   'a<actividad_id>'                               → actividades cargadas
+# Por eso al borrar un miembro hay que limpiar a mano ajustes/duraciones/
+# ocultos con ese prefijo: no hay foreign keys declaradas en este esquema.
+#
+
+def obtener_miembros_rutina(incluir_inactivos=False):
+    """Miembros de la familia ordenados por `orden` y luego por id."""
+    conn = conectar()
+    sql = '''
+        SELECT id, nombre, rol, es_bebe, fecha_nacimiento, dibujo,
+               color_token, ancla_min, orden, activo
+        FROM rutina_miembros
+    '''
+    if not incluir_inactivos:
+        sql += ' WHERE activo = 1'
+    sql += ' ORDER BY orden, id'
+    filas = conn.execute(sql).fetchall()
+    conn.close()
+    return filas
+
+
+def crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo,
+                         color_token, ancla_min):
+    """Alta de miembro. Se ubica al final (orden = máximo + 1). Devuelve el id."""
+    conn = conectar()
+    fila = conn.execute(
+        'SELECT COALESCE(MAX(orden), -1) + 1 AS sig FROM rutina_miembros'
+    ).fetchone()
+    ahora = _ahora_iso()
+    cur = conn.execute('''
+        INSERT INTO rutina_miembros
+            (nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token,
+             ancla_min, orden, activo, creado, actualizado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ''', (nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token,
+          ancla_min, fila['sig'], ahora, ahora))
+    miembro_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return miembro_id
+
+
+def editar_miembro_rutina(miembro_id, nombre, rol, es_bebe, fecha_nacimiento,
+                          dibujo, color_token, ancla_min, activo):
+    """Pisa todos los campos editables de un miembro."""
+    conn = conectar()
+    conn.execute('''
+        UPDATE rutina_miembros
+        SET nombre = ?, rol = ?, es_bebe = ?, fecha_nacimiento = ?,
+            dibujo = ?, color_token = ?, ancla_min = ?, activo = ?,
+            actualizado = ?
+        WHERE id = ?
+    ''', (nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token,
+          ancla_min, activo, _ahora_iso(), miembro_id))
+    conn.commit()
+    conn.close()
+
+
+def borrar_miembro_rutina(miembro_id):
+    """Baja definitiva de un miembro: sus actividades, sus participaciones en
+    actividades ajenas, y los ajustes/duraciones/ocultos de todos los ítems
+    derivados (los del bebé 'b<id>-*' y los de sus actividades 'a<id>')."""
+    conn = conectar()
+
+    # Ítems de las actividades que este miembro poseía ('a<actividad_id>').
+    filas = conn.execute(
+        'SELECT id FROM rutina_actividades WHERE miembro_id = ?', (miembro_id,)
+    ).fetchall()
+    for fila in filas:
+        item_id = f"a{fila['id']}"
+        conn.execute('DELETE FROM rutina_ajustes WHERE item_id = ?', (item_id,))
+        conn.execute('DELETE FROM rutina_dur     WHERE item_id = ?', (item_id,))
+        conn.execute('DELETE FROM rutina_ocultos WHERE item_id = ?', (item_id,))
+        conn.execute(
+            'DELETE FROM rutina_pausas WHERE actividad_id = ?', (fila['id'],)
+        )
+        conn.execute(
+            'DELETE FROM rutina_actividad_miembros WHERE actividad_id = ?',
+            (fila['id'],)
+        )
+    conn.execute('DELETE FROM rutina_actividades WHERE miembro_id = ?', (miembro_id,))
+
+    # Participaciones en actividades de otros.
+    conn.execute(
+        'DELETE FROM rutina_actividad_miembros WHERE miembro_id = ?', (miembro_id,)
+    )
+
+    # Ítems generados si era un bebé ('b<miembro_id>-siesta1', ...).
+    # miembro_id es un entero, así que el patrón nunca trae comodines.
+    prefijo = f'b{int(miembro_id)}-%'
+    for tabla in ('rutina_ajustes', 'rutina_dur', 'rutina_ocultos'):
+        conn.execute(f'DELETE FROM {tabla} WHERE item_id LIKE ?', (prefijo,))
+
+    conn.execute('DELETE FROM rutina_miembros WHERE id = ?', (miembro_id,))
+    conn.commit()
+    conn.close()
+
+
+# =============================================================================
+# FUNCIONES: Actividades con frecuencia (módulo Rutina)
+# =============================================================================
+#
+# Solo LECTURA por ahora: el alta/edición desde la UI llega con el editor de
+# actividades. Las filas las siembra TempScripts/migrar_rutina_familia.py.
+# Qué días cae cada actividad NO se resuelve acá: la regla (días de la semana →
+# meses → rango/anual → recesos) vive en actividadAplica() de static/rutina.js,
+# porque el que sabe qué día está mirando el usuario es el cliente.
+
+def obtener_actividades_rutina():
+    """Actividades activas con sus participantes extra y sus recesos.
+    Devuelve dicts (no sqlite3.Row) porque llevan listas anidadas."""
+    conn = conectar()
+    filas = conn.execute('''
+        SELECT id, miembro_id, titulo, dibujo, inicio_min, dur_min,
+               dias, meses, desde, hasta, anual, nota, activo
+        FROM rutina_actividades
+        WHERE activo = 1
+        ORDER BY inicio_min, id
+    ''').fetchall()
+
+    participantes = {}
+    for fila in conn.execute(
+        'SELECT actividad_id, miembro_id FROM rutina_actividad_miembros'
+    ).fetchall():
+        participantes.setdefault(fila['actividad_id'], []).append(fila['miembro_id'])
+
+    pausas = {}
+    for fila in conn.execute(
+        'SELECT actividad_id, desde, hasta, anual, motivo FROM rutina_pausas'
+    ).fetchall():
+        pausas.setdefault(fila['actividad_id'], []).append({
+            'desde': fila['desde'], 'hasta': fila['hasta'],
+            'anual': bool(fila['anual']), 'motivo': fila['motivo'],
+        })
+
+    salida = []
+    for fila in filas:
+        act = dict(fila)
+        act['anual'] = bool(act['anual'])
+        act['activo'] = bool(act['activo'])
+        act['participantes'] = participantes.get(act['id'], [])
+        act['pausas'] = pausas.get(act['id'], [])
+        salida.append(act)
+    conn.close()
+    return salida

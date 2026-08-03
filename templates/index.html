@@ -265,11 +265,13 @@
   window.LAC_HOME = {{ lac_home | tojson }};
   window.RUT_DATOS = {{ rut_home | tojson }};
 </script>
-{# Rutina: MISMO orden que rutina.html (datos → actividades → rutina.js).
-   rutina.js popula su estado al evaluarse (necesita RUT_DATOS ya inyectado)
-   y expone window.Rutina; su init() corta solo (acá no hay #rut-filas).
-   home.js va al final: initRutina() usa window.Rutina. #}
+{# Rutina: MISMO orden que rutina.html (datos → actividades → sueño → rutina).
+   rutina-sueno.js tiene que ir ANTES: rutina.js lo usa para generar la rutina
+   de los bebés. rutina.js popula su estado al evaluarse (necesita RUT_DATOS ya
+   inyectado) y expone window.Rutina; su init() corta solo (acá no hay
+   #rut-filas). home.js va al final: initRutina() usa window.Rutina. #}
 <script src="{{ url_for('static', filename='rutina-actividades.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='rutina-sueno.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='rutina.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='home.js') }}?v={{ static_version }}"></script>
 {% endblock %}
