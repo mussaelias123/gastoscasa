@@ -5,30 +5,38 @@ ARCHIVO: templates/lactancia.html
 Módulo Lactancia — banco de leche materna de León (reemplaza al Excel
 Banco_de_leche_Leon.xlsx). Una sola vista con panelitos + modales.
 
-Camino estándar de la leche (decisión de Elías, 2026-07-06): toda extracción
-entra por HELADERA (un solo form de alta, con fecha/hora de extracción), y al
-freezer se pasa SIEMPRE una combinación de partidas de heladera tildadas
-(botón ⬆ del panel Heladera: suma los volúmenes y usa la fecha/hora de
-extracción más vieja). No hay alta directa a freezer ni traspaso individual.
+Esta pantalla se trajo entera de la app suelta de banco de leche
+(C:\Proyectos\lactancia, publicada en paralasmamas.pythonanywhere.com), que es
+donde se venía trabajando el rediseño. Lo que NO se trajo, porque no aplica
+acá: el cambio español/inglés, las sugerencias por correo, la instalación como
+PWA y el sistema de cuentas propio (a Gastos Casa se entra una sola vez y eso
+cubre todos los módulos).
 
-- Alta rápida SIEMPRE visible (un solo form → heladera).
+Camino de la leche: en el alta se ELIGE el destino (heladera o freezer; por
+defecto heladera) y el vencimiento se calcula según ese destino. Además sigue
+existiendo el paso de heladera a freezer por combinación de partidas tildadas
+(botón ⬆ del panel Heladera: suma los volúmenes y usa la fecha/hora de
+extracción más vieja).
+
+- Alta rápida SIEMPRE visible (un solo form, con destino elegible).
 - Tablero de stock (freezer y heladera SEPARADOS, igual que el Excel).
 - Dos listas FIFO (vencimiento ascendente): Freezer y Heladera (con checkbox
-  por partida, tildado por defecto, para elegir qué se freeza).
+  por partida, para elegir qué se freeza).
 - Historial de cerradas (usadas / descartadas / freezadas) colapsable.
+- Panel "Ajustes": los tiempos de conservación, las ventanas de aviso, el
+  mínimo para combinar, la capacidad de las bolsitas y las confirmaciones.
+  Antes vivían en Settings → "Banco de leche"; ahora se configuran acá.
 - Modales: Cerrar con fecha, Más opciones, Editor, Confirmar.
 
 Los contenedores marcados con id lac-* los llena static/lactancia.js a partir
 de window.LAC_DATOS (payload inyectado abajo). Tras cada mutación AJAX el
 backend devuelve el payload completo y el JS re-renderiza todo.
 
-Los 2 forms de alta son <form> reales (POST /api/lactancia/crear): sin JS
-siguen funcionando (el backend redirige a /lactancia).
+El form de alta es un <form> real (POST /api/lactancia/crear): sin JS sigue
+funcionando (el backend redirige a /lactancia).
 
 En heladera NUNCA se muestra la hora de carga (pedido explícito de Mari);
 su vencimiento se muestra relativo ("Vence en 5 h").
-
-El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
 ================================================================================#}
 
 {% extends "base.html" %}
@@ -50,30 +58,22 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
   <!-- Recordatorio nocturno de bajar bolsitas (lo muestra el JS si está vigente) -->
   <div class="lac-rec-banner" id="lac-rec-banner" hidden></div>
 
-  {# Selector de sección — SOLO mobile (en escritorio se ven las 3 columnas).
+  {# Navegación de secciones — SOLO mobile (en escritorio se ven las 3 columnas).
      Abre por defecto en "Cargar" (lo más usado). El JS cambia data-lac-sec de
-     .lac-wrap y el CSS muestra solo la sección elegida. #}
-  <div class="lac-nav-mobile">
-    <span class="lac-nav-label">Ver</span>
-    <div class="lac-nav-menu">
-      {# Menú PROPIO (no <select> nativo): el nativo solo admite texto, así que
-         no podía mostrar nuestros íconos dibujados. El JS abre/cierra la lista
-         y copia el ícono+nombre de la opción activa al botón. #}
-      <button type="button" class="lac-nav-trigger" id="lac-nav-trigger"
-              aria-haspopup="listbox" aria-expanded="false">
-        <span class="lac-nav-actual" id="lac-nav-actual"></span>
-        <span class="lac-nav-chevron" aria-hidden="true">▾</span>
-      </button>
-      <ul class="lac-nav-lista" id="lac-nav-lista" role="listbox" hidden>
-        <li><button type="button" class="lac-nav-opt" data-sec="cargar" role="option"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M9.3 13.6a2.7 2.7 0 0 0 2 2.3"/></svg><span>Cargar</span></button></li>
-        <li><button type="button" class="lac-nav-opt" data-sec="heladera" role="option"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M6.6 3.2h10.8a1.6 1.6 0 0 1 1.6 1.6v14.4a1.6 1.6 0 0 1-1.6 1.6H6.6A1.6 1.6 0 0 1 5 19.2V4.8a1.6 1.6 0 0 1 1.6-1.6Z"/><path d="M6.6 3.2h10.8a1.6 1.6 0 0 1 1.6 1.6v14.4a1.6 1.6 0 0 1-1.6 1.6H6.6A1.6 1.6 0 0 1 5 19.2V4.8a1.6 1.6 0 0 1 1.6-1.6Z"/><path d="M5 9.6h14"/><path d="M8.2 5.9v2.1M8.2 11.4v2.6"/></svg><span>Heladera</span></button></li>
-        <li><button type="button" class="lac-nav-opt" data-sec="resumen" role="option"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><rect x="5.5" y="11" width="3.4" height="7" rx="1.5"/><rect x="10.3" y="7" width="3.4" height="11" rx="1.5"/><rect x="15.1" y="13.5" width="3.4" height="4.5" rx="1.5"/></svg><span>Resumen</span></button></li>
-        <li><button type="button" class="lac-nav-opt" data-sec="historial" role="option"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 4.8 20 8l-8 3.2L4 8Z"/><path d="M4 8 12 4.8 20 8l-8 3.2L4 8Z"/><path d="M4 8v8l8 3.2 8-3.2V8"/><path d="M12 11.2V19.2"/></svg><span>Historial</span></button></li>
-        <li><button type="button" class="lac-nav-opt" data-sec="bebe" role="option"><svg class="lac-ico lac-ico-bebe" viewBox="0 0 24 24" aria-hidden="true"><circle class="relleno" cx="16.7" cy="8.3" r="2.7"/><circle cx="16.7" cy="8.3" r="2.7"/><path d="M14.4 9.4C11 9.5 8.3 10.6 6.8 12.4"/><path d="M14.3 10.8 14.9 17.7"/><path d="M10.7 11.4 11 17.7"/><path d="M6.8 12.4C6 13.2 5.7 14.2 6.1 15.3 6.4 16.2 7.2 16.9 8.2 17.7"/><path d="M4.6 17.9h15.2"/></svg><span>Datos del bebé</span></button></li>
-        <li><button type="button" class="lac-nav-opt" data-sec="recordatorio" role="option"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M15 3.2a7.2 7.2 0 1 0 6.1 10.1A5.7 5.7 0 0 1 15 3.2Z"/><path d="M15 3.2a7.2 7.2 0 1 0 6.1 10.1A5.7 5.7 0 0 1 15 3.2Z"/></svg><span>Recordatorio</span></button></li>
-      </ul>
-    </div>
-  </div>
+     .lac-wrap y el CSS muestra solo la sección elegida.
+     Barra FIJA abajo de la pantalla (estilo app), como tarjeta flotante: la
+     barra es la tarjeta grande y cada pestaña una tarjetita adentro. La activa
+     se distingue por su transparencia (casi opaca) además del color. #}
+  <nav class="lac-tabbar" aria-label="Ver">
+    <button type="button" class="lac-tab" data-sec="cargar"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M9.3 13.6a2.7 2.7 0 0 0 2 2.3"/></svg><span>Cargar</span></button>
+    <button type="button" class="lac-tab" data-sec="heladera"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M6.6 3.2h10.8a1.6 1.6 0 0 1 1.6 1.6v14.4a1.6 1.6 0 0 1-1.6 1.6H6.6A1.6 1.6 0 0 1 5 19.2V4.8a1.6 1.6 0 0 1 1.6-1.6Z"/><path d="M6.6 3.2h10.8a1.6 1.6 0 0 1 1.6 1.6v14.4a1.6 1.6 0 0 1-1.6 1.6H6.6A1.6 1.6 0 0 1 5 19.2V4.8a1.6 1.6 0 0 1 1.6-1.6Z"/><path d="M5 9.6h14"/><path d="M8.2 5.9v2.1M8.2 11.4v2.6"/></svg><span>Heladera</span></button>
+    <button type="button" class="lac-tab" data-sec="resumen"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><rect x="5.5" y="11" width="3.4" height="7" rx="1.5"/><rect x="10.3" y="7" width="3.4" height="11" rx="1.5"/><rect x="15.1" y="13.5" width="3.4" height="4.5" rx="1.5"/></svg><span>Resumen</span></button>
+    <button type="button" class="lac-tab" data-sec="historial"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 4.8 20 8l-8 3.2L4 8Z"/><path d="M4 8 12 4.8 20 8l-8 3.2L4 8Z"/><path d="M4 8v8l8 3.2 8-3.2V8"/><path d="M12 11.2V19.2"/></svg><span>Historial</span></button>
+    {# Bebé y Recordatorio ya no son hojas propias: viven dentro de Ajustes,
+       junto con los tiempos y las preferencias. El data-sec interno sigue
+       siendo "config" (solo cambió el rótulo visible). #}
+    <button type="button" class="lac-tab" data-sec="config"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M19 7h1M4 12h4M14 12h6M4 17h8M18 17h2"/><circle class="relleno" cx="16" cy="7" r="2.1"/><circle cx="16" cy="7" r="2.1"/><circle class="relleno" cx="11" cy="12" r="2.1"/><circle cx="11" cy="12" r="2.1"/><circle cx="15" cy="17" r="2.1"/><circle class="relleno" cx="15" cy="17" r="2.1"/></svg><span>Ajustes</span></button>
+  </nav>
 
   {# Flujo izquierda → derecha: se carga a la izquierda, el stock queda en el
      centro (freezer arriba / heladera abajo, como una heladera de casa) y el
@@ -83,55 +83,18 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
     <!-- ══ Columna izquierda: cargar + resumen ═══════════════════════════════ -->
     <div class="lac-col lac-col--izq">
 
-      <!-- ── Perfil del bebé: nombre + fecha de nacimiento (habilita la edad y
-           los cortes por mes de vida). NO se guarda peso/estatura. ──────────── -->
-      <details class="lac-panel lac-panel--bebe lac-sec lac-sec--bebe">
-        <summary class="lac-panel-summary">
-          <div class="lac-panel-title"><svg class="lac-ico lac-ico-bebe" viewBox="0 0 24 24" aria-hidden="true"><circle class="relleno" cx="16.7" cy="8.3" r="2.7"/><circle cx="16.7" cy="8.3" r="2.7"/><path d="M14.4 9.4C11 9.5 8.3 10.6 6.8 12.4"/><path d="M14.3 10.8 14.9 17.7"/><path d="M10.7 11.4 11 17.7"/><path d="M6.8 12.4C6 13.2 5.7 14.2 6.1 15.3 6.4 16.2 7.2 16.9 8.2 17.7"/><path d="M4.6 17.9h15.2"/></svg> Bebé <span class="lac-bebe-edad" id="lac-bebe-edad"></span></div>
-        </summary>
-        <div class="lac-bebe">
-          <input type="text" id="lac-bebe-nombre" class="lac-bebe-nombre" placeholder="Nombre del bebé" maxlength="40">
-          <div class="lac-bebe-row">
-            <label for="lac-bebe-nac" class="lac-bebe-label">Nació el</label>
-            <input type="text" id="lac-bebe-nac" class="lac-bebe-nac" placeholder="dd/mm/aaaa">
-            <button type="button" class="btn-acento lac-bebe-guardar" id="lac-bebe-guardar">Guardar</button>
-          </div>
-        </div>
-      </details>
-
       <!-- ── Alta rápida (siempre a la vista, primero en mobile).
-           Un solo form: toda extracción entra por HELADERA. ────────────────── -->
+           Un solo form; el destino (heladera/freezer) se elige adentro. ────── -->
       <section class="lac-panel lac-panel--alta lac-sec lac-sec--cargar">
         <div class="lac-panel-header">
           <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/><path d="M9.3 13.6a2.7 2.7 0 0 0 2 2.3"/></svg> Cargar</div>
         </div>
         <div class="lac-quickadd">
 
-          {# Form compartido con el Inicio (tarjeta Lactancia) #}
           {% include '_form_lactancia.html' %}
 
         </div>
       </section>
-
-      <!-- ── Recordatorio nocturno: bajar bolsitas del freezer para mañana ──── -->
-      <details class="lac-panel lac-panel--recordatorio lac-sec lac-sec--recordatorio">
-        <summary class="lac-panel-summary">
-          <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M15 3.2a7.2 7.2 0 1 0 6.1 10.1A5.7 5.7 0 0 1 15 3.2Z"/><path d="M15 3.2a7.2 7.2 0 1 0 6.1 10.1A5.7 5.7 0 0 1 15 3.2Z"/></svg> Recordatorio</div>
-        </summary>
-        <div class="lac-recordatorio">
-          <label class="lac-rec-toggle">
-            <input type="checkbox" id="lac-rec-activo">
-            <span>Recordarme de noche <strong>bajar bolsitas</strong> del freezer a la heladera (para el jardín)</span>
-          </label>
-          <div class="lac-rec-hora-row">
-            <label for="lac-rec-hora" class="lac-rec-hora-label">A las</label>
-            <input type="text" id="lac-rec-hora" class="lac-rec-hora-input" placeholder="21:00" inputmode="numeric">
-            <button type="button" class="btn-acento lac-rec-guardar" id="lac-rec-guardar">Guardar</button>
-          </div>
-          <p class="lac-rec-hint">Es un aviso dentro de la app (la 🔔). El aviso al
-            celular con la app cerrada va a llegar cuando la hagamos app instalable.</p>
-        </div>
-      </details>
 
       <!-- ── Resumen de stock ─────────────────────────────────────────────── -->
       <section class="lac-panel lac-panel--tablero lac-sec lac-sec--resumen">
@@ -139,14 +102,154 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
           <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><rect x="5.5" y="11" width="3.4" height="7" rx="1.5"/><rect x="10.3" y="7" width="3.4" height="11" rx="1.5"/><rect x="15.1" y="13.5" width="3.4" height="4.5" rx="1.5"/></svg> Resumen</div>
         </div>
         <div class="lac-tablero" id="lac-tablero"></div>
-        <p class="lac-disclaimer">🩺 Ajustá los tiempos de conservación según la
-          recomendación de tu profesional de confianza. Los avisos de la app son
-          orientativos y nunca te bloquean.</p>
-        <label class="lac-pref-toggle" title="Si lo desactivás, las acciones se hacen al toque, sin el cartel de confirmación. Es por dispositivo (no afecta el otro teléfono).">
-          <input type="checkbox" id="lac-confirmar-toggle" checked>
-          <span>Pedirme <strong>confirmación</strong> antes de cada acción</span>
-        </label>
+
+        {# Descarga de la tabla día a día: un <a> de verdad (no JavaScript), así
+           funciona igual si el JS falla y el navegador la baja como archivo. #}
+        <div class="lac-descarga">
+          <a class="lac-btn-descarga" href="{{ url_for('descargar_dia_a_dia') }}" download>
+            <svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10"/><path d="M8.2 10.4 12 14.2l3.8-3.8"/><path d="M4.8 16.4v2.2a1.4 1.4 0 0 0 1.4 1.4h11.6a1.4 1.4 0 0 0 1.4-1.4v-2.2"/></svg>
+            Descargar tabla día a día
+          </a>
+          <p class="lac-descarga-hint">Un renglón por cada día de vida de tu bebé: fecha, día y mes de vida, ml extraídos y ml tomados. Se abre con Excel.</p>
+        </div>
       </section>
+
+      <!-- ══ Configuraciones ═══════════════════════════════════════════════
+           Todo lo que la mamá ajusta a su gusto: los tiempos que usa la app
+           para calcular vencimientos y avisos, la capacidad de sus bolsitas,
+           las confirmaciones, y adentro los datos del bebé y el recordatorio.
+           Los valores viven en SU base (tabla perfil); vacío = valor por
+           defecto de config.DEFAULTS. -->
+      <details class="lac-panel lac-panel--config lac-sec lac-sec--config">
+        <summary class="lac-panel-summary">
+          <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M19 7h1M4 12h4M14 12h6M4 17h8M18 17h2"/><circle class="relleno" cx="16" cy="7" r="2.1"/><circle cx="16" cy="7" r="2.1"/><circle class="relleno" cx="11" cy="12" r="2.1"/><circle cx="11" cy="12" r="2.1"/><circle cx="15" cy="17" r="2.1"/><circle class="relleno" cx="15" cy="17" r="2.1"/></svg> Ajustes</div>
+        </summary>
+        <div class="lac-config">
+
+          {# ── Pasar de "sin cuenta" a cuenta, SIN salir de la app ───────────
+             Es la única puerta que tiene una invitada para no perder lo suyo:
+             desde afuera no la ve (la pantalla de bienvenida la manda derecho a
+             la app si ya hay sesión), y si toca "Salir" pierde el acceso a su
+             base para siempre. Al entrar con Google desde acá, su base se
+             convierte en la cuenta y se lleva todo. #}
+
+          <p class="lac-config-intro">🩺 Estos son los tiempos con los que calculo los vencimientos y te aviso. Ajustalos según la recomendación de tu profesional de confianza. Mis avisos son orientativos, no bloquean las acciones.</p>
+
+          <div class="lac-config-grupo">
+            <h4 class="lac-config-titulo">¿Cuánto dura la leche?</h4>
+            <label class="lac-config-fila">
+              <span class="lac-config-label">En el freezer</span>
+              <span class="lac-config-num"><input type="number" id="cfg-freezer_meses" min="1" max="24" inputmode="numeric"><em>meses</em></span>
+            </label>
+            <label class="lac-config-fila">
+              <span class="lac-config-label">En la heladera</span>
+              <span class="lac-config-num"><input type="number" id="cfg-heladera_horas" min="1" max="168" inputmode="numeric"><em>horas</em></span>
+            </label>
+            <label class="lac-config-fila">
+              <span class="lac-config-label">Ya descongelada</span>
+              <span class="lac-config-num"><input type="number" id="cfg-descongelada_horas" min="1" max="72" inputmode="numeric"><em>horas</em></span>
+            </label>
+          </div>
+
+          <div class="lac-config-grupo">
+            <h4 class="lac-config-titulo">¿Con cuánta anticipación te aviso?</h4>
+            <label class="lac-config-fila">
+              <span class="lac-config-label">Del freezer</span>
+              <span class="lac-config-num"><input type="number" id="cfg-aviso_freezer_dias" min="1" max="90" inputmode="numeric"><em>días antes</em></span>
+            </label>
+            <label class="lac-config-fila">
+              <span class="lac-config-label">De la heladera</span>
+              <span class="lac-config-num"><input type="number" id="cfg-aviso_heladera_horas" min="1" max="72" inputmode="numeric"><em>horas antes</em></span>
+            </label>
+            <label class="lac-config-fila">
+              <span class="lac-config-label">De la descongelada</span>
+              <span class="lac-config-num"><input type="number" id="cfg-aviso_descongelada_horas" min="1" max="48" inputmode="numeric"><em>horas antes</em></span>
+            </label>
+          </div>
+
+          <div class="lac-config-grupo">
+            <h4 class="lac-config-titulo">Al juntar extracciones</h4>
+            <label class="lac-config-fila">
+              <span class="lac-config-label">Tienen que llevar al menos</span>
+              <span class="lac-config-num"><input type="number" id="cfg-combinar_min_horas" min="0" max="24" inputmode="numeric"><em>horas en la heladera</em></span>
+            </label>
+            <p class="lac-config-hint">Para juntar dos extracciones en una misma bolsita las dos tienen que estar a la misma temperatura. Colocá 0 si no querés que lo verifique.</p>
+            <label class="lac-config-fila">
+              <span class="lac-config-label">Vienen tildadas si llevan menos de</span>
+              <span class="lac-config-num"><input type="number" id="cfg-freezar_hasta_horas" min="1" max="72" inputmode="numeric"><em>horas</em></span>
+            </label>
+          </div>
+
+          <div class="lac-config-grupo">
+            <h4 class="lac-config-titulo">Tus bolsitas</h4>
+            <label class="lac-config-check">
+              <input type="checkbox" id="cfg-bolsa_capacidad_activa">
+              <span>Mis bolsitas tienen una <strong>capacidad máxima</strong></span>
+            </label>
+            <label class="lac-config-fila" id="cfg-bolsa-fila">
+              <span class="lac-config-label">Capacidad</span>
+              <span class="lac-config-num"><input type="number" id="cfg-bolsa_capacidad_ml" min="10" max="2000" inputmode="numeric"><em>ml</em></span>
+            </label>
+            <p class="lac-config-hint">Con esto activado, no te dejo cargar ni combinar más de esa cantidad en una bolsita.</p>
+          </div>
+
+          <div class="lac-config-grupo">
+            <h4 class="lac-config-titulo">Confirmaciones</h4>
+            <label class="lac-config-check">
+              <input type="checkbox" id="cfg-pedir_confirmacion">
+              <span>Pedirme <strong>confirmación</strong> antes de cada acción</span>
+            </label>
+            <p class="lac-config-hint">Si lo desactivás, las acciones se hacen al instante, sin pedirte confirmación.</p>
+          </div>
+
+          <button type="button" class="lac-btn-block lac-btn-auto" id="lac-config-guardar">Guardar ajustes</button>
+
+          <!-- ── Datos del bebé (habilita la edad y los cortes por mes) ────── -->
+          <details class="lac-subpanel">
+            <summary class="lac-subpanel-summary">
+              <svg class="lac-ico lac-ico-bebe" viewBox="0 0 24 24" aria-hidden="true"><circle class="relleno" cx="16.7" cy="8.3" r="2.7"/><circle cx="16.7" cy="8.3" r="2.7"/><path d="M14.4 9.4C11 9.5 8.3 10.6 6.8 12.4"/><path d="M14.3 10.8 14.9 17.7"/><path d="M10.7 11.4 11 17.7"/><path d="M6.8 12.4C6 13.2 5.7 14.2 6.1 15.3 6.4 16.2 7.2 16.9 8.2 17.7"/><path d="M4.6 17.9h15.2"/></svg>
+              Bebé <span class="lac-bebe-edad" id="lac-bebe-edad"></span>
+            </summary>
+            <div class="lac-bebe">
+              <input type="text" id="lac-bebe-nombre" class="lac-bebe-nombre" placeholder="Nombre del bebé" maxlength="40">
+              <div class="lac-bebe-row">
+                <label for="lac-bebe-nac" class="lac-bebe-label">Nació el</label>
+                <input type="text" id="lac-bebe-nac" class="lac-bebe-nac" placeholder="dd/mm/aaaa">
+                <button type="button" class="lac-btn-block lac-btn-auto lac-bebe-guardar" id="lac-bebe-guardar">Guardar</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- ── Recordatorio nocturno: bajar bolsitas para mañana ─────────── -->
+          <details class="lac-subpanel">
+            <summary class="lac-subpanel-summary">
+              <svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M15 3.2a7.2 7.2 0 1 0 6.1 10.1A5.7 5.7 0 0 1 15 3.2Z"/><path d="M15 3.2a7.2 7.2 0 1 0 6.1 10.1A5.7 5.7 0 0 1 15 3.2Z"/></svg>
+              Recordatorio
+            </summary>
+            <div class="lac-recordatorio">
+              <label class="lac-rec-toggle">
+                <input type="checkbox" id="lac-rec-activo">
+                <span>Recordarme <strong>bajar bolsitas</strong> del freezer a la heladera (para el jardín)</span>
+              </label>
+              <div class="lac-rec-hora-row">
+                <label for="lac-rec-hora" class="lac-rec-hora-label">A las</label>
+                <input type="text" id="lac-rec-hora" class="lac-rec-hora-input" placeholder="21:00" inputmode="numeric">
+                <button type="button" class="lac-btn-block lac-btn-auto lac-rec-guardar" id="lac-rec-guardar">Guardar</button>
+              </div>
+            </div>
+          </details>
+
+          {# ── Sugerencias ────────────────────────────────────────────────────
+             Va acá y no en la barra de abajo: la barra quedó medida justo para
+             5 pestañas y una sexta no entra en pantallas angostas.
+             Es ANÓNIMA: no se manda quién escribió. El correo es opcional y
+             sirve solo para poder responderle.
+             Sin casilla de correo configurada en el servidor, la tarjeta no se
+             dibuja: nadie escribe algo que no se iba a poder mandar. #}
+
+
+        </div>
+      </details>
 
     </div>
 
@@ -160,7 +263,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
       <section class="lac-panel lac-panel--freezer lac-door lac-door--freezer">
         <div class="lac-panel-header">
           <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/><path d="M12 6.5 10 4.7M12 6.5l2-1.8M12 17.5l-2 1.8M12 17.5l2 1.8"/><path d="M5.6 8.2 5.2 5.7M5.6 8.2 3.1 8.6M18.4 8.2l2.5.4M18.4 8.2l.4-2.5M5.6 15.8l-2.5.4M5.6 15.8l-.4 2.5M18.4 15.8l.4 2.5M18.4 15.8l2.5-.4"/></svg> Freezer <span class="lac-count" id="lac-freezer-count"></span></div>
-          <span class="lac-fifo-hint" title="Lo primero que entra, primero que sale">FIFO: usar la primera</span>
+          <span class="lac-fifo-hint" title="Lo primero que entra, lo primero que sale">FIFO: usar la primera</span>
         </div>
         <div class="lac-lista-scroll" id="lac-lista-freezer"></div>
       </section>
@@ -171,7 +274,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
         <div class="lac-panel-header">
           <div class="lac-panel-title"><svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M8 12.5h8l-.7 6.4a1 1 0 0 1-1 .9H9.7a1 1 0 0 1-1-.9L8 12.5Z"/><path d="M7.4 6h9.2l-1.3 12.9a1 1 0 0 1-1 .9H9.7a1 1 0 0 1-1-.9L7.4 6Z"/><path d="M7.7 9h8.6"/></svg> Heladera <span class="lac-count" id="lac-heladera-count"></span></div>
           <button type="button" class="lac-btn-freezar" id="lac-btn-freezar"
-                  title="Freezar las tildadas: combina las partidas seleccionadas en una sola partida de freezer (volumen sumado, extracción más vieja)">⬆</button>
+                  title="Freezar las tildadas: combina las bolsitas seleccionadas en una sola bolsita de freezer (volumen sumado, extracción más vieja)">⬆</button>
         </div>
         <div class="lac-lista-scroll" id="lac-lista-heladera"></div>
       </section>
@@ -218,13 +321,13 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
 <div class="lac-overlay" id="lac-modal-mas" role="dialog" aria-modal="true" hidden>
   <div class="lac-modal">
     <div class="lac-modal-head">
-      <h3><span>⋯</span><span>Partida <span class="lac-modal-sub" id="lac-mas-sub"></span></span></h3>
+      <h3><span>⋯</span><span>Bolsita <span class="lac-modal-sub" id="lac-mas-sub"></span></span></h3>
       <button type="button" class="lac-x" data-lac-cerrar-modal aria-label="Cerrar">×</button>
     </div>
     <div class="lac-modal-body lac-menu">
       <button type="button" class="lac-menu-btn" id="lac-mas-usada">✓ Marcar usada con otra fecha…</button>
       <button type="button" class="lac-menu-btn" id="lac-mas-descartada">🗑 Marcar descartada con otra fecha…</button>
-      <button type="button" class="lac-menu-btn" id="lac-mas-editar">✎ Editar partida…</button>
+      <button type="button" class="lac-menu-btn" id="lac-mas-editar">✎ Editar bolsita…</button>
       <button type="button" class="lac-menu-btn lac-menu-btn-peligro" id="lac-mas-eliminar">✕ Eliminar definitivamente…</button>
     </div>
   </div>
@@ -234,7 +337,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
 <div class="lac-overlay" id="lac-modal-editor" role="dialog" aria-modal="true" hidden>
   <div class="lac-modal">
     <div class="lac-modal-head">
-      <h3><span>✎</span><span>Editar partida <span class="lac-modal-sub" id="lac-ed-sub"></span></span></h3>
+      <h3><span>✎</span><span>Editar bolsita <span class="lac-modal-sub" id="lac-ed-sub"></span></span></h3>
       <button type="button" class="lac-x" data-lac-cerrar-modal aria-label="Cerrar">×</button>
     </div>
     <div class="lac-modal-body">
@@ -268,7 +371,7 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
 <div class="lac-overlay" id="lac-modal-confirm" role="dialog" aria-modal="true" hidden>
   <div class="lac-modal">
     <div class="lac-modal-head">
-      <h3><span id="lac-confirm-emoji">⚠️</span><span id="lac-confirm-titulo">Eliminar partida</span></h3>
+      <h3><span id="lac-confirm-emoji">⚠️</span><span id="lac-confirm-titulo">Eliminar bolsita</span></h3>
       <button type="button" class="lac-x" data-lac-cerrar-modal aria-label="Cerrar">×</button>
     </div>
     <div class="lac-modal-body">
@@ -279,15 +382,20 @@ El disclaimer médico se sacó de esta página a pedido de Elías (2026-07-06).
         <input type="checkbox" id="lac-confirm-check">
         <span id="lac-confirm-check-txt"></span>
       </label>
-      {# Input numérico OPCIONAL (ej. cuántos ml tomó León al marcar Usada).
-         Dejarlo vacío es válido: no bloquea el botón de confirmar. #}
-      <label class="lac-confirm-input-wrap" id="lac-confirm-input-wrap" hidden>
-        <span id="lac-confirm-input-label"></span>
-        <span class="lac-confirm-input-row">
+      {# Cuántos ml tomó el bebé (al marcar Usada). Es OPCIONAL —dejarlo vacío
+         no bloquea el botón— pero va destacado en su propia tarjeta porque es
+         el dato que alimenta "Bolsita sugerida", "Alcanza para" y la tabla que
+         se descarga. El botón "Tomó todo" lo completa de un toque. #}
+      <div class="lac-confirm-input-wrap" id="lac-confirm-input-wrap" hidden>
+        <label class="lac-confirm-input-label" id="lac-confirm-input-label"
+               for="lac-confirm-input"></label>
+        <div class="lac-confirm-input-row">
           <input type="number" id="lac-confirm-input" min="0" step="1" inputmode="numeric" placeholder="—">
           <span class="lac-confirm-input-suf">ml</span>
-        </span>
-      </label>
+          <button type="button" class="lac-confirm-input-todo" id="lac-confirm-input-todo" hidden></button>
+        </div>
+        <p class="lac-confirm-input-hint" id="lac-confirm-input-hint"></p>
+      </div>
     </div>
     <div class="lac-modal-foot">
       <button type="button" class="btn btn-secundario" data-lac-cerrar-modal>Volver</button>

@@ -529,10 +529,15 @@ def _home_lactancia_payload():
     """Proyección de _lac_payload() para la tarjeta Lactancia del Inicio:
     TODAS las partidas de heladera + la PRIMERA del freezer (FIFO: la que se
     consumiría a continuación). Solo recorta el payload completo — JAMÁS
-    reimplementa vencimientos/estados (viven en los helpers _lac_*)."""
+    reimplementa vencimientos/estados (viven en los helpers _lac_*).
+
+    `params` viaja también porque el form de alta del Inicio es el MISMO partial
+    que el de /lactancia: necesita los tiempos para pintar el vencimiento en
+    vivo mientras se carga."""
     datos = _lac_payload()
     return {'heladera': datos['heladera'],
-            'freezer_primera': datos['freezer'][0] if datos['freezer'] else None}
+            'freezer_primera': datos['freezer'][0] if datos['freezer'] else None,
+            'params': datos['params']}
 
 
 def _lac_parsear_volumen(valor):

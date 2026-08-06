@@ -5,31 +5,79 @@
    sigue funcionando (el backend redirige a /lactancia). El backend EXIGE
    fecha_extraccion y hora_extraccion no vacías; los flatpickr los inicializan
    lactancia.js (en /lactancia) o home.js (en /, donde lactancia.js NO se
-   carga). #}
+   carga).
+
+   Rediseño traído de la app suelta: stepper ±10 ml, pastilla "Hoy · HH:MM"
+   (fecha Y hora tocables), destino heladera/freezer con radios REALES (sin JS
+   la ubicación elegida igual viaja en el POST) y vencimiento concreto
+   calculado en #lac-ex-hint. Los ids lac-ex-* están cableados en
+   static/lactancia.js y static/home.js. #}
           <form id="lac-form-extraccion" action="/api/lactancia/crear" method="post" class="lac-form-alta">
-            <input type="hidden" name="ubicacion" value="heladera">
-            <div class="lac-form-titulo">🥛 Nueva extracción</div>
-            <div class="lac-form-grid">
-              <div class="lac-campo">
-                <label for="lac-ex-volumen">Volumen (ml)</label>
+
+            <h2 class="lac-ex-titulo">¿Cuánto te extrajiste?</h2>
+
+            {# Los −/+ son type="button": no disparan el submit del form. #}
+            <div class="lac-stepper">
+              <button type="button" class="lac-stepper-btn lac-stepper-btn--menos"
+                      id="lac-ex-menos" aria-label="Restar 10 ml">−</button>
+              {# value="100" es el arranque más común (pedido de Mari). Al ser
+                 el valor por defecto del HTML, el form.reset() de después de
+                 guardar lo repone solo. #}
+              <label class="lac-stepper-valor" for="lac-ex-volumen">
                 <input type="number" id="lac-ex-volumen" name="volumen_ml"
-                       min="1" max="2000" inputmode="numeric" placeholder="Ej: 150" required>
-              </div>
-              <div class="lac-campo">
-                <label for="lac-ex-hora">Hora de extracción</label>
-                <input type="text" id="lac-ex-hora" name="hora_extraccion"
-                       placeholder="HH:MM" autocomplete="off" required>
-              </div>
-              <div class="lac-campo">
-                <label for="lac-ex-fecha">Fecha de extracción</label>
+                       min="1" max="2000" inputmode="numeric" value="100"
+                       placeholder="0" required>
+                <span class="lac-stepper-unidad">ml</span>
+              </label>
+              <button type="button" class="lac-stepper-btn lac-stepper-btn--mas"
+                      id="lac-ex-mas" aria-label="Sumar 10 ml">+</button>
+            </div>
+
+            {# Una sola pastilla visual con DOS inputs reales: tocar la fecha
+               abre el almanaque, tocar la hora abre el picker de 24 h. #}
+            <div class="lac-fechahora">
+              <span class="lac-fechahora-label">Fecha y hora</span>
+              <div class="lac-pill-fechahora">
+                <svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><circle class="relleno" cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l3 1.8"/></svg>
                 <input type="text" id="lac-ex-fecha" name="fecha_extraccion"
-                       placeholder="DD/MM/AAAA" autocomplete="off">
-              </div>
-              <div class="lac-campo">
-                <label for="lac-ex-notas">Notas (opcional)</label>
-                <input type="text" id="lac-ex-notas" name="notas" maxlength="200">
+                       placeholder="AAAA-MM-DD" autocomplete="off" aria-label="Fecha de extracción">
+                <span class="lac-pill-sep" aria-hidden="true">·</span>
+                <input type="text" id="lac-ex-hora" name="hora_extraccion"
+                       placeholder="HH:MM" autocomplete="off" required aria-label="Hora de extracción">
               </div>
             </div>
-            <button type="submit" class="lac-btn-block" id="lac-ex-guardar">Guardar</button>
-            <div class="lac-help" id="lac-ex-hint"></div>
+
+            {# Destino: el vencimiento se calcula distinto en cada uno
+               (heladera = horas desde la extracción, freezer = meses). #}
+            <div class="lac-destino">
+              <span class="lac-fechahora-label">¿Dónde la guardás?</span>
+              <div class="lac-destino-cards">
+                <label class="lac-destino-card">
+                  <input type="radio" name="ubicacion" value="heladera" checked>
+                  <svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="relleno" d="M6.6 3.2h10.8a1.6 1.6 0 0 1 1.6 1.6v14.4a1.6 1.6 0 0 1-1.6 1.6H6.6A1.6 1.6 0 0 1 5 19.2V4.8a1.6 1.6 0 0 1 1.6-1.6Z"/><path d="M6.6 3.2h10.8a1.6 1.6 0 0 1 1.6 1.6v14.4a1.6 1.6 0 0 1-1.6 1.6H6.6A1.6 1.6 0 0 1 5 19.2V4.8a1.6 1.6 0 0 1 1.6-1.6Z"/><path d="M5 9.6h14"/><path d="M8.2 5.9v2.1M8.2 11.4v2.6"/></svg>
+                  <span>Heladera</span>
+                </label>
+                <label class="lac-destino-card">
+                  <input type="radio" name="ubicacion" value="freezer">
+                  <svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/><path d="M12 6.5 10 4.7M12 6.5l2-1.8M12 17.5l-2 1.8M12 17.5l2 1.8"/><path d="M5.6 8.2 5.2 5.7M5.6 8.2 3.1 8.6M18.4 8.2l2.5.4M18.4 8.2l.4-2.5M5.6 15.8l-2.5.4M5.6 15.8l-.4 2.5M18.4 15.8l.4 2.5M18.4 15.8l2.5-.4"/></svg>
+                  <span>Freezer</span>
+                </label>
+              </div>
+            </div>
+
+            {# Vencimiento concreto según destino + fecha/hora (lo pinta el JS) #}
+            <div class="lac-nota-venc" id="lac-ex-hint"></div>
+
+            <div class="lac-campo lac-campo-notas">
+              <label for="lac-ex-notas">Notas (opcional)</label>
+              {# autocomplete="off": es texto libre, y además el autocompletado
+                 del navegador pintaba el campo con SU fondo (blanco/celeste) y
+                 se comía los colores y la transparencia de la app. #}
+              <input type="text" id="lac-ex-notas" name="notas" maxlength="200"
+                     autocomplete="off" placeholder="Agregar una nota…">
+            </div>
+
+            <button type="submit" class="lac-btn-block lac-btn-guardar" id="lac-ex-guardar">
+              Guardar extracción
+            </button>
           </form>
