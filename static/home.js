@@ -90,10 +90,11 @@
 
     /* ════════════════════════════════════════════════════════════════════════
        TARJETA RUTINA — qué hace cada uno AHORA + qué viene después
-       Fuente: window.Rutina.hoyAhora() (rutina.js), que fuerza "hoy real +
-       etapa actual" y devuelve [{user, nombre, emoji, actual, siguiente}].
-       Color por persona: clases home-rut--<user> → var(--color-persona-*)
-       con el MISMO mapeo que /rutina (León=leon, mamá=mari, papá=elias).
+       Fuente: window.Rutina.hoyAhora() (rutina.js), que fuerza "hoy real" y
+       devuelve [{user, nombre, color, actual, siguiente}].
+       Color por persona: `color` es el token de la paleta y se escribe inline
+       en --home-rut-color (la familia sale de rutina_miembros y es de tamaño
+       variable, así que no hay una clase por persona).
        Solo createElement/textContent: los títulos pueden ser texto libre
        (tareas añadidas por el usuario).
        ════════════════════════════════════════════════════════════════════════ */
@@ -113,14 +114,21 @@
 
         function filaRut(p) {
             var el = document.createElement('div');
-            el.className = 'home-rut-item home-rut--' + p.user;
+            el.className = 'home-rut-item';
+            // El color viene como token de la paleta ('persona-mari', 'rut-p5'):
+            // la familia es de tamaño variable, así que no hay clase fija.
+            if (p.color) {
+                el.style.setProperty('--home-rut-color', 'var(--color-' + p.color + ')');
+            }
 
-            // "{emoji persona} {nombre}: {emoji act} {titulo} · desde–hasta"
+            // "{nombre}: {emoji act} {titulo} · desde–hasta"
+            // A la persona la acompaña su COLOR, no un ícono (pedido de Mari,
+            // 2026-08-06): `hoyAhora()` ya no devuelve `emoji` de miembro.
             var linea = document.createElement('div');
             linea.className = 'home-rut-linea';
             var quien = document.createElement('span');
             quien.className = 'home-rut-quien';
-            quien.textContent = p.emoji + ' ' + p.nombre + ':';
+            quien.textContent = p.nombre + ':';
             var act = document.createElement('span');
             act.className = 'home-rut-act';
             act.textContent = p.actual.emoji + ' ' + p.actual.titulo;

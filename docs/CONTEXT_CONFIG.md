@@ -33,7 +33,10 @@
 | `lactancia_recordatorio_activo`  | `False`  | Interruptor del recordatorio nocturno de "bajar bolsitas" (modo jardín: off hasta que el bebé arranque) |
 | `lactancia_recordatorio_hora`    | `"21:00"`| `HH:MM` local a partir de la cual avisa el recordatorio. Aviso in-app (campana + banner), nunca bloquea |
 | `bebe_nombre`                    | `"León"` | Nombre del bebé; se usa en los textos de la app (KPIs, confirmaciones). Vacío → la UI dice "el bebé" |
-| `bebe_fecha_nacimiento`          | `""`     | `YYYY-MM-DD`. Habilita mostrar la edad y el mes de vida. A propósito NO se guarda peso/estatura ni se estima cuánta leche "debería" tomar (terreno médico) |
+| `bebe_fecha_nacimiento`          | `""`     | `YYYY-MM-DD`. Habilita mostrar la edad y el mes de vida. A propósito NO se guarda peso/estatura ni se estima cuánta leche "debería" tomar (terreno médico). **Solo lo usa Lactancia**: desde el rework de Rutina, la fecha de nacimiento de cada miembro vive en `rutina_miembros` |
+| `rutina_hora_amanecer`           | `"06:30"`| `HH:MM`. Hora a la que empieza el día en la hoja Rutina |
+| `rutina_hora_noche`              | `"20:00"`| `HH:MM`. Tope del día: hasta ahí el motor encadena siestas del bebé; después arranca el sueño nocturno. Debe ser posterior al amanecer (lo valida `/api/rutina/ajustes`) |
+| `rutina_cumple_activo`           | `True`   | Tarjeta de saludo el día del cumpleaños de cada miembro con fecha cargada |
 | `cotizacion_valor`           | `1500.0`     | Último ARS/USD oficial conocido              |
 | `cotizacion_fecha`           | `None`       | Fecha del valor                              |
 | `cotizacion_ultimo_intento`  | `None`       | Timestamp último intento                     |

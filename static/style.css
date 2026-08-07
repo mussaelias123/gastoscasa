@@ -6507,16 +6507,19 @@ body.lac-body .lac-item { border-radius: 12px; }
 .lac-auth-login-link a{color:var(--color-acento);font-weight:600;text-decoration:none;}
 .lac-auth-error{background:var(--color-peligro-suave);color:var(--color-peligro);border-radius:10px;padding:.6rem .75rem;margin-bottom:1rem;font-size:.9rem;}
 .lac-auth-recordar{display:flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--color-texto-muted);margin:.25rem 0 1rem;text-align:left;cursor:pointer;}
-   RUTINA — módulo rutina diaria de León (templates/rutina.html)
-   Port hifi del design handoff "Rutina". Clases con prefijo rut-. Columna
-   única mobile-first (max 480px centrada). El color identificador de cada
-   persona lo fija --rut-color en los modificadores .rut--leon / .rut--mama /
-   .rut--papa (León = --color-persona-leon, variable 23 de la paleta).
-   TINTES (técnica nueva en el repo): fondos suaves por tipo de fila con
-   color-mix(in srgb, var(--color-X) N%, var(--color-superficie)). Regla:
-   SOLO var() adentro del color-mix (sigue valiendo "cero hardcode") y se
-   adapta solo a light/dark. La base .rut-fila queda en superficie como
-   fallback si el browser no soporta color-mix.
+   RUTINA — módulo rutina diaria de la familia (templates/rutina.html)
+   Clases con prefijo rut-. Columna única mobile-first (max 480px centrada).
+   El color identificador de cada persona lo fija --rut-color. Antes lo hacían
+   tres clases fijas (.rut--leon / .rut--mama / .rut--papa); ahora la familia
+   es de tamaño variable y el token sale de rutina_miembros.color_token, así
+   que rutina.js escribe --rut-color inline sobre .rut--persona. Los tokens
+   posibles están en _RUT_COLORES (app.py): los tres persona-* de la paleta
+   global más rut-p4..rut-p8, definidos abajo.
+   TINTES: fondos suaves por tipo de fila con color-mix(in srgb,
+   var(--color-X) N%, var(--color-superficie)). Regla: SOLO var() adentro del
+   color-mix (sigue valiendo "cero hardcode") y se adapta solo a light/dark.
+   La base .rut-fila queda en superficie como fallback si el browser no
+   soporta color-mix.
    Los translúcidos rgba(255,255,255,…) de los chips van sobre el chrome
    oscuro deco-2 — mismo patrón existente de la nav.
    Única animación del módulo: rutinaPulso (badge AHORA).
@@ -6530,10 +6533,291 @@ body.lac-body .lac-item { border-radius: 12px; }
   gap: 0.55rem;
 }
 
-/* Color identificador por persona (dot, borde, barra, tinte de tarjeta) */
-.rut--leon { --rut-color: var(--color-persona-leon); }
-.rut--mama { --rut-color: var(--color-persona-mari); }
-.rut--papa { --rut-color: var(--color-persona-elias); }
+/* Color identificador por persona (dot, borde, barra, tinte de tarjeta).
+   .rut--persona no fija nada: recibe --rut-color inline desde rutina.js.
+   El fallback evita que un miembro sin color válido quede sin identificador. */
+.rut--persona { --rut-color: var(--color-persona-leon); }
+
+/* Colores extra para familias de más de 3 integrantes. Van acá y no en la
+   paleta de config.json a propósito: son identificadores internos de este
+   módulo, no colores de marca de la app (la paleta configurable sigue siendo
+   de 23 variables). Misma excepción documentada que el tema cálido de
+   Lactancia — ver CLAUDE.md §4.1.
+   Se declaran también en la tarjeta Rutina del Inicio, que pinta a los mismos
+   miembros con los mismos tokens. */
+.rut-wrap,
+.home-card--rutina {
+  --color-rut-p4: #7BA05B;   /* verde salvia */
+  --color-rut-p5: #C97B84;   /* rosa viejo */
+  --color-rut-p6: #B08968;   /* tierra */
+  --color-rut-p7: #6C8EA4;   /* azul apagado */
+  --color-rut-p8: #A88BC0;   /* lila */
+  /* Ampliación 2026-08-07 (Mari: "que se puedan elegir más colores"). Van de
+     luminancia MEDIA a propósito, no pasteles: el color se usa tal cual para
+     los dibujos de cada persona, y un pastel claro sobre tarjeta clara casi no
+     se ve (es el mismo motivo por el que los nombres en texto van mezclados
+     con --color-texto y no en el color puro). Elegidos bien separados de tono
+     entre sí y de los ocho de arriba, para que dos hermanos no se confundan. */
+  --color-rut-p9:  #C98A3E;  /* ámbar */
+  --color-rut-p10: #3F9B95;  /* agua */
+  --color-rut-p11: #96608F;  /* ciruela */
+  --color-rut-p12: #7E9440;  /* oliva */
+  --color-rut-p13: #C0655A;  /* ladrillo */
+  --color-rut-p14: #5C6BA8;  /* índigo */
+  --color-rut-p15: #3F9268;  /* jade */
+  --color-rut-p16: #B04A5A;  /* frambuesa */
+}
+
+/* ── Selector de sección (SOLO mobile) ───────────────────────────────────
+   Mismo criterio que Lactancia: en mobile el menú muestra una sección por vez;
+   en escritorio hay lugar para verlas todas y el menú se esconde (si no, queda
+   media pantalla vacía). Mismo markup y misma mecánica: data-rut-sec en
+   .rut-wrap, que el CSS de abajo usa para mostrar solo la sección elegida. */
+.rut-nav-mobile {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.rut-nav-label { font-size: 0.85rem; font-weight: 700; color: var(--color-texto-muted); }
+
+.rut-nav-menu { position: relative; flex: 1 1 auto; min-width: 0; }
+
+.rut-nav-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rut-nav-actual { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.rut-nav-actual span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rut-nav-chevron {
+  margin-left: auto;
+  display: inline-block;
+  color: var(--color-texto-muted);
+  font-size: 0.8rem;
+  transition: transform 0.15s;
+}
+
+.rut-nav-trigger[aria-expanded="true"] .rut-nav-chevron { transform: rotate(180deg); }
+
+.rut-nav-lista {
+  position: absolute;
+  z-index: 950;          /* sobre drawers (810), bajo modales (1000) */
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-modal);
+}
+
+.rut-nav-lista[hidden] { display: none; }
+.rut-nav-lista li { list-style: none; }
+
+.rut-nav-opt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.65rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-texto);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rut-nav-opt:hover { background: var(--color-fondo); }
+
+.rut-nav-opt.is-activa {
+  background: var(--color-fondo);
+  font-weight: 800;
+  box-shadow: inset 3px 0 0 var(--color-acento);
+}
+
+.rut-nav-ico { font-size: 1.05rem; line-height: 1; }
+
+/* Solo la sección elegida se muestra (mobile). `.rut-paneles` es transparente
+   para que los paneles fluyan directo en el flex de .rut-wrap; en escritorio
+   pasa a ser una columna de verdad (ver la media query de ≥900px).
+   OJO: la sección "Hoy" va SIEMPRE en `display: contents`. Sus tres piezas
+   (.rut-selectores, .rut-ahora, .rut-dia-completo) tienen `grid-area` propia
+   en la grilla de escritorio, y `grid-area` solo funciona sobre hijos DIRECTOS
+   de la grilla: si la sección fuera una caja, quedarían de nietas y el layout
+   de escritorio se derrumba (todo apilado en la columna izquierda). */
+.rut-paneles { display: contents; }
+.rut-wrap[data-rut-sec] .rut-sec { display: none; }
+.rut-wrap[data-rut-sec="hoy"] .rut-sec--hoy { display: contents; }
+.rut-wrap[data-rut-sec="familia"]     .rut-sec--familia,
+.rut-wrap[data-rut-sec="actividades"] .rut-sec--actividades,
+.rut-wrap[data-rut-sec="ajustes"]     .rut-sec--ajustes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 0;
+}
+
+/* ── Paneles de las secciones que no son "Hoy" ───────────────────────────── */
+.rut-panel {
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rut-panel-titulo { font-size: 1rem; font-weight: 800; color: var(--color-texto); }
+
+.rut-panel-ayuda,
+.rut-panel-vacio {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-texto-muted);
+}
+
+/* ── Ficha de un miembro de la familia ───────────────────────────────────── */
+.rut-miembro {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radio-borde);
+  border-left: 4px solid var(--rut-color);
+  background: var(--color-fondo);
+  background: color-mix(in srgb, var(--rut-color) 8%, var(--color-superficie));
+}
+
+.rut-miembro-emoji { font-size: 1.35rem; line-height: 1; }
+.rut-miembro-texto { flex: 1 1 auto; min-width: 0; }
+.rut-miembro-nombre { font-weight: 700; font-size: 0.95rem; }
+.rut-miembro-cumple { font-weight: 800; color: var(--color-acento); }
+
+.rut-miembro-sub {
+  font-size: 0.75rem;
+  color: var(--color-texto-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Formulario de miembro ───────────────────────────────────────────────── */
+.rut-fm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px dashed var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+}
+
+.rut-fm-linea,
+.rut-cfg-linea {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.rut-fm-pills { gap: 0.35rem; }
+
+.rut-fm-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--color-texto);
+  cursor: pointer;
+}
+
+.rut-fm-check input { margin-top: 0.15rem; flex: 0 0 auto; }
+
+.rut-fm-nota {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-texto-muted);
+}
+
+.rut-fm-error {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-peligro);
+  background: var(--color-peligro-suave);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+}
+
+.rut-fm-fecha,
+.rut-fm-hora { flex: 0 1 auto; min-width: 8.5rem; }
+
+.rut-fm-colores { gap: 0.4rem; }
+
+.rut-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: 0 0 0 1px var(--color-borde);
+  cursor: pointer;
+  padding: 0;
+}
+
+.rut-swatch.activo {
+  border-color: var(--color-superficie);
+  box-shadow: 0 0 0 2px var(--color-texto);
+}
+
+/* ── Tarjeta de cumpleaños ───────────────────────────────────────────────── */
+.rut-cumple { display: flex; flex-direction: column; gap: 0.4rem; }
+.rut-cumple[hidden] { display: none; }
+
+.rut-cumple-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radio-borde);
+  border-left: 4px solid var(--rut-color);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--rut-color) 12%, var(--color-superficie));
+}
+
+.rut-cumple-emoji { font-size: 1.6rem; line-height: 1; }
+.rut-cumple-titulo { font-weight: 800; font-size: 0.95rem; }
+.rut-cumple-sub { font-size: 0.78rem; color: var(--color-texto-muted); }
+
+.rut-chips-vacio {
+  font-size: 0.8rem;
+  color: var(--color-texto-invertido);
+  opacity: 0.85;
+}
 
 /* ── Topbar sticky del módulo (se pega debajo del .site-topbar; el top
       exacto lo mide rutina.js porque depende del banner DEV) ──────────────── */
@@ -7256,7 +7540,11 @@ span.rut-ahora-emoji { cursor: default; }
   border-left: 3px solid var(--rut-color);
   overflow: hidden;
   cursor: pointer;
-  background: var(--color-superficie);
+  /* El color del bloque viaja por `--rut-item-bg` y NO por `background` a
+     secas: así el tema de la hoja puede envolverlo en un color-mix y darle
+     transparencia sin tener que repetir los seis tintes de abajo. */
+  --rut-item-bg: var(--color-superficie);
+  background: var(--rut-item-bg);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--color-texto) 10%, transparent);
 }
 
@@ -7316,13 +7604,15 @@ span.rut-ahora-emoji { cursor: default; }
   .rut-item-hora { font-size: 0.62rem; }
 }
 
-/* Tintes por tipo (mismos color-mix que las filas) */
-.rut-item--sueno     { background: color-mix(in srgb, var(--color-acento) 8%,        var(--color-superficie)); }
-.rut-item--noche     { background: color-mix(in srgb, var(--color-acento) 14%,       var(--color-superficie)); }
-.rut-item--teta      { background: color-mix(in srgb, var(--color-persona-mari) 8%,  var(--color-superficie)); }
-.rut-item--bano      { background: color-mix(in srgb, var(--color-persona-leon) 12%, var(--color-superficie)); }
-.rut-item--guarderia { background: color-mix(in srgb, var(--color-alerta) 10%,       var(--color-superficie)); }
-.rut-item--custom    { background: color-mix(in srgb, var(--color-exito) 8%,         var(--color-superficie)); }
+/* Tintes por tipo (mismos color-mix que las filas). Escriben `--rut-item-bg`,
+   no `background`: el `.rut-item` de arriba lo pinta y el tema de la hoja lo
+   envuelve para darle transparencia. */
+.rut-item--sueno     { --rut-item-bg: color-mix(in srgb, var(--color-acento) 8%,        var(--color-superficie)); }
+.rut-item--noche     { --rut-item-bg: color-mix(in srgb, var(--color-acento) 14%,       var(--color-superficie)); }
+.rut-item--teta      { --rut-item-bg: color-mix(in srgb, var(--color-persona-mari) 8%,  var(--color-superficie)); }
+.rut-item--bano      { --rut-item-bg: color-mix(in srgb, var(--color-persona-leon) 12%, var(--color-superficie)); }
+.rut-item--guarderia { --rut-item-bg: color-mix(in srgb, var(--color-alerta) 10%,       var(--color-superficie)); }
+.rut-item--custom    { --rut-item-bg: color-mix(in srgb, var(--color-exito) 8%,         var(--color-superficie)); }
 
 .rut-item.is-ahora {
   box-shadow: 0 0 0 2px var(--color-acento);
@@ -7696,18 +7986,41 @@ span.rut-ahora-emoji { cursor: default; }
     min-height: 0;
   }
 
+  /* En escritorio no hay menú de secciones: se ven todas a la vez */
+  .rut-nav-mobile { display: none; }
+
   .rut-wrap {
     flex: 1 1 auto;
     min-height: 0;
     max-width: none;
     display: grid;
     grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     grid-template-areas:
-      'top  tl'
-      'sel  tl'
-      'ahora tl';
+      'top     tl'
+      'sel     tl'
+      'ahora   tl'
+      'paneles tl';
     gap: 0.55rem 1.2rem;
+  }
+
+  /* Los paneles de configuración pasan a ser una columna real y scrollean
+     solos, para no estirar la columna izquierda más allá del viewport. */
+  .rut-paneles {
+    grid-area: paneles;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* En escritorio los tres paneles se ven siempre, sin importar data-rut-sec */
+  .rut-wrap[data-rut-sec] .rut-sec--familia,
+  .rut-wrap[data-rut-sec] .rut-sec--actividades,
+  .rut-wrap[data-rut-sec] .rut-sec--ajustes {
+    display: flex;
+    flex-direction: column;
   }
 
   /* El topbar deja de ser sticky: la columna izquierda ya no scrollea */
@@ -7736,6 +8049,21 @@ span.rut-ahora-emoji { cursor: default; }
     background: var(--color-fondo);
     margin-bottom: 0;
     padding: 0.15rem 0 0.5rem;
+  }
+}
+
+/* ── Pantallas anchas: tres columnas ─────────────────────────────────────
+   Izquierda = quién y qué está pasando ahora · centro = el día completo ·
+   derecha = la configuración (familia, actividades, ajustes). Así la hoja
+   ocupa el ancho en vez de dejar medio monitor vacío. */
+@media (min-width: 1280px) {
+  .rut-wrap {
+    grid-template-columns: minmax(340px, 400px) minmax(0, 1fr) minmax(320px, 400px);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      'top   tl paneles'
+      'sel   tl paneles'
+      'ahora tl paneles';
   }
 }
 
@@ -8474,34 +8802,22 @@ body:has(.home-page) .contenido-principal {
 
 /* ── Tarjeta Rutina: qué hace cada uno AHORA + qué viene después ── */
 /* Filas compactas, mismo patrón que .home-lac-item (borde izq 3px + tinte
-   color-mix SOLO con var() adentro, fallback superficie previo). Color por
-   persona con las MISMAS variables que el módulo /rutina (.rut--leon/mama/
-   papa): León = persona-leon, mamá = persona-mari, papá = persona-elias. */
+   color-mix SOLO con var() adentro, fallback superficie previo). El color por
+   persona ya no puede ser una clase fija (.home-rut--leon/mama/papa): la
+   familia es de tamaño variable y sale de rutina_miembros. Ahora
+   window.Rutina.hoyAhora() devuelve el token y home.js lo escribe inline en
+   --home-rut-color; los tokens rut-p4..p8 se declaran en .home-card--rutina,
+   junto al bloque del módulo Rutina. */
 .home-rut-item {
+  --home-rut-color: var(--color-persona-leon);
   padding: 0.4rem 0.55rem;
   margin-bottom: 0.4rem;
   background: var(--color-superficie);
   border: 1px solid var(--color-borde);
   border-left-width: 3px;
+  border-left-color: var(--home-rut-color);
   border-radius: var(--radio-borde);
-}
-
-.home-rut--leon {
-  border-left-color: var(--color-persona-leon);
-  background: var(--color-superficie);
-  background: color-mix(in srgb, var(--color-persona-leon) 6%, var(--color-superficie));
-}
-
-.home-rut--mama {
-  border-left-color: var(--color-persona-mari);
-  background: var(--color-superficie);
-  background: color-mix(in srgb, var(--color-persona-mari) 6%, var(--color-superficie));
-}
-
-.home-rut--papa {
-  border-left-color: var(--color-persona-elias);
-  background: var(--color-superficie);
-  background: color-mix(in srgb, var(--color-persona-elias) 6%, var(--color-superficie));
+  background: color-mix(in srgb, var(--home-rut-color) 6%, var(--color-superficie));
 }
 
 /* Línea principal: quién · actividad actual · rango horario */
@@ -8947,3 +9263,523 @@ html[data-theme="dark"] body:has(.lac-wrap) .lac-fridge {
 /* Un toque más suave/tierno en superficies grandes del módulo */
 body.lac-body .lac-panel { border-radius: var(--radio-borde); }
 body.lac-body .lac-item { border-radius: 12px; }
+
+
+/* ============================================================================
+   RUTINA — TEMA VISUAL (fondo día/noche + dibujos propios)
+   ============================================================================
+   Scoped a la hoja, igual que el tema cálido de Lactancia: `body.rut-body` lo
+   agrega rutina.js y `body:has(.rut-wrap)` cubre el primer pintado para que no
+   haya un parpadeo antes de que corra el JS.
+
+   FONDO: un paisaje de bloques dibujado por nosotros (nada de assets ajenos),
+   con el sol y la luna recorriendo el cielo según la hora. Vive en una capa
+   `position: fixed` detrás de todo — no `background-attachment: fixed`, que
+   iOS Safari ignora (mismo motivo que en Lactancia).
+
+   Cuánta luz hay lo decide rutina.js con estas custom properties:
+     --rut-luz     0 = noche cerrada · 1 = pleno día  → cruza los dos cielos
+                   y ADEMÁS decide el modo claro/oscuro (`seguirTema()`)
+     --rut-sol-x/y --rut-luna-x/y    posición en el arco, en %
+     --rut-sol-op  --rut-luna-op     opacidad de cada astro
+   Cross-fade por opacidad en vez de interpolar colores: es más barato y
+   funciona en todos los navegadores.
+
+   Todo el fondo va MUY suave (ver --rut-fondo-fuerza): tiene que leerse como
+   una textura detrás del contenido, no competir con él. El texto nunca se
+   apoya sobre el paisaje: las tarjetas siguen en `--color-superficie`, apenas
+   translúcidas.
+
+   ANIMACIONES: solo transform y opacity. Se apagan enteras con
+   prefers-reduced-motion y se pausan cuando la pestaña no está visible
+   (`body.rut-quieto`, que pone rutina.js) para no gastar batería.
+   ============================================================================ */
+
+body.rut-body,
+body:has(.rut-wrap) {
+  /* La misma tipografía que Lactancia (Archivo Narrow, self-host, OFL) */
+  --fuente-principal: 'Archivo Narrow', 'Segoe UI', Tahoma, sans-serif;
+  --radio-borde: 14px;
+
+  /* Cielo. El de día se profundizó el 2026-08-05: el celeste viejo era tan
+     pálido que, detrás de una tarjeta translúcida, seguía dando blanco —
+     bajar la opacidad de las tarjetas no alcanzaba, el problema era que
+     no había color atrás que mostrar. */
+  --rut-cielo-dia-alto:   #6FB6DC;
+  --rut-cielo-dia-bajo:   #BFDCC9;
+  --rut-cielo-noche-alto: #1C2440;
+  --rut-cielo-noche-bajo: #38405E;
+
+  /* Paisaje de bloques */
+  --rut-pasto:      #8FB56A;
+  --rut-pasto-osc:  #6F9450;
+  --rut-tierra:     #A87B57;
+  --rut-tierra-osc: #85603F;
+  --rut-agua:       #7FB0C4;
+  --rut-hoja:       #5E8B4C;
+  --rut-tronco:     #7A5A3C;
+  --rut-piedra:     #9AA0A6;
+
+  /* Astros */
+  --rut-sol:  #F2C46B;
+  --rut-luna: #EDEFF5;
+
+  /* ⚠ Cuánto se ve el fondo YA NO SE FIJA ACÁ: lo calcula `fuerzaFondo()` en
+     rutina.js y llega como `--rut-fondo-op`. Historia, para no volver atrás:
+     eran dos valores fijos (0.85 de día / 0.45 de noche) porque con el cielo
+     nocturno pleno y las tarjetas CLARAS el texto caía a 3.78:1. Atenuar la
+     capa entera traía dos males que Mari cazó el 2026-08-06: (a) el cielo
+     nocturno se mezclaba con el blanco de la página y se veía GRIS CLARO — "el
+     fondo se ve blanco" — y (b) la luna se atenúa junto con la capa, así que
+     brillaba MENOS de noche que el sol de día, justo al revés.
+     La causa real era el choque cielo oscuro + tarjeta clara, y eso depende del
+     MODO, no de la hora: por eso ahora la fuerza sigue al acuerdo entre los dos
+     y el paisaje va PLENO de día en claro y de noche en oscuro. */
+
+  /* Texto secundario más oscuro que el global (#6b7280 en claro): sobre una
+     tarjeta translúcida con el paisaje atrás, ese gris perdía contraste.
+     Derivado con color-mix de vars existentes → sigue valiendo cero hardcode
+     y se adapta solo a claro/oscuro (en oscuro sale MÁS claro, no más gris).
+     2026-08-05: de 72% a 85% — Mari: "las letras están demasiado claritas". */
+  --color-texto-muted: color-mix(in srgb, var(--color-texto) 85%, var(--color-superficie));
+
+  /* ── LA PERILLA DEL VIDRIO ───────────────────────────────────────────────
+     Cuánta superficie queda en las tarjetas: más bajo = se ve más el paisaje.
+     Está en un solo lugar a propósito, para poder regular toda la hoja de una.
+     Si Mari pide "más/menos fondo", se toca ACÁ, no tarjeta por tarjeta.
+     El blur es lo que sostiene la lectura cuando la opacidad baja. */
+  --rut-vidrio: 20%;
+  --rut-blur: 16px;
+
+  /* El lienzo del día y lo que va ADENTRO suyo van más abajo todavía: los
+     bloques, los números de hora y los nombres de arriba se veían como
+     parches blancos sobre el lienzo (pedido de Mari: "que sean igual que la
+     tarjeta de fondo"). Bloque y lienzo comparten valor a propósito — como
+     el bloque se apoya SOBRE el lienzo, las dos capas se suman y el bloque
+     igual queda un pelito más sólido, que es justo lo que hace falta para
+     que se lea el texto sin que parezca una etiqueta pegada. */
+  --rut-vidrio-lienzo: 10%;
+  --rut-vidrio-bloque: 12%;
+}
+
+/* El modo oscuro YA NO NECESITA vidrios propios. Tenía 72/50/62 — casi opacos —
+   por un solo caso: tarjetas OSCURAS con el cielo de DÍA fuerte detrás, que las
+   aclaraba y se comía el texto (3.39:1 al 42%). Ese caso ahora lo cubre
+   `fuerzaFondo()` bajando el PAISAJE en vez de tapar la tarjeta, así que los
+   dos modos comparten los mismos valores y el fondo se ve igual de bien en los
+   dos. Si volvés a separarlos, medí primero: puede que no haga falta. */
+
+/* Valores por defecto por si el JS todavía no corrió (mediodía).
+   ⚠ VAN EN `:root` Y NO EN `body.rut-body`. `pintarFondo()` los escribe como
+   estilo INLINE sobre `<html>`; si el defecto vive en el body, el body es un
+   ancestro MÁS CERCANO de `.rut-fondo` y su valor gana siempre — el ciclo
+   día/noche quedaba congelado en mediodía (cielo de día, sol prendido y luna
+   apagada a las 23 h). Bug encontrado el 2026-08-04. No mover de acá. */
+:root {
+  --rut-luz: 1;
+  --rut-sol-x: 50%;
+  --rut-sol-y: 18%;
+  --rut-sol-op: 1;
+  --rut-luna-x: 50%;
+  --rut-luna-y: 80%;
+  --rut-luna-op: 0;
+  --rut-fondo-op: 1;   /* la recalcula fuerzaFondo() en cada pintada */
+}
+
+/* ── Tarjetas translúcidas ────────────────────────────────────────────────
+   Para que el paisaje se vea DE VERDAD (pedido de Mari) las superficies bajan
+   a 70% y se les suma desenfoque: el blur es lo que sostiene la lectura, no la
+   opacidad — el texto se apoya en una mancha suave, no en el dibujo crudo.
+   REGLA DEL MÓDULO (igual que en Lactancia): la legibilidad manda. Ante la
+   duda se sube la opacidad de la tarjeta, no se apaga el fondo.
+   Los bloques de la línea de tiempo (`.rut-item--*`) quedan OPACOS a propósito:
+   son los que llevan el texto chico, y el fondo se aprecia en los huecos. */
+body.rut-body .rut-filas,
+body.rut-body .rut-panel,
+body.rut-body .rut-tips-card,
+body.rut-body .rut-tl-head,
+body.rut-body .rut-cal-card,
+body.rut-body .rut-dia-btn,
+body.rut-body .rut-header,
+body.rut-body .rut-chips-nav {
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio), transparent);
+  backdrop-filter: blur(var(--rut-blur));
+}
+
+/* ── La tarjeta del título del módulo ─────────────────────────────────────
+   Era el único bloque NEGRO de la hoja (`--color-deco-1` con texto invertido)
+   y cortaba el paisaje en seco. Pedido de Mari (2026-08-05): que use el mismo
+   formato que las demás. Al pasar a vidrio claro hay que dar vuelta TODO lo
+   que estaba pensado para fondo oscuro — si no, queda texto blanco sobre
+   blanco. Los chips traían `rgba(255,255,255,…)` hardcodeado justamente por
+   eso; acá pasan a variables de paleta y se saldó ese hardcode viejo. */
+body.rut-body .rut-header,
+body.rut-body .rut-header-titulo { color: var(--color-texto); }
+
+body.rut-body .rut-chips-nav { border-top: 1px solid var(--color-borde); }
+
+body.rut-body .rut-chip {
+  border-color: var(--color-borde);
+  color: var(--color-texto-muted);
+}
+
+body.rut-body .rut-chip.activo {
+  background: color-mix(in srgb, var(--rut-color) 16%, var(--color-superficie));
+  border-color: var(--rut-color);
+  color: var(--rut-color);
+}
+
+body.rut-body .rut-chips-leyenda,
+body.rut-body .rut-chips-vacio { color: var(--color-texto-muted); }
+
+/* Estas dos llevan tinte de persona: se conserva y se le agrega la
+   translucidez encima (color-mix anidado), en vez de pisarlo con superficie. */
+body.rut-body .rut-card-ahora,
+body.rut-body .rut-miembro {
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio), transparent);
+  background: color-mix(in srgb,
+              color-mix(in srgb, var(--rut-color) 9%, var(--color-superficie)) var(--rut-vidrio),
+              transparent);
+  backdrop-filter: blur(var(--rut-blur));
+}
+
+body.rut-body .rut-cumple-card {
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio), transparent);
+  background: color-mix(in srgb,
+              color-mix(in srgb, var(--rut-color) 14%, var(--color-superficie)) var(--rut-vidrio),
+              transparent);
+  backdrop-filter: blur(var(--rut-blur));
+}
+
+/* Los dibujos de las tarjetas "Ahora" heredaban `--color-texto` y salían casi
+   negros (a Mari no le gustaban así). Van en el color de la persona, igual que
+   los de la línea de tiempo: turquesa León, violeta Mamá, azul Papá. */
+body.rut-body .rut-ahora-emoji .rut-dib { color: var(--rut-color); }
+
+/* El lienzo es la superficie más grande de la hoja: es la que más tapaba el
+   cielo. Va translúcido pero SIN backdrop-filter — atrás tiene el degradé del
+   cielo, que ya es parejo, y desenfocar una capa tan alta que scrollea cuesta
+   batería al re-pintar en cada scroll. */
+body.rut-body .rut-canvas,
+body.rut-body .rut-canvas-head {
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio-lienzo), transparent);
+}
+
+/* ── Las barras de scroll, una tarjeta más ────────────────────────────────
+   Eran las del sistema: una franja BLANCA, opaca, pegada al lienzo, que
+   cortaba el paisaje justo al lado (pedido de Mari, 2026-08-06). Son las DOS
+   que tiene la hoja — el lienzo del día completo y la columna de paneles —,
+   detectadas mirando qué scrollea de verdad, no a ojo.
+   El riel va TRANSPARENTE (ahí se ve el fondo) y el pulgar sale del color de
+   texto con alfa: así se adapta solo a claro/oscuro sin sumar variables, y
+   sigue valiendo "cero hardcode" porque el color sale de `var()`.
+   El borde transparente + `background-clip: padding-box` es lo que le da aire
+   al pulgar: sin eso toca los dos bordes y vuelve a parecer una franja. */
+body.rut-body .rut-dia-completo,
+body.rut-body .rut-paneles {
+  scrollbar-width: thin;                                   /* Firefox */
+  scrollbar-color: color-mix(in srgb, var(--color-texto) 30%, transparent) transparent;
+}
+
+body.rut-body .rut-dia-completo::-webkit-scrollbar,
+body.rut-body .rut-paneles::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body.rut-body .rut-dia-completo::-webkit-scrollbar-track,
+body.rut-body .rut-paneles::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body.rut-body .rut-dia-completo::-webkit-scrollbar-thumb,
+body.rut-body .rut-paneles::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-texto) 26%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+body.rut-body .rut-dia-completo::-webkit-scrollbar-thumb:hover,
+body.rut-body .rut-paneles::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-texto) 44%, transparent);
+  background-clip: padding-box;
+}
+
+/* Lo que vive DENTRO del lienzo: los bloques, los números de hora del costado
+   y los nombres de las personas de arriba. Antes eran los tres parches
+   blancos sobre un lienzo transparente. Van todos al mismo valor. */
+body.rut-body .rut-item {
+  background: color-mix(in srgb, var(--rut-item-bg) var(--rut-vidrio-bloque), transparent);
+}
+
+body.rut-body .rut-col-head {
+  background: color-mix(in srgb,
+              color-mix(in srgb, var(--rut-color) 10%, var(--color-superficie))
+              var(--rut-vidrio-bloque), transparent);
+}
+
+/* ── Los nombres de persona, cuando son TEXTO ─────────────────────────────
+   No pueden ir en `--rut-color` puro: los colores de persona son pasteles
+   claros, pensados para bordes y tintes, no para letras. Con el vidrio al
+   16% el nombre de la columna daba 1.18:1 — ilegible. Mezclados con el color
+   de texto conservan la identidad (se sigue viendo "el celeste de León") y
+   se leen. Se adapta solo: en modo oscuro mezcla hacia el texto CLARO.
+   Va inline en cada regla y NO en una variable del body: `--rut-color` se
+   define inline por elemento, así que una variable declarada en el body
+   resolvería con el color del body y saldrían los tres del mismo color. */
+body.rut-body .rut-col-head,
+body.rut-body .rut-ahora-quien,
+body.rut-body .rut-chip.activo {
+  color: color-mix(in srgb, var(--rut-color) 25%, var(--color-texto));
+}
+
+/* Las filas de la madrugada y los chips de hora tenían superficie opaca
+   propia, que anulaba la translucidez del contenedor. */
+body.rut-body .rut-fila { background: transparent; }
+
+body.rut-body .rut-hora-label {
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio-bloque), transparent);
+}
+
+/* ── La capa del fondo ───────────────────────────────────────────────────── */
+.rut-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: -1;                 /* detrás de todo el contenido de la app */
+  overflow: hidden;
+  pointer-events: none;
+  /* La calcula rutina.js (`fuerzaFondo()`), no el CSS: depende del ACUERDO
+     entre el cielo y el modo claro/oscuro, y esa cuenta en `calc()` quedaba
+     ilegible. Pleno (1) de día en claro y de noche en oscuro; baja sola en el
+     amanecer/atardecer y si el modo se fuerza en contra de la hora. */
+  opacity: var(--rut-fondo-op, 1);
+}
+
+.rut-fondo-cielo {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom,
+              var(--rut-cielo-dia-alto), var(--rut-cielo-dia-bajo));
+}
+
+/* El cielo de noche se cruza por encima según cuánta luz haya */
+.rut-fondo-cielo--noche {
+  background: linear-gradient(to bottom,
+              var(--rut-cielo-noche-alto), var(--rut-cielo-noche-bajo));
+  opacity: calc(1 - var(--rut-luz));
+  transition: opacity 1.2s linear;
+}
+
+/* ── Sol y luna ──────────────────────────────────────────────────────────── */
+/* Más grandes que antes (74px): son lo que Mari más quiere ver del fondo. */
+.rut-astro {
+  position: absolute;
+  width: 108px;
+  height: 108px;
+  margin: -54px 0 0 -54px;      /* centrado en su punto */
+  border-radius: 50%;
+  transition: left 1.2s linear, top 1.2s linear, opacity 1.2s linear;
+}
+
+.rut-astro--sol {
+  left: var(--rut-sol-x);
+  top: var(--rut-sol-y);
+  opacity: var(--rut-sol-op);
+  background: var(--rut-sol);
+  box-shadow: 0 0 66px 30px color-mix(in srgb, var(--rut-sol) 55%, transparent);
+}
+
+.rut-astro--luna {
+  left: var(--rut-luna-x);
+  top: var(--rut-luna-y);
+  opacity: var(--rut-luna-op);
+  background: var(--rut-luna);
+  box-shadow: 0 0 50px 22px color-mix(in srgb, var(--rut-luna) 40%, transparent);
+}
+
+/* El brillo late despacio, como respirando */
+.rut-astro::after {
+  content: '';
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.28;
+  animation: rutBrillo 6s ease-in-out infinite;
+}
+
+@keyframes rutBrillo {
+  0%, 100% { transform: scale(1);    opacity: 0.28; }
+  50%      { transform: scale(1.14); opacity: 0.14; }
+}
+
+/* ── Nubes ───────────────────────────────────────────────────────────────── */
+.rut-nube {
+  position: absolute;
+  height: 16px;
+  border-radius: 8px;
+  background: #FFFFFF;
+  opacity: 0.5;
+  box-shadow: 22px -9px 0 -1px #FFFFFF, 48px 2px 0 -3px #FFFFFF;
+}
+
+.rut-nube--1 { top: 14%; width: 60px; animation: rutNube 150s linear infinite; }
+.rut-nube--2 { top: 26%; width: 44px; opacity: 0.34; animation: rutNube 210s linear infinite -70s; }
+.rut-nube--3 { top:  8%; width: 52px; opacity: 0.28; animation: rutNube 260s linear infinite -160s; }
+
+@keyframes rutNube {
+  from { transform: translateX(-90px); }
+  to   { transform: translateX(102vw); }
+}
+
+/* ── El paisaje de bloques, pegado abajo ─────────────────────────────────── */
+/* Franja finita abajo: antes se comía 46vh de pantalla y el cielo quedaba
+   relegado a una banda arriba. Ahora el paisaje es un zócalo y todo el resto
+   es cielo con el sol o la luna (pedido de Mari).
+
+   El alto sale del ANCHO (`aspect-ratio`, la misma proporción que el viewBox)
+   y no de `vh`: así la escala es exacta, los bloques quedan cuadrados y en un
+   monitor ancho el `slice` no recorta la copa de los árboles. El `min-height`
+   es para el celular: ahí sí recorta, pero de los costados (el suelo sigue
+   yendo de borde a borde) y los bloques no quedan de 10 px. */
+.rut-mapa {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  aspect-ratio: 240 / 42;
+  min-height: 110px;
+}
+
+.rut-mapa svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  shape-rendering: crispEdges;   /* bordes duros: es dibujo de bloques */
+}
+
+/* De noche el paisaje se apaga: un velo azulado encima. Es un degradé y no un
+   color plano porque la parte de arriba de esta franja ya es cielo: con un velo
+   parejo se veía el borde del velo como una raya horizontal. */
+.rut-mapa::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom,
+              transparent 0%, var(--rut-cielo-noche-alto) 45%);
+  opacity: calc((1 - var(--rut-luz)) * 0.62);
+  transition: opacity 1.2s linear;
+}
+
+/* ── Dibujos propios ─────────────────────────────────────────────────────── */
+/* Mismo sistema que los íconos de Lactancia: viewBox 24, stroke currentColor
+   (heredan el color de la persona) y un segundo tono con .relleno. */
+.rut-dib {
+  width: 1.25em;
+  height: 1.25em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.22em;
+  overflow: visible;
+}
+
+.rut-dib .relleno { fill: currentColor; stroke: none; opacity: 0.18; }
+
+/* En la línea de tiempo el dibujo toma el color de la persona */
+.rut-item-emoji .rut-dib,
+.rut-fila-emoji .rut-dib { color: var(--rut-color); }
+
+.rut-ahora-emoji .rut-dib { width: 1.6em; height: 1.6em; }
+.rut-miembro-emoji .rut-dib { width: 1.35em; height: 1.35em; color: var(--rut-color); }
+.rut-chip .rut-dib { width: 1.05em; height: 1.05em; }
+
+/* ── Animaciones de los dibujos ──────────────────────────────────────────── */
+/* Movimientos chicos y lentos: la hoja se mira muchas veces por día, una
+   animación llamativa cansa enseguida. */
+
+.an-zzz            { animation: rutZzz 3.4s ease-in-out infinite; transform-origin: 20% 30%; }
+.an-zzz-2          { animation-delay: -1.7s; }
+@keyframes rutZzz  { 0%,100% { opacity: 0.25; transform: translateY(2px); }
+                     50%     { opacity: 1;    transform: translateY(-2px); } }
+
+.an-titila         { animation: rutTitila 2.8s ease-in-out infinite; }
+.an-titila-2       { animation-delay: -0.9s; }
+.an-titila-3       { animation-delay: -1.8s; }
+@keyframes rutTitila { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+.an-rayos          { animation: rutRayos 4s ease-in-out infinite; transform-origin: 12px 14px; }
+@keyframes rutRayos { 0%,100% { opacity: 0.55; transform: scale(0.94); }
+                      50%     { opacity: 1;    transform: scale(1.04); } }
+
+.an-late           { animation: rutLate 3.2s ease-in-out infinite; transform-origin: 12px 13px; }
+@keyframes rutLate { 0%,100% { transform: scale(1); } 45% { transform: scale(1.07); } }
+
+.an-gota           { animation: rutGota 3.6s ease-in-out infinite; }
+@keyframes rutGota { 0%,60%,100% { opacity: 0.35; transform: translateY(0); }
+                     80%         { opacity: 1;    transform: translateY(2.5px); } }
+
+.an-leche          { animation: rutLeche 5s ease-in-out infinite; transform-origin: 12px 21px; }
+@keyframes rutLeche { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(0.9); } }
+
+.an-vapor          { animation: rutVapor 3.8s ease-in-out infinite; }
+@keyframes rutVapor { 0%,100% { opacity: 0.3; transform: translateY(1px); }
+                      50%     { opacity: 0.9; transform: translateY(-2px); } }
+
+.an-burbuja        { animation: rutBurbuja 4.2s ease-in-out infinite; }
+.an-burbuja-2      { animation-delay: -1.4s; }
+.an-burbuja-3      { animation-delay: -2.8s; }
+@keyframes rutBurbuja { 0%   { opacity: 0;   transform: translateY(3px) scale(0.7); }
+                        35%  { opacity: 0.9; }
+                        100% { opacity: 0;   transform: translateY(-5px) scale(1.1); } }
+
+.an-lluvia         { animation: rutLluvia 1.9s linear infinite; }
+.an-lluvia-2       { animation-delay: -0.6s; }
+.an-lluvia-3       { animation-delay: -1.2s; }
+@keyframes rutLluvia { 0%   { opacity: 0; transform: translateY(-3px); }
+                       30%  { opacity: 1; }
+                       100% { opacity: 0; transform: translateY(4px); } }
+
+.an-pica           { animation: rutPica 2.6s ease-in-out infinite; transform-origin: 8.6px 13px; }
+@keyframes rutPica { 0%,100% { transform: translateY(0); }
+                     45%     { transform: translateY(-2.2px); } }
+
+.an-rueda          { animation: rutRueda 4.5s linear infinite; transform-origin: 10px 18.4px; }
+.an-rueda-2        { transform-origin: 17.4px 18.4px; }
+@keyframes rutRueda { to { transform: rotate(360deg); } }
+
+.an-bandera        { animation: rutBandera 3s ease-in-out infinite; transform-origin: 12px 5px; }
+@keyframes rutBandera { 0%,100% { transform: skewY(0deg); } 50% { transform: skewY(-5deg); } }
+
+.an-cierre         { animation: rutCierre 5s ease-in-out infinite; transform-origin: 12px 13.6px; }
+@keyframes rutCierre { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(0.5); } }
+
+.an-pesa           { animation: rutPesa 3s ease-in-out infinite; transform-origin: 12px 12px; }
+@keyframes rutPesa { 0%,100% { transform: translateY(1.2px); } 50% { transform: translateY(-1.2px); } }
+
+.an-hoja           { animation: rutHoja 6s ease-in-out infinite; transform-origin: 12px 12px; }
+@keyframes rutHoja { 0%,70%,100% { transform: rotateY(0deg); } 85% { transform: rotateY(-32deg); } }
+
+.an-respira        { animation: rutRespira 4.4s ease-in-out infinite; transform-origin: 12px 16px; }
+@keyframes rutRespira { 0%,100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+
+.an-llama          { animation: rutLlama 1.5s ease-in-out infinite; transform-origin: 12px 9px; }
+@keyframes rutLlama { 0%,100% { transform: scale(1) rotate(-2deg); opacity: 1; }
+                      50%     { transform: scale(1.12) rotate(2deg); opacity: 0.85; } }
+
+/* Pestaña oculta o el usuario pidió menos movimiento → todo quieto. */
+body.rut-quieto .rut-fondo *,
+body.rut-quieto .rut-dib * { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rut-fondo *,
+  .rut-dib * { animation: none !important; }
+  .rut-astro,
+  .rut-fondo-cielo--noche,
+  .rut-mapa::after { transition: none; }
+}

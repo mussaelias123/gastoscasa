@@ -64,6 +64,20 @@ DEFAULTS = {
     # leche "debería" tomar: eso es terreno médico y la app no lo hace.
     "bebe_nombre":                        "León",
     "bebe_fecha_nacimiento":              "",
+    # ── Rutina (rutina diaria de la familia) ───────────────────────────────
+    # hora_noche / hora_amanecer: HH:MM locales. Cumplen doble función:
+    #   1) el motor de ventanas de sueño usa hora_noche como tope del día
+    #      (hasta ahí encadena siestas; después arranca el sueño nocturno);
+    #   2) el fondo día/noche de la hoja decide con ellas cuándo sale y se
+    #      pone el sol.
+    # La familia, sus fechas de nacimiento y sus actividades NO viven acá:
+    # van en las tablas rutina_miembros / rutina_actividades (database.py),
+    # porque son datos del usuario y no configuración del entorno.
+    "rutina_hora_noche":                  "20:00",
+    "rutina_hora_amanecer":               "06:30",
+    # Tarjeta de saludo el día del cumpleaños de cada miembro que tenga
+    # fecha de nacimiento cargada. Interruptor por si molesta.
+    "rutina_cumple_activo":               True,
     # ── Cotización USD oficial ──────────────────────────────────────────────
     # Se obtiene de dolarapi.com (módulo cotizacion.py) y se refresca 1 vez/día.
     # El 1500.0 es solo un bootstrap inicial; se sobrescribe en la primera

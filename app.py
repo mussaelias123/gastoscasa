@@ -33,7 +33,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 import os
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
@@ -903,6 +903,62 @@ def _notif_recordatorio_bajar():
     }]
 
 
+def _edad_desde(fecha_nacimiento, hoy=None):
+    """Edad derivada de una fecha de nacimiento 'YYYY-MM-DD'.
+
+    Lo usan el perfil del bebé de Lactancia (_lac_bebe) y la ficha de cada
+    miembro de Rutina (_rut_edad), que necesitan lo mismo: un texto legible
+    y el mes de vida. Devuelve dict con claves siempre presentes; si la fecha
+    es inválida, vacía o futura, todo queda en None/'' (nunca lanza).
+
+    Formato del texto: hasta los 2 años se cuenta en meses y días ("2 meses y
+    9 días"), porque a esa edad el detalle importa; después, en años y meses.
+    """
+    fnac = str(fecha_nacimiento or '').strip()
+    vacio = {'fecha_nacimiento': fnac, 'edad_texto': '',
+             'mes_de_vida': None, 'dias': None}
+    try:
+        nac = datetime.strptime(fnac, '%Y-%m-%d').date()
+    except ValueError:
+        return vacio
+
+    # Acepta datetime o date; por default, ahora.
+    if hoy is None:
+        hoy = datetime.now()
+    if isinstance(hoy, datetime):
+        hoy = hoy.date()
+    dias = (hoy - nac).days
+    if dias < 0:
+        return vacio
+
+    meses = (hoy.year - nac.year) * 12 + (hoy.month - nac.month)
+    if hoy.day < nac.day:
+        meses -= 1
+    meses = max(meses, 0)
+    # Días sueltos desde el último "cumple-mes" (clamp fin de mes vía
+    # _act_sumar_intervalo, el mismo helper que usa el vencimiento).
+    dias_resto = (hoy - _act_sumar_intervalo(nac, meses, 'meses')).days
+
+    def _plur(n, sing, plur):
+        return f"{n} {sing}" if n == 1 else f"{n} {plur}"
+
+    if meses < 24:
+        partes = []
+        if meses:
+            partes.append(_plur(meses, 'mes', 'meses'))
+        if dias_resto or not meses:
+            partes.append(_plur(dias_resto, 'día', 'días'))
+        edad_texto = ' y '.join(partes)
+    else:
+        anios, resto = divmod(meses, 12)
+        edad_texto = _plur(anios, 'año', 'años')
+        if resto:
+            edad_texto += ' y ' + _plur(resto, 'mes', 'meses')
+
+    return {'fecha_nacimiento': fnac, 'edad_texto': edad_texto,
+            'mes_de_vida': meses + 1, 'dias': dias}   # el 1er mes de vida es el mes 1
+
+
 def _lac_bebe(cfg=None, ahora=None):
     """Perfil del bebé para la UI: nombre (se usa en los textos) + fecha de
     nacimiento, con la edad y el mes de vida derivados. A propósito NO guarda
@@ -913,42 +969,10 @@ def _lac_bebe(cfg=None, ahora=None):
         ahora = datetime.now()
     nombre = (str(cfg.get('bebe_nombre', config.DEFAULTS['bebe_nombre'])).strip()
               or 'el bebé')
-    fnac = str(cfg.get('bebe_fecha_nacimiento',
-                       config.DEFAULTS['bebe_fecha_nacimiento']) or '').strip()
-    edad_texto, mes_de_vida = '', None
-    try:
-        nac = datetime.strptime(fnac, '%Y-%m-%d').date()
-    except ValueError:
-        nac = None
-    if nac is not None:
-        hoy = ahora.date()
-        if (hoy - nac).days >= 0:
-            meses = (hoy.year - nac.year) * 12 + (hoy.month - nac.month)
-            if hoy.day < nac.day:
-                meses -= 1
-            meses = max(meses, 0)
-            mes_de_vida = meses + 1        # el 1er mes de vida es el mes 1
-            # Días sueltos desde el último "cumple-mes" (clamp fin de mes vía
-            # _act_sumar_intervalo, el mismo helper que usa el vencimiento).
-            dias_resto = (hoy - _act_sumar_intervalo(nac, meses, 'meses')).days
-
-            def _plur(n, sing, plur):
-                return f"{n} {sing}" if n == 1 else f"{n} {plur}"
-
-            if meses < 24:
-                partes = []
-                if meses:
-                    partes.append(_plur(meses, 'mes', 'meses'))
-                if dias_resto or not meses:
-                    partes.append(_plur(dias_resto, 'día', 'días'))
-                edad_texto = ' y '.join(partes)
-            else:
-                anios, resto = divmod(meses, 12)
-                edad_texto = _plur(anios, 'año', 'años')
-                if resto:
-                    edad_texto += ' y ' + _plur(resto, 'mes', 'meses')
-    return {'nombre': nombre, 'fecha_nacimiento': fnac,
-            'edad_texto': edad_texto, 'mes_de_vida': mes_de_vida}
+    edad = _edad_desde(cfg.get('bebe_fecha_nacimiento',
+                               config.DEFAULTS['bebe_fecha_nacimiento']), ahora)
+    return {'nombre': nombre, 'fecha_nacimiento': edad['fecha_nacimiento'],
+            'edad_texto': edad['edad_texto'], 'mes_de_vida': edad['mes_de_vida']}
 
 
 NOTIF_PROVIDERS = [_notif_lactancia, _notif_recordatorio_bajar]
@@ -1052,6 +1076,8 @@ def _static_version():
             os.path.join(app.static_folder, 'grafico.js'),
             os.path.join(app.static_folder, 'rutina.js'),
             os.path.join(app.static_folder, 'rutina-actividades.js'),
+            os.path.join(app.static_folder, 'rutina-sueno.js'),
+            os.path.join(app.static_folder, 'rutina-dibujos.js'),
             os.path.join(app.static_folder, 'home.js'),
         ]
         return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))
@@ -2235,20 +2261,41 @@ def api_lactancia_eliminar(id):
 
 
 # =============================================================================
-# MÓDULO RUTINA — helpers (rutina diaria de León + agendas de mamá/papá)
+# MÓDULO RUTINA — helpers (rutina diaria de la familia)
 # =============================================================================
 #
-# Las definiciones de rutina por etapa (cadenas de ítems, tips) y las
-# actividades de estimulación son constantes JS (static/rutina.js y
-# static/rutina-actividades.js). Acá solo se persisten los AJUSTES de
-# horario por (fecha, etapa, item_id) para que ambos teléfonos vean lo
-# mismo. La cascada de horarios se calcula en el front.
-# La fecha-clave la define SIEMPRE el cliente (su fecha local): el server
+# La FAMILIA vive en la base (tabla rutina_miembros): el usuario la carga desde
+# el menú de /rutina. Para los miembros marcados como bebé, la rutina se GENERA
+# en el front a partir de las ventanas de sueño según la edad
+# (static/rutina-sueno.js); para el resto sale de sus actividades.
+# Acá solo se persisten los AJUSTES de horario por (fecha, etapa, item_id) para
+# que ambos teléfonos vean lo mismo. La cascada de horarios se calcula en el
+# front. La fecha-clave la define SIEMPRE el cliente (su fecha local): el server
 # solo filtra por rango y hace upsert/delete — así no hay ambigüedad de
 # timezone entre server y teléfonos.
 
-_RUT_ETAPAS = ('actual', 'tres', 'guarderia')
+# La columna `etapa` sobrevive al rework: las tres etapas viejas quedan
+# aceptadas solo para no romper filas históricas de rutina_ajustes/rutina_dur/
+# rutina_ocultos (nunca se dropea nada, ver docs/CONTEXT_DB.md). Todo lo que
+# escribe el front nuevo usa 'plan'.
+_RUT_ETAPA = 'plan'
+_RUT_ETAPAS = ('plan', 'actual', 'tres', 'guarderia')
 _RUT_ITEM_RE = _re.compile(r'^[a-z0-9-]{1,40}$')
+
+_RUT_ROLES = ('mama', 'papa', 'hijo', 'otro')
+
+# Tokens de color por miembro (nombre de la var CSS sin el prefijo --color-).
+# Los tres primeros son los que ya usaba la app; los rut-p* se definen en el
+# bloque scoped de Rutina en static/style.css.
+_RUT_COLORES = ('persona-leon', 'persona-mari', 'persona-elias',
+                'rut-p4', 'rut-p5', 'rut-p6', 'rut-p7', 'rut-p8',
+                'rut-p9', 'rut-p10', 'rut-p11', 'rut-p12',
+                'rut-p13', 'rut-p14', 'rut-p15', 'rut-p16')
+# ⚠ Esta lista vive TRES veces y las tres tienen que coincidir: acá (valida lo
+# que entra), COLOR_CICLO en static/rutina.js (arma los círculos para elegir) y
+# las vars --color-rut-p* en static/style.css (los pinta). Si agregás un color
+# y te olvidás de alguna, el síntoma cambia según cuál: el backend lo rechaza
+# con "Color inválido", el círculo no aparece, o aparece transparente.
 
 
 def _rut_semana_servidor():
@@ -2287,11 +2334,84 @@ def _rut_parsear_rango(fuente):
     return desde, hasta
 
 
+def _rut_edad(fecha_nacimiento, hoy=None):
+    """Edad de un miembro + datos de cumpleaños para la tarjeta de saludo.
+
+    Reusa _edad_desde (el mismo cálculo que el perfil del bebé de Lactancia) y
+    le suma lo propio de Rutina: si hoy cumple y cuántos cumple. El "cumple
+    hoy" del 29/2 se resuelve el 28/2 en los años no bisiestos, así no se saltea.
+    """
+    if hoy is None:
+        hoy = date.today()
+    if isinstance(hoy, datetime):
+        hoy = hoy.date()
+
+    edad = _edad_desde(fecha_nacimiento, hoy)
+    edad['cumple_hoy'] = False
+    edad['cumple_anios'] = None
+    if edad['dias'] is None:
+        return edad
+
+    nac = datetime.strptime(edad['fecha_nacimiento'], '%Y-%m-%d').date()
+    dia_cumple = nac.day
+    if nac.month == 2 and nac.day == 29:
+        try:
+            date(hoy.year, 2, 29)
+        except ValueError:
+            dia_cumple = 28
+    if hoy.month == nac.month and hoy.day == dia_cumple:
+        edad['cumple_hoy'] = True
+        edad['cumple_anios'] = hoy.year - nac.year
+    return edad
+
+
+def _rut_miembros(hoy=None):
+    """La familia, con la edad y el cumpleaños ya derivados para la UI."""
+    salida = []
+    for fila in database.obtener_miembros_rutina():
+        m = dict(fila)
+        m['es_bebe'] = bool(m['es_bebe'])
+        m['activo'] = bool(m['activo'])
+        m.update(_rut_edad(m['fecha_nacimiento'], hoy))
+        salida.append(m)
+    return salida
+
+
+def _rut_hora_a_min(valor, default_min):
+    """'HH:MM' → minutos desde 00:00. Si viene basura, cae al default."""
+    try:
+        h, m = str(valor or '').strip().split(':')
+        minutos = int(h) * 60 + int(m)
+    except (ValueError, AttributeError):
+        return default_min
+    return minutos if 0 <= minutos <= 1439 else default_min
+
+
+def _rut_config(cfg=None):
+    """Preferencias de la hoja: inicio de la noche y del día (las usan el motor
+    de ventanas de sueño y el fondo día/noche) + interruptor de cumpleaños."""
+    if cfg is None:
+        cfg = config.cargar_config(CONFIG_FILE)
+    hora_noche = str(cfg.get('rutina_hora_noche',
+                             config.DEFAULTS['rutina_hora_noche']) or '').strip()
+    hora_amanecer = str(cfg.get('rutina_hora_amanecer',
+                                config.DEFAULTS['rutina_hora_amanecer']) or '').strip()
+    return {
+        'hora_noche': hora_noche or config.DEFAULTS['rutina_hora_noche'],
+        'hora_amanecer': hora_amanecer or config.DEFAULTS['rutina_hora_amanecer'],
+        'noche_min': _rut_hora_a_min(hora_noche, 1200),
+        'amanecer_min': _rut_hora_a_min(hora_amanecer, 390),
+        'cumple_activo': bool(cfg.get('rutina_cumple_activo',
+                                      config.DEFAULTS['rutina_cumple_activo'])),
+    }
+
+
 def _rut_payload(desde, hasta):
     """Ajustes del rango como dict anidado: fecha → etapa → item_id → minutos.
-    Incluye también las tareas añadidas, los ítems quitados (modo edición) y
-    las actividades del Calendario cuya próxima fecha es HOY (para la tarjeta
-    "Hoy por calendario", que ofrece añadirlas a la rutina)."""
+    Incluye también la familia (con edades), las preferencias de la hoja, las
+    tareas añadidas, los ítems quitados (modo edición) y las actividades del
+    Calendario cuya próxima fecha es HOY (para la tarjeta "Hoy por calendario",
+    que ofrece añadirlas a la rutina)."""
     from datetime import date
     hoy = date.today().isoformat()
     ajustes = {}
@@ -2310,12 +2430,12 @@ def _rut_payload(desde, hasta):
                                'responsable': act['responsable']})
     return {'ajustes': ajustes, 'duraciones': duraciones, 'hoy': hoy,
             'desde': desde, 'hasta': hasta,
+            'miembros': _rut_miembros(),
+            'actividades': database.obtener_actividades_rutina(),
+            'config': _rut_config(),
             'tareas': [dict(f) for f in database.obtener_tareas_rutina(desde, hasta)],
             'ocultos': [dict(f) for f in database.obtener_ocultos_rutina(desde, hasta)],
             'calendario': calendario}
-
-
-_RUT_USUARIOS = ('leon', 'mama', 'papa')
 
 
 def _rut_parsear_fecha_opcional(valor, campo):
@@ -2326,14 +2446,27 @@ def _rut_parsear_fecha_opcional(valor, campo):
     return _rut_parsear_fecha(valor, campo)
 
 
+def _rut_miembro_id(valor, campo='miembro_id'):
+    """Valida que `valor` sea el id de un miembro activo de la familia.
+    Reemplaza a la vieja tupla fija ('leon', 'mama', 'papa')."""
+    try:
+        miembro_id = int(str(valor or '').strip())
+    except ValueError:
+        raise ValueError(f"{campo} debe ser el id de un miembro.")
+    ids = {fila['id'] for fila in database.obtener_miembros_rutina()}
+    if miembro_id not in ids:
+        raise ValueError(f"No existe un miembro activo con id {miembro_id}.")
+    return miembro_id
+
+
 def _rut_leer_form_tarea(form):
     """Valida el form de /api/rutina/tarea/crear. Lanza ValueError si falla."""
     etapa = (form.get('etapa') or '').strip()
     if etapa not in _RUT_ETAPAS:
         raise ValueError(f"Etapa inválida: {etapa}")
-    usuario = (form.get('usuario') or '').strip()
-    if usuario not in _RUT_USUARIOS:
-        raise ValueError(f"Usuario inválido: {usuario}")
+    # `usuario` pasó de ser un string fijo a ser el id del miembro. La columna
+    # sigue siendo TEXT, así que se guarda el id como string.
+    usuario = str(_rut_miembro_id(form.get('usuario'), 'usuario'))
     titulo = (form.get('titulo') or '').strip()
     if not 1 <= len(titulo) <= 60:
         raise ValueError("El título debe tener entre 1 y 60 caracteres.")
@@ -2363,10 +2496,11 @@ def _rut_leer_form_ajuste(form):
     item_id = (form.get('item_id') or '').strip()
     if not _RUT_ITEM_RE.match(item_id):
         raise ValueError(f"item_id inválido: {item_id}")
-    if item_id.startswith('mama-') or item_id.startswith('papa-'):
-        # Ids derivados que genera expandir() en el front para los ítems de
-        # adultos vinculados a León: heredan horario y NO son editables.
-        raise ValueError("Los ítems de adultos vinculados a León no son editables.")
+    # Ya no hay ítems "derivados no editables": con la familia en la base, cada
+    # ítem tiene id propio ('b<miembro>-siesta1' generado, 'a<actividad>'
+    # cargado) y todos se ajustan igual. Una actividad compartida es UN solo
+    # ítem: moverla desde cualquiera de las dos rutinas la mueve en ambas, que
+    # es lo que se espera de "la teta involucra al bebé y a mamá".
     try:
         inicio_min = int(form.get('inicio_min', ''))
     except ValueError:
@@ -2374,6 +2508,47 @@ def _rut_leer_form_ajuste(form):
     if not 0 <= inicio_min <= 2879:
         raise ValueError(f"inicio_min fuera de rango (0..2879): {inicio_min}")
     return fecha, etapa, item_id, inicio_min
+
+
+def _rut_leer_form_miembro(form):
+    """Valida el form de alta/edición de un miembro de la familia."""
+    nombre = (form.get('nombre') or '').strip()
+    if not 1 <= len(nombre) <= 40:
+        raise ValueError("El nombre debe tener entre 1 y 40 caracteres.")
+
+    rol = (form.get('rol') or '').strip()
+    if rol not in _RUT_ROLES:
+        raise ValueError(f"Rol inválido: {rol}")
+
+    es_bebe = 1 if (form.get('es_bebe') or '').strip() in ('1', 'true', 'on') else 0
+    if es_bebe and rol != 'hijo':
+        raise ValueError("Solo un hijo puede marcarse como bebé.")
+
+    fecha_nacimiento = _rut_parsear_fecha_opcional(
+        form.get('fecha_nacimiento'), 'fecha_nacimiento')
+    if fecha_nacimiento:
+        nac = datetime.strptime(fecha_nacimiento, '%Y-%m-%d').date()
+        if nac > date.today():
+            raise ValueError("La fecha de nacimiento no puede ser futura.")
+    elif es_bebe:
+        # Sin fecha no hay edad, y sin edad no hay ventana de sueño: la rutina
+        # del bebé no se podría generar.
+        raise ValueError("Para un bebé hace falta la fecha de nacimiento.")
+
+    dibujo = (form.get('dibujo') or '').strip()[:30]
+
+    color_token = (form.get('color_token') or '').strip()
+    if color_token and color_token not in _RUT_COLORES:
+        raise ValueError(f"Color inválido: {color_token}")
+
+    try:
+        ancla_min = int(form.get('ancla_min', '390') or 390)
+    except ValueError:
+        raise ValueError("ancla_min debe ser un entero (minutos desde 00:00).")
+    if not 0 <= ancla_min <= 1439:
+        raise ValueError(f"ancla_min fuera de rango (0..1439): {ancla_min}")
+
+    return nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min
 
 
 # =============================================================================
@@ -2439,8 +2614,6 @@ def api_rutina_duracion():
         item_id = (request.form.get('item_id') or '').strip()
         if not _RUT_ITEM_RE.match(item_id):
             raise ValueError(f"item_id inválido: {item_id}")
-        if item_id.startswith('mama-') or item_id.startswith('papa-'):
-            raise ValueError("Los ítems de adultos vinculados a León no son editables.")
         try:
             dur_min = int(request.form.get('dur_min', ''))
         except ValueError:
@@ -2569,6 +2742,110 @@ def api_rutina_restaurar():
         if not _RUT_ITEM_RE.match(item_id):
             raise ValueError(f"item_id inválido: {item_id}")
         database.restaurar_item_rutina(etapa, item_id)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+# --- Familia y preferencias de la hoja --------------------------------------
+# POST /api/rutina/miembro/crear  → alta (nombre, rol, es_bebe, fecha_nacimiento…)
+# POST /api/rutina/miembro/editar → edición completa (pide id)
+# POST /api/rutina/miembro/borrar → baja definitiva + limpieza de sus ítems
+# POST /api/rutina/ajustes        → hora de inicio de noche / amanecer / cumples
+# Mismo contrato AJAX que el resto del módulo.
+
+@app.route('/api/rutina/miembro/crear', methods=['POST'])
+def api_rutina_miembro_crear():
+    try:
+        datos = _rut_leer_form_miembro(request.form)
+        database.crear_miembro_rutina(*datos)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/miembro/editar', methods=['POST'])
+def api_rutina_miembro_editar():
+    try:
+        miembro_id = _rut_miembro_id(request.form.get('id'), 'id')
+        nombre, rol, es_bebe, fnac, dibujo, color, ancla = \
+            _rut_leer_form_miembro(request.form)
+        activo = 0 if (request.form.get('activo') or '1').strip() == '0' else 1
+        database.editar_miembro_rutina(miembro_id, nombre, rol, es_bebe, fnac,
+                                       dibujo, color, ancla, activo)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/miembro/borrar', methods=['POST'])
+def api_rutina_miembro_borrar():
+    """Baja definitiva. Se lleva puestas sus actividades y todos los ajustes
+    de horario de sus ítems (ver borrar_miembro_rutina en database.py)."""
+    try:
+        miembro_id = _rut_miembro_id(request.form.get('id'), 'id')
+        database.borrar_miembro_rutina(miembro_id)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/ajustes', methods=['POST'])
+def api_rutina_ajustes():
+    """Preferencias de la hoja (van a config.json, no a la base): hora de
+    inicio de la noche y del amanecer + interruptor de la tarjeta de cumple."""
+    try:
+        noche = (request.form.get('hora_noche') or '').strip()
+        amanecer = (request.form.get('hora_amanecer') or '').strip()
+        for etiqueta, valor in (('hora_noche', noche), ('hora_amanecer', amanecer)):
+            try:
+                datetime.strptime(valor, '%H:%M')
+            except ValueError:
+                raise ValueError(f"Hora inválida en '{etiqueta}': {valor}")
+        if _rut_hora_a_min(noche, -1) <= _rut_hora_a_min(amanecer, -1):
+            raise ValueError("La noche tiene que empezar después del amanecer.")
+        cumple = (request.form.get('cumple_activo') or '').strip() in ('1', 'true', 'on')
+        config.guardar_config({
+            'rutina_hora_noche': noche,
+            'rutina_hora_amanecer': amanecer,
+            'rutina_cumple_activo': cumple,
+        }, CONFIG_FILE)
         if _es_ajax():
             desde, hasta = _rut_parsear_rango(request.form)
             return jsonify({'ok': True, **_rut_payload(desde, hasta)})

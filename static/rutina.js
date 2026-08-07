@@ -6,32 +6,50 @@ Lógica cliente del módulo Rutina. Se carga SOLO en /rutina
 (templates/rutina.html, bloque scripts). Vanilla JS, sin librerías. Todo vive
 dentro de una IIFE para no pisar los globales de app.js.
 
-FUENTE DE VERDAD:
-  - ETAPAS (constante acá): definición de la rutina por etapa — cadenas de
-    ítems de León, tomas nocturnas, agendas de mamá/papá, variantes de finde
-    y tips. Port literal del design handoff "Rutina" (Word "Rutina de León").
+FUENTE DE VERDAD (todo del servidor; acá NO hay rutinas hardcodeadas):
+  - window.RUT_DATOS = { miembros, actividades, config, ajustes, duraciones,
+    tareas, ocultos, calendario, hoy, desde, hasta }, persistido en SQLite +
+    config.json y sincronizado entre ambos teléfonos.
+      miembros    = la familia (tabla rutina_miembros), con edad y cumpleaños
+                    ya derivados por el backend. El id manda: un "usuario" de
+                    la UI es String(miembro.id).
+      actividades = actividades con su frecuencia (tabla rutina_actividades).
+                    Ítems de horario fijo, id 'a<id>', editables, NO entran en
+                    la cascada. Una compartida es UN ítem que aparece en la
+                    línea de todos sus participantes.
+      config      = hora de inicio de noche/amanecer y el interruptor de la
+                    tarjeta de cumpleaños (config.json).
+      ajustes[fecha][etapa][item_id] = inicioEnMinutos (tabla rutina_ajustes)
+      tareas      = tareas añadidas (tabla rutina_tareas; fecha '' =
+                    permanente), id 'c-<rowid>'.
+      ocultos     = ítems quitados (tabla rutina_ocultos; fecha '' =
+                    permanente). Un ítem del bebé quitado sale de la cadena
+                    ANTES de la cascada.
+  - window.RutinaSueno (static/rutina-sueno.js): la tabla de ventanas de sueño
+    por edad y el motor que GENERA la rutina de un bebé — siestas, tomas y
+    despertares nocturnos — anclada en su primera toma del día. Es lo que
+    reemplazó a la vieja constante ETAPAS (las tres etapas fijas escritas a
+    mano para León, que caducaban solas).
   - window.RUTINA_ACTIVIDADES (static/rutina-actividades.js): 82 actividades
     de estimulación de la guía "Estimulación Temprana" (Karina Rivera).
-  - window.RUT_DATOS = { ajustes, tareas, ocultos, hoy, desde, hasta }:
-    persistido en SQLite y sincronizado entre ambos teléfonos.
-      ajustes[fecha][etapa][item_id] = inicioEnMinutos (tabla rutina_ajustes)
-      tareas  = tareas añadidas por el usuario (tabla rutina_tareas; fecha ''
-                = permanente). En el front son ítems de horario fijo (id
-                'c-<rowid>', editables, NO entran en la cascada).
-      ocultos = ítems quitados (tabla rutina_ocultos; fecha '' = permanente).
-                Un ítem de León quitado sale de la cadena ANTES de la cascada.
-  - localStorage 'rutina-ui-v1' = { sel, dia, etapa }: selección de UI por
-    dispositivo (NO se sincroniza; decisión de diseño).
+  - localStorage 'rutina-ui-v1' = { sel, dia, sec }: selección de UI por
+    dispositivo (NO se sincroniza; decisión de diseño). `sel` está tecleado
+    por id de miembro.
+
+MENÚ (mismo patrón que Lactancia): secciones Hoy / Familia / Actividades /
+Ajustes. El wrapper lleva data-rut-sec y en mobile el CSS muestra solo la
+sección activa. Desde Familia se cargan los miembros (con su fecha de
+nacimiento y, si es bebé, la hora de su primera toma).
 
 MODO EDICIÓN ("✎ Editar" en el header del timeline): cada fila muestra ✕
 (quitar, preguntando "¿solo hoy o siempre?"), aparece "＋ Añadir tarea" (form
 inline: persona, emoji, título, hora, duración, alcance) y al pie la lista de
 tareas quitadas con ↩ Restaurar. Mutaciones no-optimistas (payload fresco).
 
-REGLA DE CASCADA: ajustar un ítem NO mueve los anteriores; los siguientes sin
-ajuste propio se re-encadenan (inicio = fin del anterior). Un ítem con ajuste
-propio queda clavado hasta que se resetee ("↺ Plan original" borra todos los
-ajustes de la fecha+etapa visibles).
+REGLA DE CASCADA (solo la cadena generada del bebé): ajustar un ítem NO mueve
+los anteriores; los siguientes sin ajuste propio se re-encadenan (inicio = fin
+del anterior). Un ítem con ajuste propio queda clavado hasta que se resetee
+("↺ Plan original" borra todos los ajustes del día y devuelve lo generado).
 
 MUTACIONES — optimistic con debounce: cada tap de −15/+15 escribe local y
 re-renderiza al instante; el POST /api/rutina/ajustar sale debounced (400 ms
@@ -52,261 +70,22 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 (function () {
     'use strict';
 
-    // ── Definición de rutina por etapa (port literal del handoff) ───────────
-    // ItemLeon  = { id, emoji, t, dur (min; 0 = fin del día), kind, sub?, act? }
-    //             act: true → el sub se reemplaza por la actividad del día.
-    // Nocturna  = { id, off (min desde inicio del sueño nocturno), emoji, t, sub? }
-    // ItemAdulto= { id, clock (min absolutos), emoji, t, dur, sub? }  → editable
-    //           | { link: <idItemLeon>, emoji, t, sub? } → hereda horario, NO editable
-    var ETAPAS = {
-        actual: {
-            nombre: '2 meses', sup: 'Hoy · licencia', anchor: 390,
-            leon: [
-                { id: 'desp', emoji: '🌅', t: 'Despertar + teta ancla', dur: 30, kind: 'teta', sub: 'La toma clave: en septiembre será la de antes de salir a trabajar. Pañal y luz natural.' },
-                { id: 'juego1', emoji: '🧸', t: 'Juego 1', dur: 75, kind: 'juego', act: true },
-                { id: 'siesta1', emoji: '😴', t: 'Siesta 1', dur: 75, kind: 'sueno', sub: 'A upa, cochecito o cuna. Penumbra suave' },
-                { id: 'teta2', emoji: '🤱🏻', t: 'Teta 2', dur: 25, kind: 'teta', sub: 'A demanda: si pide antes, adelantá y todo se corre' },
-                { id: 'juego2', emoji: '🚶', t: 'Paseo', dur: 50, kind: 'juego', act: true },
-                { id: 'siesta2', emoji: '😴', t: 'Siesta 2', dur: 75, kind: 'sueno', sub: 'Suele ser una de las más largas' },
-                { id: 'teta3', emoji: '🤱🏻', t: 'Teta 3', dur: 25, kind: 'teta' },
-                { id: 'juego3', emoji: '🧸', t: 'Juego 2', dur: 50, kind: 'juego', act: true },
-                { id: 'siesta3', emoji: '😴', t: 'Siesta 3', dur: 90, kind: 'sueno' },
-                { id: 'teta4', emoji: '🤱🏻', t: 'Teta 4', dur: 25, kind: 'teta' },
-                { id: 'juego4', emoji: '🧸', t: 'Juego 3', dur: 50, kind: 'juego', act: true },
-                { id: 'siesta4', emoji: '😴', t: 'Siesta 4 (puente)', dur: 60, kind: 'sueno', sub: 'Corta, para llegar bien a la noche' },
-                { id: 'teta5', emoji: '🤱🏻', t: 'Teta 5', dur: 25, kind: 'teta' },
-                { id: 'brazos', emoji: '🫂', t: 'Upa y movimiento', dur: 50, kind: 'juego', sub: 'Momento de mayor fastidio del día: paciencia, upa, porteo' },
-                { id: 'siesta5', emoji: '😴', t: 'Micro-siesta (opcional)', dur: 45, kind: 'sueno', sub: 'Si la necesita para no llegar pasado de sueño' },
-                { id: 'bano', emoji: '🛁', t: 'Baño', dur: 15, kind: 'bano', sub: 'Inicio del ritual: siempre igual, mismo orden' },
-                { id: 'ultimateta', emoji: '🤱🏻', t: 'Teta 6 + arrullo', dur: 25, kind: 'teta', sub: 'Luz baja. A la cuna despierto-adormecido si se puede' },
-                { id: 'noche', emoji: '🌙', t: 'Sueño nocturno', dur: 0, kind: 'noche', sub: 'Boca arriba, cuna despejada (AAP). Chupete puede ofrecerse' },
-            ],
-            nocturnas: [
-                { id: 'noct1', off: 210, emoji: '🤱🏻', t: 'Toma nocturna 1', sub: 'A demanda. Luz mínima, sin jugar' },
-                { id: 'noct2', off: 420, emoji: '🤱🏻', t: 'Toma nocturna 2', sub: '2–3 despertares son normales a esta edad' },
-                { id: 'noct3', off: 570, emoji: '🤱🏻', t: 'Toma nocturna 3', sub: 'Si la pide' },
-            ],
-            // Links PUROS (sin id) = involucran a León, no editables. Links CON
-            // id = actividad propia que por defecto usa esa ventana de León
-            // pero se puede ajustar (gimnasia, comidas, ducha, etc.).
-            mama: [
-                { link: 'desp', emoji: '🤱🏻', t: 'Teta ancla a León', sub: 'arranca el día con él' },
-                { id: 'm-desayuno', link: 'siesta1', emoji: '🍳', t: 'Desayuno y tareas', sub: 'mientras León duerme 😴 (la ducha pasa a la noche)' },
-                { link: 'teta2', emoji: '🤱🏻', t: 'Teta a León' },
-                { link: 'juego2', emoji: '🚶', t: 'Paseo con León', sub: 'papá trabaja: lo lleva mamá' },
-                { id: 'm-gym', link: 'siesta2', emoji: '🏋️', t: 'Gimnasia', sub: 'mientras León duerme 😴' },
-                { link: 'teta3', emoji: '🤱🏻', t: 'Teta a León' },
-                { id: 'm-alm', link: 'siesta3', emoji: '🍽️', t: 'Almuerzo + descanso', sub: 'mientras León duerme 😴' },
-                { link: 'teta4', emoji: '🤱🏻', t: 'Teta a León' },
-                { id: 'm-estudio', link: 'siesta4', emoji: '📚', t: 'Estudio / proyecto', sub: 'mientras León duerme 😴' },
-                { link: 'teta5', emoji: '🤱🏻', t: 'Teta a León' },
-                { id: 'm-ext', link: 'siesta5', emoji: '🍼', t: 'Extracción (banco de leche)', sub: 'mientras León duerme 😴' },
-                { link: 'bano', emoji: '🛁', t: 'Baño de León', sub: 'y sigue con el ritual de la noche' },
-                { link: 'ultimateta', emoji: '🤱🏻', t: 'Teta + arrullo a León', sub: 'luz baja' },
-                { id: 'm-ducha', link: 'noche', emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León ya dormido' },
-                { id: 'm-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Elías', dur: 45 },
-                { id: 'm-dormir', clock: 1350, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            papa: [
-                { id: 'p-desp', clock: 405, emoji: '🌅', t: 'Despertar', dur: 45 },
-                { id: 'p-salir', clock: 450, emoji: '🚗', t: 'Salir al trabajo', dur: 30 },
-                { id: 'p-am', clock: 480, emoji: '💼', t: 'Trabajo (Villa María)', dur: 300 },
-                { id: 'p-alm', clock: 780, emoji: '🍽️', t: 'Almuerzo', dur: 60 },
-                { id: 'p-pm', clock: 840, emoji: '💼', t: 'Trabajo', dur: 180 },
-                // Vinculado al bloque "Upa y movimiento" de León (no clock):
-                // así nunca se pisa con la teta de mamá — regla "una sola
-                // actividad con León a la vez".
-                { link: 'brazos', emoji: '🫂', t: 'Upa con León', sub: 'Refuerzo en la hora sensible — mamá descansa' },
-                { id: 'p-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Mari', dur: 45 },
-                { id: 'p-ducha', clock: 1290, emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León dormido' },
-                { id: 'p-dormir', clock: 1380, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            papaFinde: [
-                { link: 'juego2', emoji: '🚶', t: 'Paseo familiar', sub: 'con León y Mari' },
-                { id: 'pf-tareas', link: 'siesta3', emoji: '🧺', t: 'Tareas de la casa' },
-                { link: 'brazos', emoji: '🫂', t: 'Upa con León' },
-                { id: 'pf-cena', clock: 1230, emoji: '🍳', t: 'Cocinar y cenar', dur: 60 },
-                { id: 'pf-ducha', clock: 1300, emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León dormido' },
-                { id: 'pf-dormir', clock: 1380, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            tips: [
-                { texto: 'Ventanas de 60–90 min (la primera del día es la más corta). Señales de sueño — bostezo, mirada perdida, quejoso — mandan más que el reloj.' },
-                { texto: '14–17 h de sueño en 24 h: ninguna siesta de más de 2 h, noche de hasta 12–12,5 h.' },
-                { texto: 'Teta a demanda cada 2–4 h: la tabla se adapta a León, no al revés. Manos a la boca y buscar el pecho = ofrecer antes (el llanto es señal tardía).' },
-                { texto: 'De tu guía: practicá mínimo 2 actividades por día (o las 4 si hay tiempo). Anticipale siempre a León lo que van a hacer.' },
-            ],
-        },
-        tres: {
-            nombre: '3 meses', sup: 'Agosto · transición', anchor: 390,
-            leon: [
-                { id: 't-desp', emoji: '🌅', t: 'Despertar + teta ancla', dur: 30, kind: 'teta', sub: 'Ir corriéndola 10–15 min/semana hacia las 6:15–6:30 fijas' },
-                { id: 't-juego1', emoji: '🧸', t: 'Juego 1', dur: 65, kind: 'juego', act: true },
-                { id: 't-siesta1', emoji: '😴', t: 'Siesta 1 (corta)', dur: 70, kind: 'sueno', sub: 'La de la mañana se va acortando' },
-                { id: 't-teta2', emoji: '🤱🏻', t: 'Teta 2', dur: 25, kind: 'teta' },
-                { id: 't-juego2', emoji: '🚶', t: 'Paseo', dur: 70, kind: 'juego', act: true },
-                { id: 't-siesta2', emoji: '😴', t: 'Siesta 2 (la larga)', dur: 100, kind: 'sueno', sub: 'La larga del mediodía se instala' },
-                { id: 't-teta3', emoji: '🤱🏻', t: 'Teta 3', dur: 25, kind: 'teta' },
-                { id: 't-juego3', emoji: '🧸', t: 'Juego 2', dur: 75, kind: 'juego', act: true },
-                { id: 't-siesta3', emoji: '😴', t: 'Siesta 3', dur: 75, kind: 'sueno' },
-                { id: 't-teta4', emoji: '🤱🏻', t: 'Teta 4', dur: 25, kind: 'teta' },
-                { id: 't-juego4', emoji: '🫂', t: 'Upa y calma', dur: 80, kind: 'juego', act: true },
-                { id: 't-siesta4', emoji: '😴', t: 'Siesta 4 (puente)', dur: 40, kind: 'sueno' },
-                { id: 't-teta5', emoji: '🤱🏻', t: 'Teta 5', dur: 25, kind: 'teta' },
-                { id: 't-calma', emoji: '🧸', t: 'Juego calmo', dur: 45, kind: 'juego', sub: 'Luces bajas, bajar revoluciones' },
-                { id: 't-bano', emoji: '🛁', t: 'Baño', dur: 15, kind: 'bano', sub: 'Mismo ritual, mismo orden' },
-                { id: 't-teta6', emoji: '🤱🏻', t: 'Teta 6 + arrullo', dur: 25, kind: 'teta' },
-                { id: 't-noche', emoji: '🌙', t: 'Sueño nocturno', dur: 0, kind: 'noche', sub: 'Boca arriba, cuna despejada (AAP)' },
-            ],
-            nocturnas: [
-                { id: 't-noct1', off: 240, emoji: '🤱🏻', t: 'Toma nocturna 1', sub: 'Luz mínima, sin jugar' },
-                { id: 't-noct2', off: 480, emoji: '🤱🏻', t: 'Toma nocturna 2', sub: 'Puede empezar a espaciarse' },
-            ],
-            mama: [
-                { link: 't-desp', emoji: '🤱🏻', t: 'Teta ancla a León', sub: 'arranca el día con él' },
-                { id: 'tm-desayuno', link: 't-siesta1', emoji: '🍳', t: 'Desayuno y tareas', sub: 'mientras León duerme 😴 (la ducha pasa a la noche)' },
-                { link: 't-teta2', emoji: '🤱🏻', t: 'Teta a León' },
-                { link: 't-juego2', emoji: '🚶', t: 'Paseo con León', sub: 'papá trabaja: lo lleva mamá' },
-                { id: 'tm-gym', link: 't-siesta2', emoji: '🏋️', t: 'Gimnasia', sub: 'mientras León duerme 😴' },
-                { link: 't-teta3', emoji: '🤱🏻', t: 'Teta a León' },
-                { id: 'tm-alm', link: 't-siesta3', emoji: '🍽️', t: 'Almuerzo + estudio', sub: 'mientras León duerme 😴' },
-                { link: 't-teta4', emoji: '🤱🏻', t: 'Teta a León' },
-                { id: 'tm-ext', link: 't-siesta4', emoji: '🍼', t: 'Extracción (banco de leche)', sub: 'stock para la guardería' },
-                { link: 't-teta5', emoji: '🤱🏻', t: 'Teta a León' },
-                { link: 't-bano', emoji: '🛁', t: 'Baño de León', sub: 'y sigue con el ritual de la noche' },
-                { link: 't-teta6', emoji: '🤱🏻', t: 'Teta + arrullo a León' },
-                { id: 'tm-ducha', link: 't-noche', emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León ya dormido' },
-                { id: 'tm-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Elías', dur: 45 },
-                { id: 'tm-dormir', clock: 1350, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            papa: [
-                { id: 'tp-desp', clock: 405, emoji: '🌅', t: 'Despertar', dur: 45 },
-                { id: 'tp-salir', clock: 450, emoji: '🚗', t: 'Salir al trabajo', dur: 30 },
-                { id: 'tp-am', clock: 480, emoji: '💼', t: 'Trabajo (Villa María)', dur: 300 },
-                { id: 'tp-alm', clock: 780, emoji: '🍽️', t: 'Almuerzo', dur: 60 },
-                { id: 'tp-pm', clock: 840, emoji: '💼', t: 'Trabajo', dur: 180 },
-                // Vinculado al "Juego calmo" de León (misma regla que 'brazos'
-                // en la etapa actual: una sola actividad con León a la vez).
-                { link: 't-calma', emoji: '🫂', t: 'Upa con León', sub: 'Refuerzo en la hora sensible — mamá descansa' },
-                { id: 'tp-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Mari', dur: 45 },
-                { id: 'tp-ducha', clock: 1290, emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León dormido' },
-                { id: 'tp-dormir', clock: 1380, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            papaFinde: [
-                { link: 't-juego2', emoji: '🚶', t: 'Paseo familiar' },
-                { id: 'tpf-tareas', link: 't-siesta3', emoji: '🧺', t: 'Tareas de la casa' },
-                { link: 't-juego4', emoji: '🫂', t: 'Upa con León' },
-                { id: 'tpf-cena', clock: 1230, emoji: '🍳', t: 'Cocinar y cenar', dur: 60 },
-                { id: 'tpf-ducha', clock: 1300, emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León dormido' },
-                { id: 'tpf-dormir', clock: 1380, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            tips: [
-                { texto: 'Ventanas de 60 min hacia 2 h. Si pelea las siestas o despierta temprano, alargá la ventana 10–15 min.' },
-                { texto: 'Las siestas se ordenan: corta a la mañana, la larga al mediodía. Cuando una desaparece sola, juntó dos en una (de 5 a 4).' },
-                { texto: 'Mantené fijas las dos anclas: teta al despertar y ritual de noche. Todo lo demás puede moverse.' },
-            ],
-        },
-        guarderia: {
-            nombre: '4 meses · guardería', sup: 'Sep — quizás antes (adaptación)', anchor: 375,
-            leon: [
-                { id: 'g-desp', emoji: '🌅', t: 'Despertar + teta ancla con mamá', dur: 30, kind: 'teta', sub: 'Recién despierto, para salir sin hambre. Si duerme profundo, despertarlo suave' },
-                { id: 'g-prep', emoji: '🧦', t: 'Listo con papá', dur: 20, kind: 'juego', sub: 'Mamá sale 6:45, tras la teta ancla. Bolso: leche del banco, pañales, mudas, chupete' },
-                { id: 'g-viaje', emoji: '🚗', t: 'Papá lo lleva a la guardería', dur: 15, kind: 'juego' },
-                { id: 'g-guar', emoji: '🏫', t: 'Guardería', dur: 580, kind: 'guarderia', sub: 'Leche del banco a demanda. Pedir el parte diario de siestas y tomas' },
-                { id: 'g-retiro', emoji: '🚗', t: 'Papá lo retira, vuelven a casa', dur: 40, kind: 'juego' },
-                { id: 'g-teta1', emoji: '🤱🏻', t: 'Teta del reencuentro', dur: 40, kind: 'teta', sub: 'Mamá ya volvió de Tío Pujio' },
-                { id: 'g-juego', emoji: '🧸', t: 'Juego calmo en casa', dur: 30, kind: 'juego', act: true },
-                { id: 'g-bano', emoji: '🛁', t: 'Baño', dur: 15, kind: 'bano', sub: 'Mismo ritual de siempre: viaja con él aunque el día cambie' },
-                { id: 'g-teta2', emoji: '🤱🏻', t: 'Teta + arrullo', dur: 25, kind: 'teta' },
-                { id: 'g-noche', emoji: '🌙', t: 'Sueño nocturno (temprano)', dur: 0, kind: 'noche', sub: 'Noche 18:30–19:30 compensa si durmió poco en la guardería' },
-            ],
-            nocturnas: [{ id: 'g-noct1', off: 480, emoji: '🤱🏻', t: 'Toma nocturna', sub: 'Regresión de los 4 meses: más despertares es normal y pasajero' }],
-            mama: [
-                { id: 'gm-desp', clock: 360, emoji: '🌅', t: 'Se levanta y se prepara', dur: 15 },
-                { link: 'g-desp', emoji: '🤱🏻', t: 'Teta ancla a León', sub: 'antes de salir' },
-                { id: 'gm-viaje', clock: 405, emoji: '🚗', t: 'Sale hacia Tío Pujio', dur: 45, sub: 'recién terminada la teta ancla' },
-                { id: 'gm-am', clock: 480, emoji: '💼', t: 'Trabajo', dur: 270 },
-                { id: 'gm-ext', clock: 750, emoji: '🍼', t: 'Almuerzo + extracción', dur: 45, sub: 'Mantiene producción y banco de leche' },
-                { id: 'gm-pm', clock: 795, emoji: '💼', t: 'Trabajo', dur: 195 },
-                { id: 'gm-vuelta', clock: 990, emoji: '🚗', t: 'Vuelta a Villa María', dur: 50 },
-                { link: 'g-teta1', emoji: '🤱🏻', t: 'Teta del reencuentro' },
-                { link: 'g-bano', emoji: '🛁', t: 'Baño de León', sub: 'y sigue con el ritual de la noche' },
-                { link: 'g-teta2', emoji: '🤱🏻', t: 'Teta + arrullo a León' },
-                { id: 'gm-ducha', link: 'g-noche', emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León ya dormido' },
-                { id: 'gm-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Elías', dur: 45 },
-                { id: 'gm-dormir', clock: 1330, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            mamaFinde: [
-                { link: 'f-desp', emoji: '🤱🏻', t: 'Teta ancla a León' },
-                { id: 'gmf-desayuno', link: 'f-siesta1', emoji: '🍳', t: 'Desayuno', sub: 'mientras León duerme 😴 (la ducha pasa a la noche)' },
-                { link: 'f-teta2', emoji: '🤱🏻', t: 'Teta a León' },
-                { link: 'f-paseo', emoji: '🚶', t: 'Paseo familiar' },
-                { id: 'gmf-gym', link: 'f-siesta2', emoji: '🏋️', t: 'Gimnasia / descanso', sub: 'mientras León duerme 😴' },
-                { link: 'f-teta3', emoji: '🤱🏻', t: 'Teta a León' },
-                { id: 'gmf-ext', link: 'f-siesta3', emoji: '🍼', t: 'Extracción (banco de leche)' },
-                { link: 'f-bano', emoji: '🛁', t: 'Baño de León', sub: 'y sigue con el ritual de la noche' },
-                { link: 'f-teta4', emoji: '🤱🏻', t: 'Teta + arrullo a León' },
-                { id: 'gmf-ducha', link: 'f-noche', emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León ya dormido' },
-                { id: 'gmf-cena', clock: 1230, emoji: '🍽️', t: 'Cena con Elías', dur: 45 },
-                { id: 'gmf-dormir', clock: 1330, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            papa: [
-                { id: 'gp-desp', clock: 390, emoji: '🌅', t: 'Despertar', dur: 15 },
-                { link: 'g-prep', emoji: '🧦', t: 'Prepara a León' },
-                { link: 'g-viaje', emoji: '🚗', t: 'Lo lleva a la guardería' },
-                { id: 'gp-am', clock: 480, emoji: '💼', t: 'Trabajo (Villa María)', dur: 300 },
-                { id: 'gp-alm', clock: 780, emoji: '🍽️', t: 'Almuerzo', dur: 60 },
-                { id: 'gp-pm', clock: 840, emoji: '💼', t: 'Trabajo', dur: 180 },
-                { link: 'g-retiro', emoji: '🚗', t: 'Retira a León' },
-                { link: 'g-juego', emoji: '🧸', t: 'Juego con León' },
-                { id: 'gp-cena', clock: 1200, emoji: '🍳', t: 'Cocina y cenan', dur: 75 },
-                { id: 'gp-ducha', clock: 1290, emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León dormido' },
-                { id: 'gp-dormir', clock: 1380, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            papaFinde: [
-                { link: 'f-paseo', emoji: '🚶', t: 'Paseo familiar' },
-                { link: 'f-juego2', emoji: '🧸', t: 'Juego con León' },
-                { id: 'gpf-cena', clock: 1200, emoji: '🍳', t: 'Cocina y cenan', dur: 75 },
-                { id: 'gpf-ducha', clock: 1320, emoji: '🚿', t: 'Ducha', dur: 20, sub: 'con León dormido' },
-                { id: 'gpf-dormir', clock: 1380, emoji: '😴', t: 'A dormir', dur: 0 },
-            ],
-            finde: [
-                { id: 'f-desp', emoji: '🌅', t: 'Despertar + teta', dur: 30, kind: 'teta', sub: 'Finde: sin madrugón, pero misma ancla' },
-                { id: 'f-juego1', emoji: '🧸', t: 'Juego 1', dur: 80, kind: 'juego', act: true },
-                { id: 'f-siesta1', emoji: '😴', t: 'Siesta 1', dur: 90, kind: 'sueno' },
-                { id: 'f-teta2', emoji: '🤱🏻', t: 'Teta', dur: 30, kind: 'teta' },
-                { id: 'f-paseo', emoji: '🚶', t: 'Paseo familiar', dur: 105, kind: 'juego', act: true },
-                { id: 'f-siesta2', emoji: '😴', t: 'Siesta 2 (la larga)', dur: 95, kind: 'sueno' },
-                { id: 'f-teta3', emoji: '🤱🏻', t: 'Teta', dur: 30, kind: 'teta' },
-                { id: 'f-juego2', emoji: '🧸', t: 'Juego 2', dur: 105, kind: 'juego', act: true },
-                { id: 'f-siesta3', emoji: '😴', t: 'Siesta 3 (puente)', dur: 45, kind: 'sueno' },
-                { id: 'f-calma', emoji: '🫂', t: 'Juego calmo', dur: 60, kind: 'juego' },
-                { id: 'f-bano', emoji: '🛁', t: 'Baño', dur: 15, kind: 'bano' },
-                { id: 'f-teta4', emoji: '🤱🏻', t: 'Teta + arrullo', dur: 25, kind: 'teta' },
-                { id: 'f-noche', emoji: '🌙', t: 'Sueño nocturno', dur: 0, kind: 'noche' },
-            ],
-            tips: [
-                { texto: 'A los 4 meses: ventanas de 90–120 min, 3–4 siestas, noche de 11–12 h. La "regresión de los 4 meses" es normal y pasajera.' },
-                { texto: 'Semanas previas: corré despertar y teta ancla 10–15 min/semana hacia las 6:15–6:30, y adelantá la noche (18:30–19:30).' },
-                { texto: 'La licencia de mamá va del 23/04 al 23/09. Si la adaptación de guardería arranca antes, usá esta etapa esos días y ajustá las horas.' },
-            ],
-        },
-    };
+    // ── Identidad: la familia sale de la base, no de constantes ─────────────
+    // Acá vivía la constante ETAPAS: la rutina de León escrita a mano para "2
+    // meses" más las agendas completas de mamá y papá, y las tres etapas fijas
+    // ('actual' / 'tres' / 'guarderia'). Todo eso caducaba solo y no se podía
+    // editar sin tocar código. Ahora:
+    //   · los miembros salen de rutina_miembros  → RUT_DATOS.miembros
+    //   · la rutina de un bebé la GENERA window.RutinaSueno según su edad
+    //   · las actividades salen de rutina_actividades → RUT_DATOS.actividades
+    //
+    // Un "usuario" de la UI (UI.sel, item.user, data-user) es el id del miembro
+    // pasado a string: '3'. Los ids de ítem derivan de ahí: 'b3-siesta1'
+    // (generado del bebé) y 'a17' (actividad cargada).
 
-    // Findes de 2 y 3 meses: el paseo es FAMILIAR (los tres juntos, mismo
-    // bloque de León que linkea papá). La agenda de finde de mamá se deriva
-    // de la de semana cambiando SOLO ese ítem — sin duplicar la lista.
-    ['actual', 'tres'].forEach(function (e) {
-        ETAPAS[e].mamaFinde = ETAPAS[e].mama.map(function (d) {
-            return d.t === 'Paseo con León'
-                ? Object.assign({}, d, { t: 'Paseo familiar', sub: 'con León y papá' })
-                : d;
-        });
-    });
-
-    var NACIMIENTO = new Date(2026, 4, 14);   // León, 14/05/2026
-    var NOMBRES = { leon: 'León', mama: 'Mamá', papa: 'Papá' };
-    var EMOJIS = { leon: '🦁', mama: '💜', papa: '💙' };
-    var ORDEN_ETAPAS = ['actual', 'tres', 'guarderia'];
+    // La columna `etapa` de las tablas de ajustes sobrevive por compatibilidad
+    // con las filas viejas; todo lo que escribe este front usa 'plan'.
+    var ETAPA = 'plan';
     var LS_KEY = 'rutina-ui-v1';
 
     // ── Estado del módulo ────────────────────────────────────────────────────
@@ -316,9 +95,12 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var TAREAS = RUT.tareas || [];         // tareas añadidas (rutina_tareas, server)
     var OCULTOS = RUT.ocultos || [];       // ítems quitados (rutina_ocultos, server)
     var CALHOY = RUT.calendario || [];     // actividades del Calendario que vencen HOY
+    var MIEMBROS = RUT.miembros || [];     // la familia (rutina_miembros, con edad)
+    var ACTIVIDADES = RUT.actividades || [];  // actividades con frecuencia (rutina_actividades)
+    var CFG = RUT.config || {};            // hora de noche/amanecer, cumples (config.json)
     var DESDE = RUT.desde || '';
     var HASTA = RUT.hasta || '';
-    var UI = cargarUI();                   // { sel, dia, etapa } — por dispositivo
+    var UI = cargarUI();                   // { sel, dia, sec } — por dispositivo
     var editando = null;                   // item_id con editor inline abierto
     var timers = {};                       // item_id → timeout del POST debounced
     var enVuelo = 0;                       // POSTs en curso
@@ -326,6 +108,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var modoEdicion = false;               // "✎ Editar": muestra ✕ / añadir / restaurar
     var quitando = null;                   // item_id con el "¿solo hoy o siempre?" abierto
     var formAdd = null;                    // estado del form "＋ Añadir tarea" (null = cerrado)
+    var formMiembro = null;                // estado del form de familia (null = cerrado)
     var drag = null;                       // drag en curso (mover/estirar, estilo Teams)
     var seArrastro = false;                // suprime el click fantasma tras un drag
     var ahoraHora = null;                  // item_id con el editor "empezó a las…" abierto
@@ -335,19 +118,259 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     function cargarUI() {
         var g = {};
         try { g = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) {}
+        // Solo la selección de personas es preferencia persistida. El día
+        // arranca SIEMPRE en hoy: al entrar se ve la rutina del día corriente
+        // en vivo, no el último que se haya mirado.
+        // La selección guardada por la versión vieja estaba tecleada por
+        // 'leon'/'mama'/'papa'; ahora la clave es el id del miembro, así que
+        // esos valores se descartan y se arranca con todos visibles.
+        var sel = g.sel && typeof g.sel === 'object' ? g.sel : null;
+        if (sel && (sel.leon !== undefined || sel.mama !== undefined || sel.papa !== undefined)) {
+            sel = null;
+        }
         return {
-            // Solo la selección de personas es preferencia persistida. El día
-            // y la etapa arrancan SIEMPRE en hoy + "actual": al entrar se ve la
-            // rutina del día corriente en vivo, no el último día/proyección que
-            // se haya mirado (dentro de la sesión sí se pueden cambiar).
-            sel: g.sel || { leon: true, mama: true, papa: false },
+            sel: sel || {},
             dia: new Date().getDay(),
-            etapa: 'actual'
+            sec: 'hoy'          // sección visible del menú (mobile)
         };
     }
 
     function persistirUI() {
         try { localStorage.setItem(LS_KEY, JSON.stringify(UI)); } catch (e) {}
+    }
+
+    // ── La familia ───────────────────────────────────────────────────────────
+    // Un "usuario" es siempre el id del miembro como string.
+
+    function usuarios() {
+        return MIEMBROS.map(function (m) { return String(m.id); });
+    }
+
+    function miembroDe(u) {
+        var clave = String(u);
+        for (var i = 0; i < MIEMBROS.length; i++) {
+            if (String(MIEMBROS[i].id) === clave) return MIEMBROS[i];
+        }
+        return null;
+    }
+
+    function nombreDe(u) {
+        var m = miembroDe(u);
+        return m ? m.nombre : '';
+    }
+
+    // A las personas NO las acompaña ningún ícono: va el nombre solo (pedido de
+    // Mari, 2026-08-06). Había un emoji por rol (💜 mamá, 💙 papá, 🍼 bebé) que
+    // era provisorio "hasta que existan los dibujos propios"; con los dibujos ya
+    // hechos, competía con ellos y metía color ajeno a la paleta. A quién
+    // pertenece cada cosa lo dice el COLOR (`--rut-color`), que está en el borde
+    // de la tarjeta, en el chip y en el dibujo de la actividad.
+    // El campo `dibujo` de `rutina_miembros` queda en la base pero ya no se
+    // muestra; los emojis de ACTIVIDAD siguen igual (pasan por RutinaDibujos).
+
+    // Color identificador. El token lo valida el backend contra _RUT_COLORES,
+    // así que se puede inyectar como valor de custom property sin riesgo. Si el
+    // miembro no tiene color propio, se reparte uno de la paleta por posición.
+    // ⚠ Esta lista vive TRES veces y las tres tienen que coincidir: _RUT_COLORES
+    // en app.py (valida), estas vars en style.css (pintan) y esto (arma los
+    // círculos para elegir). Ampliada a 16 el 2026-08-07 a pedido de Mari.
+    var COLOR_CICLO = ['persona-leon', 'persona-mari', 'persona-elias',
+                       'rut-p4', 'rut-p5', 'rut-p6', 'rut-p7', 'rut-p8',
+                       'rut-p9', 'rut-p10', 'rut-p11', 'rut-p12',
+                       'rut-p13', 'rut-p14', 'rut-p15', 'rut-p16'];
+
+    function colorTokenDe(u) {
+        var m = miembroDe(u);
+        if (!m) return 'persona-leon';
+        if (m.color_token) return m.color_token;
+        var idx = MIEMBROS.indexOf(m);
+        return COLOR_CICLO[(idx < 0 ? 0 : idx) % COLOR_CICLO.length];
+    }
+
+    // Atributo style listo para pegar en el HTML: fija --rut-color, que es la
+    // variable que consumen todos los estilos del módulo (dot, borde, barra,
+    // tinte). Antes lo fijaban las clases .rut--leon / .rut--mama / .rut--papa,
+    // que no servían con una familia de tamaño variable.
+    function styleColor(u) {
+        return ' style="--rut-color: var(--color-' + colorTokenDe(u) + ')"';
+    }
+
+    function usuariosSel() {
+        return usuarios().filter(function (u) { return UI.sel[u]; });
+    }
+
+    // Un miembro recién cargado arranca visible. Lo que el usuario apagó a mano
+    // queda apagado (UI.sel se persiste por dispositivo).
+    function normalizarSeleccion() {
+        usuarios().forEach(function (u) {
+            if (UI.sel[u] === undefined) UI.sel[u] = true;
+        });
+    }
+
+    function bebes() {
+        return MIEMBROS.filter(function (m) { return m.es_bebe; });
+    }
+
+    // Hora de inicio de la noche (config): tope del día para el motor de sueño.
+    function nocheMin() {
+        return typeof CFG.noche_min === 'number' ? CFG.noche_min : 1200;
+    }
+
+    function amanecerMin() {
+        return typeof CFG.amanecer_min === 'number' ? CFG.amanecer_min : 390;
+    }
+
+    // ── Dibujos ─────────────────────────────────────────────────────────────
+    // Devuelve el SVG del dibujo que corresponda; si lo guardado no es una
+    // clave conocida ni un emoji traducible, deja el emoji tal cual (así nunca
+    // se pierde lo que el usuario haya escrito a mano).
+    function dibujoHtml(valor, fallback) {
+        var lib = window.RutinaDibujos;
+        if (lib) {
+            var clave = lib.resolver(valor) || lib.resolver(fallback);
+            if (clave) return lib.html(clave);
+        }
+        return valor || fallback || '';
+    }
+
+    // El emoji de un ítem de la línea de tiempo: dibujo propio si lo hay.
+    function itemEmoji(it) {
+        return dibujoHtml(it.dibujo, it.emoji);
+    }
+
+    // ── Fondo día/noche ─────────────────────────────────────────────────────
+    // El sol y la luna recorren un arco. Qué hora se refleja depende de qué
+    // estés mirando: si es el día de hoy manda el reloj real; si estás viendo
+    // otro día, manda la hora a la que llegaste con el scroll de la línea de
+    // tiempo (fue la decisión de Mari: "las dos cosas").
+    var horaFondo = null;   // minuto que se está reflejando (null = todavía nada)
+
+    // ── El modo claro/oscuro sigue a la luz (2026-08-06, decisión de Mari) ───
+    // POR QUÉ: el paisaje se pintaba a media opacidad de noche (0.45) para que
+    // el texto oscuro sobre tarjeta clara no se cayera de contraste. Efecto no
+    // buscado: el cielo nocturno se mezclaba con el blanco de la página y se
+    // veía GRIS CLARO — "el fondo se ve blanco" —, y la luna, que se atenúa con
+    // toda la capa, brillaba MENOS de noche que el sol de día. Con tarjetas
+    // oscuras y letra clara el problema no existe: el cielo nocturno puede ir a
+    // fondo pleno y la letra se lee mejor. Eso es lo que destraba subir el
+    // paisaje al 100% y bajar la opacidad de las tarjetas al mismo tiempo.
+    //
+    // ⚠ NO toca localStorage('tema'): la preferencia que Mari guardó vale para
+    // el resto de la app. Esto pisa el atributo solo mientras estás en la hoja;
+    // al salir, el script anti-flicker de base.html vuelve a leer su valor.
+    // Y si ella toca el botón de tema a mano, GANA lo suyo: lo detectamos
+    // porque el atributo dejó de ser el último que escribimos nosotros.
+    var temaEscrito = null;    // último valor que puso este módulo
+    var temaAMano   = false;   // el usuario lo cambió → no lo tocamos más
+
+    function seguirTema(luz) {
+        var raiz = document.documentElement;
+        if (temaAMano) return;
+        if (temaEscrito !== null && raiz.dataset.theme !== temaEscrito) {
+            temaAMano = true;
+            return;
+        }
+        var quiere = luz < 0.5 ? 'dark' : 'light';
+        if (raiz.dataset.theme !== quiere) raiz.dataset.theme = quiere;
+        temaEscrito = quiere;
+    }
+
+    function pintarFondo(min) {
+        var fondo = document.querySelector('.rut-fondo');
+        if (!fondo) return;
+        var m = ((min % 1440) + 1440) % 1440;
+        horaFondo = m;
+
+        var alba = amanecerMin();
+        var ocaso = nocheMin();
+        if (ocaso <= alba) ocaso = alba + 60;   // config incoherente: no romper
+
+        var raiz = document.documentElement;
+        // Luz: 1 de día, 0 de noche, con media hora de transición en cada
+        // punta para que el amanecer y el atardecer no sean un interruptor.
+        var borde = 45;
+        var luz;
+        if (m <= alba - borde || m >= ocaso + borde) luz = 0;
+        else if (m >= alba + borde && m <= ocaso - borde) luz = 1;
+        else if (m < alba + borde) luz = (m - (alba - borde)) / (borde * 2);
+        else luz = ((ocaso + borde) - m) / (borde * 2);
+        luz = Math.max(0, Math.min(1, luz));
+
+        // Arco del sol: de un borde al otro entre el amanecer y el anochecer,
+        // con la altura máxima al mediodía solar.
+        function arco(desde, hasta, ahora) {
+            var t = (ahora - desde) / (hasta - desde);
+            t = Math.max(0, Math.min(1, t));
+            return { x: (6 + t * 88).toFixed(1) + '%',
+                     y: (72 - Math.sin(t * Math.PI) * 60).toFixed(1) + '%' };
+        }
+
+        var esDeDia = m >= alba && m <= ocaso;
+        var sol = arco(alba, ocaso, m);
+        // La noche cruza la medianoche: se la lleva a una recta continua.
+        var largoNoche = (1440 - ocaso) + alba;
+        var tNoche = (m > ocaso) ? (m - ocaso) : (m + (1440 - ocaso));
+        var luna = arco(0, largoNoche, tNoche);
+
+        raiz.style.setProperty('--rut-luz', luz.toFixed(3));
+        raiz.style.setProperty('--rut-sol-x', sol.x);
+        raiz.style.setProperty('--rut-sol-y', sol.y);
+        raiz.style.setProperty('--rut-sol-op', esDeDia ? '1' : '0');
+        raiz.style.setProperty('--rut-luna-x', luna.x);
+        raiz.style.setProperty('--rut-luna-y', luna.y);
+        raiz.style.setProperty('--rut-luna-op', esDeDia ? '0' : '1');
+
+        seguirTema(luz);                                  // ANTES de fuerzaFondo:
+        raiz.style.setProperty('--rut-fondo-op', fuerzaFondo(luz));   // lee el tema ya aplicado
+    }
+
+    // ── Cuánta fuerza tiene el paisaje ──────────────────────────────────────
+    // NO sigue a la luz: sigue al ACUERDO entre el cielo y el modo. Un cielo
+    // oscuro detrás de tarjetas claras (o al revés) se come el texto; cuando
+    // los dos van para el mismo lado, el fondo puede ir pleno.
+    //   acorde = 1 → cielo y modo coinciden (pleno día en claro, noche cerrada
+    //               en oscuro): fondo al 100%, que es el 90% del tiempo.
+    //   acorde = 0.5 → el CRUCE (amanecer/atardecer): el cielo está a mitad de
+    //               camino y no contrasta ni con letra oscura ni con letra
+    //               clara. Es el único agujero real: sin esto, medido, la
+    //               etiqueta "AHORA" cae a 3.11:1 y falla AA.
+    //   acorde = 0 → Mari forzó el modo en contra de la hora con el botón
+    //               (noche en claro / día en oscuro). Ahí manda la lectura.
+    // La curva es cuadrática a propósito: cae despacio cerca del acuerdo (para
+    // no apagar el paisaje por nada) y rápido cerca del desacuerdo. Medido con
+    // el vidrio en 20/10/12, el techo que aguanta cada momento es 1.00 / 0.60 /
+    // 0.40 y la curva da 1.00 / 0.55 / 0.40 — entra en los tres con aire.
+    var FONDO_PISO = 0.40;
+
+    function fuerzaFondo(luz) {
+        var claro = (document.documentElement.dataset.theme !== 'dark') ? 1 : 0;
+        var acorde = luz * claro + (1 - luz) * (1 - claro);
+        return (FONDO_PISO + (1 - FONDO_PISO) * acorde * acorde).toFixed(3);
+    }
+
+    // Qué hora refleja el fondo: hoy → el reloj; otro día → lo que estés
+    // mirando en la línea de tiempo (se recalcula al scrollear).
+    function actualizarFondo() {
+        var hoyIdx = new Date().getDay();
+        if (UI.dia === hoyIdx) return pintarFondo(ahoraMin());
+        pintarFondo(horaVisibleTimeline());
+    }
+
+    // Minuto que está en el centro del área visible del lienzo. El eje lo
+    // dibuja renderTimeline con data-eje-ini / data-escala.
+    function horaVisibleTimeline() {
+        var cont = $('rut-filas');
+        var canvas = cont ? cont.querySelector('.rut-canvas') : null;
+        if (!canvas) return 12 * 60;
+        var ejeIni = Number(canvas.dataset.ejeIni);
+        var escala = Number(canvas.dataset.escala);
+        if (!escala) return 12 * 60;
+        // El contenedor que scrollea es el timeline en escritorio y la página
+        // en mobile: se toma la posición del canvas respecto del viewport.
+        var caja = canvas.getBoundingClientRect();
+        var centro = window.innerHeight / 2;
+        var px = Math.max(0, Math.min(caja.height, centro - caja.top));
+        return ejeIni + px / escala;
     }
 
     // ── Fechas y formato ─────────────────────────────────────────────────────
@@ -406,12 +429,12 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // ── Ajustes (capa de acceso al dict anidado del server) ──────────────────
     function ajustesDia() {
         var fecha = isoLocal(fechaVista());
-        return (AJUSTES[fecha] || {})[UI.etapa] || {};
+        return (AJUSTES[fecha] || {})[ETAPA] || {};
     }
 
     function duracionesDia() {
         var fecha = isoLocal(fechaVista());
-        return (DURACIONES[fecha] || {})[UI.etapa] || {};
+        return (DURACIONES[fecha] || {})[ETAPA] || {};
     }
 
     function hayPendientes() {
@@ -424,7 +447,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         var fecha = isoLocal(fechaVista());
         var set = {};
         OCULTOS.forEach(function (o) {
-            if (o.etapa === UI.etapa && (o.fecha === '' || o.fecha === fecha)) set[o.item_id] = true;
+            if (o.etapa === ETAPA && (o.fecha === '' || o.fecha === fecha)) set[o.item_id] = true;
         });
         return set;
     }
@@ -440,11 +463,18 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     function sinSolapes(items) {
         var arr = items.filter(function (i) { return i.dur > 0; })
                        .sort(function (a, b) { return a.start - b.start; });
-        var fijos = arr.filter(function (i) { return !i.editable; })
+        // `ancla`: inamovible para el reacomodo PERO editable en la UI. Lo usan
+        // las tomas del bebé en la columna de quien amamanta: si se dejaban que
+        // el solape las corriera, la misma toma quedaba a las 19:09 en la
+        // columna del bebé y a las 19:50 en la de mamá — el mismo bloque en dos
+        // horas distintas, justo lo que NO puede pasar. Manda la toma y se
+        // corren las actividades de alrededor; sigue arrastrable desde las dos.
+        function clavado(i) { return !i.editable || i.ancla; }
+        var fijos = arr.filter(clavado)
                        .map(function (i) { return { s: i.start, e: i.end }; });
         var cursor = -Infinity;
         arr.forEach(function (it) {
-            if (!it.editable) { cursor = Math.max(cursor, it.end); return; }
+            if (clavado(it)) { cursor = Math.max(cursor, it.end); return; }
             var s = Math.max(it.start, cursor);
             var choco = true, vueltas = 0;
             while (choco && vueltas++ < 50) {
@@ -460,117 +490,180 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return items;
     }
 
-    // ── Cálculo del día (port literal del prototipo) ─────────────────────────
-    // Cascada: run = anchor; start = ajuste ?? run; end = start + dur; run = end.
-    // Nocturnas: start = inicio del sueño nocturno + off (dur fija 25).
-    // Adultos link: hereda horario del ítem de León (end mín. 30 min), NO editable.
-    // Adultos clock: minutos absolutos, editable.
-    // QUITADOS (rutina_ocultos): un ítem de León quitado sale de la cadena ANTES
-    // de la cascada (los siguientes se re-encadenan solos); sus links de adultos
-    // desaparecen con él. AÑADIDAS (rutina_tareas): horario fijo tipo clock,
-    // editables, id 'c-<rowid>'. Devuelve también `quitados` (para restaurar).
+    // ── Frecuencia de una actividad ─────────────────────────────────────────
+    // Tres capas que se combinan, más los recesos:
+    //   1. días de la semana  (dias:  '1111100' = L a V, lunes primero)
+    //   2. meses del año      (meses: '111111111111', enero primero)
+    //   3. rango de fechas    (desde/hasta; anual = compara solo día y mes)
+    //   − recesos             (pausas: sub-rangos donde NO va, también anuales)
+    // Para faltar un día suelto (un feriado) está rutina_ocultos con fecha, que
+    // se resuelve aparte en ocultosVista().
+    function actividadAplica(act, f) {
+        if (!act.activo) return false;
+
+        // getDay(): domingo = 0. La grilla de la UI arranca en lunes.
+        var idxDia = (f.getDay() + 6) % 7;
+        if ((act.dias || '1111111').charAt(idxDia) !== '1') return false;
+        if ((act.meses || '111111111111').charAt(f.getMonth()) !== '1') return false;
+
+        var iso = isoLocal(f);
+        if (act.anual) {
+            if (!dentroAnual(iso, act.desde, act.hasta)) return false;
+        } else {
+            if (act.desde && iso < act.desde) return false;
+            if (act.hasta && iso > act.hasta) return false;
+        }
+
+        var pausas = act.pausas || [];
+        for (var i = 0; i < pausas.length; i++) {
+            var p = pausas[i];
+            if (p.anual ? dentroAnual(iso, p.desde, p.hasta)
+                        : (iso >= p.desde && iso <= p.hasta)) return false;
+        }
+        return true;
+    }
+
+    // Comparación por día y mes, ignorando el año: así "escuela del 1/3 al
+    // 15/12" revive sola cada año. Si el rango cruza el año nuevo (ej. 1/12 a
+    // 28/2, una temporada de verano), vale estar en cualquiera de las dos puntas.
+    function dentroAnual(iso, desde, hasta) {
+        if (!desde && !hasta) return true;
+        var dm = iso.slice(5);
+        var d = (desde || '01-01').slice(5);
+        var h = (hasta || '12-31').slice(5);
+        return (d <= h) ? (dm >= d && dm <= h) : (dm >= d || dm <= h);
+    }
+
+    // ── Cálculo del día ──────────────────────────────────────────────────────
+    // Para cada miembro se arma su línea de tiempo:
+    //   · BEBÉ  → la genera window.RutinaSueno con su edad, su ancla (primera
+    //     toma del día) y la hora de inicio de la noche. Es una CADENA: cascada
+    //     run = ancla; start = ajuste ?? run; end = start + dur; run = end. Un
+    //     ítem quitado sale ANTES de la cascada y los siguientes se re-encadenan.
+    //     Las tomas nocturnas van aparte: start = inicio de la noche + off.
+    //   · RESTO → sus actividades (horario fijo, editable) + las tareas añadidas.
+    // Una actividad compartida aparece en la línea de TODOS sus participantes,
+    // pero es UN solo ítem ('a<id>'): moverla desde cualquiera la mueve en todas.
+    // Devuelve { porUser, quitados, bebe } — `bebe` es el primer bebé visible,
+    // el que manda en la tarjeta de tips y en la franja de madrugada.
     function calcular() {
-        var R = ETAPAS[UI.etapa];
         var aj = ajustesDia();
         var dd = duracionesDia();   // duraciones estiradas (drag estilo Teams)
         var ocultos = ocultosVista();
         var quitados = [];
-        var usaFinde = esFinde() && R.finde;
-        var chain = (usaFinde ? R.finde : R.leon).filter(function (it) {
-            if (!ocultos[it.id]) return true;
-            quitados.push({ id: it.id, emoji: it.emoji, t: it.t, user: 'leon' });
-            return false;
-        });
+        var fecha = isoLocal(fechaVista());
+        var fv = fechaVista();
 
-        // Actividad de estimulación del día (rota con la fecha, estable durante el día)
+        // Actividad de estimulación del día (rota con la fecha, estable en el día)
         var A = window.RUTINA_ACTIVIDADES || { m2: [], m3: [], m46: [] };
-        var pool = UI.etapa === 'actual' ? A.m2 : UI.etapa === 'tres' ? A.m3 : A.m46;
-        var seed = Math.floor(fechaVista().getTime() / 86400000);
-        var slot = 0;
+        var seed = Math.floor(fv.getTime() / 86400000);
 
-        var run = R.anchor;
-        var leon = [];
-        var porId = {};
-        chain.forEach(function (it) {
-            // Clamp: un ajuste nunca arranca antes de que termine el anterior
-            // (la cadena de León no se solapa consigo misma).
-            var start = (aj[it.id] !== undefined) ? Math.max(aj[it.id], run) : run;
-            var dur = (it.dur && dd[it.id] !== undefined) ? dd[it.id] : it.dur;
-            var sub = it.sub;
-            if (it.act && pool.length) {
-                var a = pool[(seed * 3 + slot * 7) % pool.length];
-                sub = '✨ ' + a.n + ' (' + a.d + ', ' + a.min + '): ' + a.p;
-                slot++;
-            }
-            var item = Object.assign({}, it, { sub: sub, dur: dur, start: start, end: start + dur, user: 'leon', editable: true });
-            leon.push(item);
-            porId[it.id] = item;
-            run = start + dur;
-        });
-        var noche = leon[leon.length - 1];
-        (R.nocturnas || []).forEach(function (n) {
-            if (ocultos[n.id]) {
-                quitados.push({ id: n.id, emoji: n.emoji, t: n.t, user: 'leon' });
-                return;
-            }
-            var start = (aj[n.id] !== undefined) ? aj[n.id] : noche.start + n.off;
-            var item = Object.assign({}, n, { dur: 25, start: start, end: start + 25, user: 'leon', kind: 'noct', editable: true });
-            leon.push(item);
-            porId[n.id] = item;
-        });
-        function expandir(defs, user) {
-            return defs.map(function (d) {
-                var idFinal = d.id || (user + '-' + d.link);
-                if (ocultos[idFinal]) {
-                    quitados.push({ id: idFinal, emoji: d.emoji, t: d.t, user: user });
-                    return null;
-                }
-                if (d.link) {
-                    var L = porId[d.link];
-                    if (!L) return null;   // el ítem de León está quitado → el link se va con él
-                    // Dos sabores de link:
-                    //  - PURO (sin id propio): involucra a León → hereda horario
-                    //    Y duración EXACTOS (sin estirar: un fin inflado pisaría
-                    //    la actividad siguiente del adulto) y NO es editable
-                    //    (regla "una sola actividad con León").
-                    //  - CON id propio: actividad del adulto que por DEFECTO usa
-                    //    la ventana de León (ej. gimnasia en la siesta 2) pero
-                    //    es editable: un ajuste la clava; "↺ Plan original" la
-                    //    vuelve a enganchar.
-                    var propio = !!d.id;
-                    var dur = d.dur || L.dur || 30;
-                    if (propio && dd[d.id] !== undefined) dur = dd[d.id];
-                    var start = (propio && aj[d.id] !== undefined) ? aj[d.id] : L.start;
-                    return Object.assign({}, d, {
-                        id: idFinal,
-                        start: start,
-                        end: start + dur,
-                        dur: dur,
-                        user: user, editable: propio, kind: d.kind || 'adulto'
-                    });
-                }
-                if (d.clock === undefined) return null;
-                var start = (aj[d.id] !== undefined) ? aj[d.id] : d.clock;
-                var durC = (d.dur && dd[d.id] !== undefined) ? dd[d.id] : (d.dur || 0);
-                return Object.assign({}, d, {
-                    start: start, end: start + durC, dur: durC,
-                    user: user, editable: true, kind: d.kind || 'adulto'
-                });
-            }).filter(Boolean);
+        function poolDe(m) {
+            var meses = m.mes_de_vida || 1;
+            if (meses <= 2) return A.m2 || [];
+            if (meses === 3) return A.m3 || [];
+            return A.m46 || [];
         }
-        // Tareas añadidas del usuario para el día visible (id 'c-<rowid>').
-        // El emoji es input del usuario y se inserta sin re-escapar en el
-        // render (como los de las constantes): se escapa acá, UNA vez.
-        function tareasDe(user) {
-            var fecha = isoLocal(fechaVista());
+
+        // — Rutina generada de un bebé —
+        function rutinaBebe(m) {
+            var u = String(m.id);
+            if (!window.RutinaSueno || typeof m.dias !== 'number') {
+                return { items: [], noct: [] };
+            }
+            var plan = window.RutinaSueno.generar({
+                miembroId: m.id,
+                edadDias: m.dias,
+                anclaMin: m.ancla_min,
+                nocheMin: nocheMin()
+            });
+
+            var pool = poolDe(m);
+            var slot = 0;
+            var cadena = plan.dia.filter(function (it) {
+                if (!ocultos[it.id]) return true;
+                quitados.push({ id: it.id, emoji: it.emoji, dibujo: it.dibujo, t: it.t, user: u });
+                return false;
+            });
+
+            var run = m.ancla_min;
+            var items = [];
+            cadena.forEach(function (it) {
+                // Clamp: un ajuste nunca arranca antes de que termine el anterior
+                // (la cadena del bebé no se solapa consigo misma).
+                var start = (aj[it.id] !== undefined) ? Math.max(aj[it.id], run) : run;
+                var dur = (it.dur && dd[it.id] !== undefined) ? dd[it.id] : it.dur;
+                var sub = it.sub;
+                if (it.act && pool.length) {
+                    var a = pool[(seed * 3 + slot * 7) % pool.length];
+                    // Sin ✨ adelante: este `sub` viaja como TEXTO (se pinta con
+                    // escapeHtml en el popover y en las tarjetas), así que no
+                    // puede llevar dibujo, y el emoji suelto era el último
+                    // pegote de color ajeno a la paleta.
+                    sub = a.n + ' (' + a.d + ', ' + a.min + '): ' + a.p;
+                    slot++;
+                }
+                items.push(Object.assign({}, it, {
+                    sub: sub, dur: dur, start: start, end: start + dur,
+                    user: u, editable: true
+                }));
+                run = start + dur;
+            });
+
+            var noche = items[items.length - 1];
+            var noct = [];
+            (plan.nocturnas || []).forEach(function (n) {
+                if (ocultos[n.id]) {
+                    quitados.push({ id: n.id, emoji: n.emoji, dibujo: n.dibujo, t: n.t, user: u });
+                    return;
+                }
+                var start = (aj[n.id] !== undefined) ? aj[n.id] : (noche ? noche.start : 0) + n.off;
+                noct.push(Object.assign({}, n, {
+                    dur: 25, start: start, end: start + 25,
+                    user: u, kind: 'noct', editable: true
+                }));
+            });
+            return { items: items, noct: noct, resumen: plan.resumen };
+        }
+
+        // — Actividades cargadas (rutina_actividades) —
+        // Se listan para el dueño y para cada participante extra. El emoji/dibujo
+        // es input del usuario: se escapa acá, UNA vez (el render lo inserta crudo).
+        function actividadesDe(u) {
+            var out = [];
+            ACTIVIDADES.forEach(function (act) {
+                var suyo = String(act.miembro_id) === u ||
+                    (act.participantes || []).some(function (p) { return String(p) === u; });
+                if (!suyo || !actividadAplica(act, fv)) return;
+                var aid = 'a' + act.id;
+                var emoji = escapeHtml(act.dibujo) || '📌';
+                if (ocultos[aid]) {
+                    quitados.push({ id: aid, emoji: emoji, dibujo: act.dibujo, t: act.titulo, user: u });
+                    return;
+                }
+                var start = (aj[aid] !== undefined) ? aj[aid] : act.inicio_min;
+                var dur = (dd[aid] !== undefined) ? dd[aid] : act.dur_min;
+                var compartida = (act.participantes || []).length > 0;
+                out.push({
+                    id: aid, actividadId: act.id, emoji: emoji, t: act.titulo,
+                    sub: act.nota || (compartida ? 'compartida' : ''),
+                    start: start, end: start + dur, dur: dur,
+                    user: u, kind: 'act', compartida: compartida, editable: true
+                });
+            });
+            return out;
+        }
+
+        // — Tareas añadidas por el usuario (rutina_tareas, id 'c-<rowid>') —
+        function tareasDe(u) {
             var out = [];
             TAREAS.forEach(function (t) {
-                if (t.etapa !== UI.etapa || t.usuario !== user) return;
+                if (String(t.usuario) !== u) return;
                 if (t.fecha !== '' && t.fecha !== fecha) return;
                 var cid = 'c-' + t.id;
                 var emoji = escapeHtml(t.emoji) || '📌';
                 if (ocultos[cid]) {
-                    quitados.push({ id: cid, emoji: emoji, t: t.titulo, user: user });
+                    quitados.push({ id: cid, emoji: emoji, t: t.titulo, user: u });
                     return;
                 }
                 var start = (aj[cid] !== undefined) ? aj[cid] : t.inicio_min;
@@ -579,29 +672,83 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     id: cid, tareaId: t.id, permanente: t.fecha === '', custom: true,
                     emoji: emoji, t: t.titulo, sub: t.fecha === '' ? '' : 'solo hoy',
                     start: start, end: start + durT, dur: durT,
-                    user: user, kind: 'custom', editable: true
+                    user: u, kind: 'custom', editable: true
                 });
             });
             return out;
         }
+
+        // — Las tomas del bebé ocupan también a quien le da la teta —
+        // ⚠ REGLA DE ESTA FAMILIA, no del dominio: mamá amamanta a León, así que
+        // la toma pasa las dos cosas a la vez y su hora es UNA sola (Mari,
+        // 2026-08-07: "si el usuario modifica cualquiera de las dos, la otra se
+        // modifica sí o sí"). Se resuelve con el MISMO id en las dos columnas:
+        // los ajustes se guardan por `item_id`, así que mover el bloque desde
+        // cualquiera de las dos lo mueve en las dos, sin código de sincronismo.
+        // Mismo patrón que una actividad compartida (`actividadesDe`), que
+        // también emite una copia por participante con el id compartido.
+        // Solo las tomas del DÍA (`kind: 'teta'`): las nocturnas viven en la
+        // franja "Madrugada", que no es una columna y no compite con nada.
+        // ⚠ VENCIMIENTO: vale "hasta que mamá arranque a trabajar" (dicho por
+        // Mari). Cuando pase, se apaga acá — es el único lugar.
+        function tomasQueOcupanAMama(rutinas) {
+            var out = {};
+            var mama = MIEMBROS.filter(function (m) {
+                return m.rol === 'mama' && !m.es_bebe;
+            })[0];
+            if (!mama) return out;
+            var um = String(mama.id);
+            out[um] = [];
+            Object.keys(rutinas).forEach(function (ub) {
+                if (ub === um) return;
+                (rutinas[ub].items || []).forEach(function (it) {
+                    if (it.kind !== 'teta') return;
+                    out[um].push(Object.assign({}, it, {
+                        user: um, compartida: true, ancla: true,
+                        sub: 'con ' + nombreDe(ub)
+                    }));
+                });
+            });
+            return out;
+        }
+
         function porInicio(a, b) { return a.start - b.start; }
-        var mamaDefs = (esFinde() && R.mamaFinde) ? R.mamaFinde : (R.mama || []);
-        var papaDefs = esFinde() ? (R.papaFinde || []) : (R.papa || []);
 
-        // León: día (cadena + nocturnas) + sus tareas añadidas → resolver
-        // solapes ANTES de expandir los adultos, porque sus links heredan las
-        // posiciones finales de León (si un custom corrió un ítem de León, el
-        // link debe seguir esa posición corrida).
-        var leonFinal = sinSolapes(leon.concat(tareasDe('leon')));
-        porId = {};
-        leonFinal.forEach(function (i) { porId[i.id] = i; });
+        // Las rutinas de los bebés se calculan PRIMERO, en su propia pasada: la
+        // agenda de quien amamanta necesita las tomas ya armadas para poder
+        // sumárselas (antes esto era un solo bucle por miembro y no se podía).
+        var porUser = {};
+        var bebe = null;
+        var rutinas = {};
+        MIEMBROS.forEach(function (m) {
+            if (!m.es_bebe) return;
+            var r = rutinaBebe(m);
+            rutinas[String(m.id)] = r;
+            if (!bebe) bebe = { miembro: m, resumen: r.resumen };
+        });
 
-        return {
-            leon: leonFinal.sort(porInicio),
-            mama: sinSolapes(expandir(mamaDefs, 'mama').concat(tareasDe('mama'))).sort(porInicio),
-            papa: sinSolapes(expandir(papaDefs, 'papa').concat(tareasDe('papa'))).sort(porInicio),
-            quitados: quitados, R: R
-        };
+        var tomasDe = tomasQueOcupanAMama(rutinas);
+
+        MIEMBROS.forEach(function (m) {
+            var u = String(m.id);
+            var propios = [];
+            var r = rutinas[u];
+            if (r) propios = r.items.concat(r.noct);
+            propios = propios.concat(tomasDe[u] || [])
+                             .concat(actividadesDe(u)).concat(tareasDe(u));
+            porUser[u] = sinSolapes(propios).sort(porInicio);
+        });
+
+        return { porUser: porUser, quitados: quitados, bebe: bebe };
+    }
+
+    // Todos los ítems del día, de toda la familia (para buscar uno por id).
+    function todosLosItems(calc) {
+        var out = [];
+        usuarios().forEach(function (u) {
+            out = out.concat(calc.porUser[u] || []);
+        });
+        return out;
     }
 
     // ── Mutaciones (optimistic + debounce; el server guarda por fecha) ──────
@@ -609,17 +756,17 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         min = Math.max(0, min);
         var fecha = isoLocal(fechaVista());
         if (!AJUSTES[fecha]) AJUSTES[fecha] = {};
-        if (!AJUSTES[fecha][UI.etapa]) AJUSTES[fecha][UI.etapa] = {};
-        AJUSTES[fecha][UI.etapa][itemId] = min;
+        if (!AJUSTES[fecha][ETAPA]) AJUSTES[fecha][ETAPA] = {};
+        AJUSTES[fecha][ETAPA][itemId] = min;
         renderTodo();
 
         if (timers[itemId]) clearTimeout(timers[itemId]);
         timers[itemId] = setTimeout(function () {
             delete timers[itemId];
-            var valor = ((AJUSTES[fecha] || {})[UI.etapa] || {})[itemId];
+            var valor = ((AJUSTES[fecha] || {})[ETAPA] || {})[itemId];
             if (valor === undefined) return;   // el día se reseteó mientras tanto
             postAccion('/api/rutina/ajustar', {
-                fecha: fecha, etapa: UI.etapa, item_id: itemId, inicio_min: valor
+                fecha: fecha, etapa: ETAPA, item_id: itemId, inicio_min: valor
             });
         }, 400);
     }
@@ -630,18 +777,18 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         durMin = Math.max(5, Math.min(720, durMin));
         var fecha = isoLocal(fechaVista());
         if (!DURACIONES[fecha]) DURACIONES[fecha] = {};
-        if (!DURACIONES[fecha][UI.etapa]) DURACIONES[fecha][UI.etapa] = {};
-        DURACIONES[fecha][UI.etapa][itemId] = durMin;
+        if (!DURACIONES[fecha][ETAPA]) DURACIONES[fecha][ETAPA] = {};
+        DURACIONES[fecha][ETAPA][itemId] = durMin;
         renderTodo();
 
         var clave = 'd:' + itemId;
         if (timers[clave]) clearTimeout(timers[clave]);
         timers[clave] = setTimeout(function () {
             delete timers[clave];
-            var valor = ((DURACIONES[fecha] || {})[UI.etapa] || {})[itemId];
+            var valor = ((DURACIONES[fecha] || {})[ETAPA] || {})[itemId];
             if (valor === undefined) return;   // el día se reseteó mientras tanto
             postAccion('/api/rutina/duracion', {
-                fecha: fecha, etapa: UI.etapa, item_id: itemId, dur_min: valor
+                fecha: fecha, etapa: ETAPA, item_id: itemId, dur_min: valor
             });
         }, 400);
     }
@@ -652,7 +799,15 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // Los siguientes se re-encadenan solos. Pedido de Mari 2026-07-13.
     function empezoALas(curId, T) {
         T = Math.max(0, T);
-        var lista = calcular().leon;
+        // La "anterior" es la anterior DE ESA MISMA PERSONA: estirar la de otro
+        // miembro no tendría sentido.
+        var calc = calcular();
+        var duenio = null;
+        todosLosItems(calc).forEach(function (i) {
+            if (!duenio && i.id === curId) duenio = String(i.user);
+        });
+        if (!duenio) return;
+        var lista = calc.porUser[duenio] || [];
         var idx = -1;
         lista.forEach(function (i, k) { if (i.id === curId) idx = k; });
         if (idx < 0) return;
@@ -671,26 +826,26 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // (el inicio no se mueve). Los siguientes se re-encadenan.
     function terminaALas(curId, T) {
         var it = null;
-        calcular().leon.forEach(function (i) { if (i.id === curId) it = i; });
+        todosLosItems(calcular()).forEach(function (i) { if (i.id === curId) it = i; });
         if (!it) return;
         ajustarDur(curId, Math.max(5, T - it.start));
     }
 
     function resetDia() {
         var fecha = isoLocal(fechaVista());
-        if (AJUSTES[fecha]) delete AJUSTES[fecha][UI.etapa];
-        if (DURACIONES[fecha]) delete DURACIONES[fecha][UI.etapa];
+        if (AJUSTES[fecha]) delete AJUSTES[fecha][ETAPA];
+        if (DURACIONES[fecha]) delete DURACIONES[fecha][ETAPA];
         editando = null;
         ahoraHora = null;
         renderTodo();
-        postAccion('/api/rutina/reset', { fecha: fecha, etapa: UI.etapa });
+        postAccion('/api/rutina/reset', { fecha: fecha, etapa: ETAPA });
     }
 
     // ── Mutaciones del modo edición (no-optimistas: mandan y esperan el
     //    payload fresco; son acciones poco frecuentes) ─────────────────────────
     function ocultarItem(itemId, fecha) {
         quitando = null;
-        postAccion('/api/rutina/ocultar', { etapa: UI.etapa, item_id: itemId, fecha: fecha });
+        postAccion('/api/rutina/ocultar', { etapa: ETAPA, item_id: itemId, fecha: fecha });
     }
 
     function borrarTarea(tareaId) {
@@ -699,7 +854,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     }
 
     function restaurarItem(itemId) {
-        postAccion('/api/rutina/restaurar', { etapa: UI.etapa, item_id: itemId });
+        postAccion('/api/rutina/restaurar', { etapa: ETAPA, item_id: itemId });
     }
 
     function crearTarea(datos) {
@@ -741,6 +896,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             if (data.tareas) TAREAS = data.tareas;
             if (data.ocultos) OCULTOS = data.ocultos;
             if (data.calendario) CALHOY = data.calendario;
+            // La familia, sus actividades y las preferencias no tienen edición
+            // local optimista: siempre se toma lo del servidor.
+            if (data.miembros) MIEMBROS = data.miembros;
+            if (data.actividades) ACTIVIDADES = data.actividades;
+            if (data.config) CFG = data.config;
             renderTodo();
         })
         .catch(function (err) {
@@ -771,30 +931,54 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             if (data.tareas) TAREAS = data.tareas;
             if (data.ocultos) OCULTOS = data.ocultos;
             if (data.calendario) CALHOY = data.calendario;
+            // La familia, sus actividades y las preferencias no tienen edición
+            // local optimista: siempre se toma lo del servidor.
+            if (data.miembros) MIEMBROS = data.miembros;
+            if (data.actividades) ACTIVIDADES = data.actividades;
+            if (data.config) CFG = data.config;
         })
         .catch(function () { /* offline: el reloj sigue con estado local */ })
         .finally(function () { renderTodo(); });
     }
 
     // ── Render ───────────────────────────────────────────────────────────────
+    // El encabezado muestra la fecha y, si hay un bebé cargado, su nombre y su
+    // edad (que es lo que manda en toda su rutina). Sin bebé, muestra cuántos
+    // son en la familia.
     function renderHeader() {
         $('rut-fecha').textContent = new Date().toLocaleDateString('es-AR',
             { weekday: 'long', day: 'numeric', month: 'long' });
-        var edad;
-        if (UI.etapa === 'guarderia') edad = '4 meses (proyección)';
-        else if (UI.etapa === 'tres') edad = '3 meses (proyección)';
-        else {
-            var diasEdad = Math.floor((Date.now() - NACIMIENTO.getTime()) / 86400000);
-            edad = Math.floor(diasEdad / 7) + ' semanas';
+        var nombre = $('rut-header-nombre');
+        var edad = $('rut-edad');
+        if (!nombre || !edad) return;
+
+        var b = bebes()[0];
+        if (b) {
+            nombre.textContent = b.nombre;
+            edad.textContent = b.edad_texto || '';
+        } else if (MIEMBROS.length) {
+            // innerHTML y no textContent: lleva dibujo. El texto es fijo.
+            nombre.innerHTML = dibujoHtml('familia') + ' Familia';
+            edad.textContent = MIEMBROS.length +
+                (MIEMBROS.length === 1 ? ' integrante' : ' integrantes');
+        } else {
+            nombre.innerHTML = dibujoHtml('familia') + ' Familia';
+            edad.textContent = 'sin cargar';
         }
-        $('rut-edad').textContent = edad;
     }
 
     function renderChips() {
-        $('rut-chips').innerHTML = ['leon', 'mama', 'papa'].map(function (u) {
-            return '<button type="button" class="rut-chip rut--' + u +
-                (UI.sel[u] ? ' activo' : '') + '" data-user="' + u + '">' +
-                EMOJIS[u] + ' ' + NOMBRES[u] + '</button>';
+        var us = usuarios();
+        if (!us.length) {
+            $('rut-chips').innerHTML =
+                '<span class="rut-chips-vacio">Cargá tu familia en el menú 👆</span>';
+            return;
+        }
+        $('rut-chips').innerHTML = us.map(function (u) {
+            return '<button type="button" class="rut-chip rut--persona' +
+                (UI.sel[u] ? ' activo' : '') + '" data-user="' + u + '"' +
+                styleColor(u) + '>' +
+                escapeHtml(nombreDe(u)) + '</button>';
         }).join('');
     }
 
@@ -810,14 +994,29 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         }).join('');
     }
 
-    function renderEtapas() {
-        $('rut-etapas').innerHTML = ORDEN_ETAPAS.map(function (e) {
-            var d = ETAPAS[e];
-            return '<button type="button" class="rut-etapa-btn' +
-                (UI.etapa === e ? ' activo' : '') + '" data-etapa="' + e + '">' +
-                '<span class="rut-etapa-sup">' + escapeHtml(d.sup) + '</span>' +
-                '<span class="rut-etapa-nombre">' + escapeHtml(d.nombre) + '</span>' +
-                '</button>';
+    // Tarjeta de cumpleaños: aparece el día que alguno de la familia cumple.
+    // Se apaga desde el panel de ajustes (rutina_cumple_activo).
+    function renderCumple() {
+        var el = $('rut-cumple');
+        if (!el) return;
+        var hoyIdx = new Date().getDay();
+        var festejan = (UI.dia === hoyIdx && CFG.cumple_activo)
+            ? MIEMBROS.filter(function (m) { return m.cumple_hoy; })
+            : [];
+        el.hidden = !festejan.length;
+        el.innerHTML = festejan.map(function (m) {
+            var anios = m.cumple_anios;
+            var cuantos = anios === 0
+                ? '¡su primer día!'
+                : (anios === 1 ? '¡1 añito!' : '¡' + anios + ' años!');
+            return '<div class="rut-cumple-card rut--persona"' + styleColor(m.id) + '>' +
+                '<span class="rut-cumple-emoji">' + dibujoHtml('cumple') + '</span>' +
+                '<div class="rut-cumple-texto">' +
+                    '<div class="rut-cumple-titulo">¡Feliz cumple, ' +
+                        escapeHtml(m.nombre) + '! ' + cuantos + '</div>' +
+                    '<div class="rut-cumple-sub">Que sea un día hermoso 💛</div>' +
+                '</div>' +
+            '</div>';
         }).join('');
     }
 
@@ -826,11 +1025,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         var partes = [];
         if (!esHoy) {
             var nombreDia = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][UI.dia];
-            partes.push(UI.etapa === 'guarderia'
-                ? '👀 Proyección: día tipo con guardería (mamá vuelve al trabajo el 23/09; si la adaptación arranca antes, usá esta etapa).'
-                : UI.etapa === 'tres'
-                    ? '👀 Proyección: así se ajusta la rutina en agosto, a los 3 meses.'
-                    : '👀 Estás viendo el plan tipo del ' + nombreDia + '. Volvé al día de hoy para seguir la rutina en vivo.');
+            partes.push('👀 Estás viendo el plan del ' + nombreDia +
+                '. Volvé al día de hoy para seguir la rutina en vivo.');
         }
         if (sinSync) {
             partes.push('⚠ Sin conexión: el último ajuste quedó en este teléfono y no se sincronizó.');
@@ -845,7 +1041,10 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     function _seleccionAhora(propios, now, esHoy, nocheActiva, nocheItem, u, enCurso) {
         var cur = null;
         propios.forEach(function (i) { if (!cur && enCurso(i)) cur = i; });
-        if (!cur && u === 'leon' && nocheActiva) cur = nocheItem;
+        // El sueño nocturno es de un bebé concreto: solo aplica a su tarjeta.
+        if (!cur && nocheActiva && nocheItem && String(nocheItem.user) === String(u)) {
+            cur = nocheItem;
+        }
         // Durmiendo: el último ítem "abierto" (dur 0: A dormir / Sueño
         // nocturno) ya empezó → la tarjeta se mantiene toda la noche
         // (hasta las 05:00 si cruza la medianoche), para los 3 usuarios.
@@ -856,23 +1055,34 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         }
         var sig = null;
         propios.forEach(function (i) { if (!sig && i.start > now) sig = i; });
+        // Ya no queda NADA por delante en el día (o es la madrugada): el
+        // último ítem se queda en la tarjeta. Sin esto la persona se cae de
+        // "Ahora": el "A dormir" de un adulto es una actividad común con
+        // duración (30'), no un ítem abierto, así que en cuanto termina no lo
+        // agarra ninguna de las reglas de arriba — la de `abierto` pide
+        // dur === 0 y la del sueño nocturno es solo del bebé. Síntoma real:
+        // 23:13, mamá durmiendo desde las 22:30 y su tarjeta no estaba.
+        if (!cur && esHoy) {
+            var ultimo = null;
+            propios.forEach(function (i) { if (!ultimo || i.start >= ultimo.start) ultimo = i; });
+            if (ultimo && (now < 300 || (!sig && now >= ultimo.start))) cur = ultimo;
+        }
         return { cur: cur, sig: sig };
     }
 
-    function renderAhora(items, leon, esHoy, now, nocheItem, nocheActiva, enCurso) {
+    function renderAhora(items, esHoy, now, nocheItem, nocheActiva, enCurso) {
         var cont = $('rut-ahora');
         if (!esHoy) { cont.innerHTML = ''; return; }
         var html = '';
-        ['leon', 'mama', 'papa'].forEach(function (u) {
-            if (!UI.sel[u]) return;
-            var propios = items.filter(function (i) { return i.user === u; });
+        usuariosSel().forEach(function (u) {
+            var propios = items.filter(function (i) { return String(i.user) === u; });
             var sel = _seleccionAhora(propios, now, esHoy, nocheActiva, nocheItem, u, enCurso);
             var cur = sel.cur, sig = sel.sig;
             if (!cur && !sig) return;
             var el = cur || { emoji: '⏳', t: 'Tiempo libre', start: now, end: sig ? sig.start : now + 30, sub: '', dur: 1, editable: false };
             var pct = Math.round(Math.min(100, Math.max(3, ((now - el.start) / Math.max(1, (el.end - el.start))) * 100)));
             var rango = fmt(el.start) + ' – ' + (el.dur === 0 ? '…' : fmt(el.end));
-            var editable = !!(cur && cur.editable && u === 'leon');
+            var editable = !!(cur && cur.editable);
             // La actividad está EN CURSO y es ajustable → knob arrastrable en la
             // barra (mover = corregir cuánto avanzó) + editor de inicio/fin.
             var enVentana = editable && cur.dur && now >= cur.start && now < cur.end;
@@ -890,7 +1100,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 });
                 if (prev && prev.editable) {
                     btnAun = '<button type="button" class="rut-btn-aun" data-aun="' + prev.id + '" ' +
-                        'data-aun-cur="' + cur.id + '">⏳ Aún en ' + escapeHtml(prev.t) + '</button>';
+                        'data-aun-cur="' + cur.id + '">' + dibujoHtml('libre') +
+                        ' Aún en ' + escapeHtml(prev.t) + '</button>';
                 }
             }
             // Emoji clickeable: salta al ítem en la línea de tiempo (si es
@@ -898,11 +1109,12 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var irId = cur ? cur.id : (sig ? sig.id : null);
             var emojiHtml = irId
                 ? '<button type="button" class="rut-ahora-emoji" data-ir="' + irId + '" ' +
-                      'title="Ver en la línea de tiempo">' + el.emoji + '</button>'
-                : '<span class="rut-ahora-emoji">' + el.emoji + '</span>';
-            html += '<div class="rut-card-ahora rut--' + u + '">' +
+                      'title="Ver en la línea de tiempo">' + itemEmoji(el) + '</button>'
+                : '<span class="rut-ahora-emoji">' + itemEmoji(el) + '</span>';
+            html += '<div class="rut-card-ahora rut--persona"' + styleColor(u) + '>' +
                 '<div class="rut-ahora-head">' +
-                    '<span class="rut-ahora-quien">' + EMOJIS[u] + ' ' + NOMBRES[u] + ' · ahora</span>' +
+                    '<span class="rut-ahora-quien">' +
+                        escapeHtml(nombreDe(u)) + ' · ahora</span>' +
                     '<span class="rut-ahora-rango">' + rango + '</span>' +
                 '</div>' +
                 '<div class="rut-ahora-cuerpo">' +
@@ -918,7 +1130,12 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     (enVentana ? '<span class="rut-barra-knob" style="left:' + pct + '%"></span>' : '') +
                 '</div>' +
                 '<div class="rut-ahora-pie">' +
-                    '<span class="rut-ahora-luego">luego: ' + (sig ? sig.emoji : '🌙') + ' ' +
+                    // El pie va por `itemEmoji`, igual que el cuerpo: usaba
+                    // `sig.emoji` crudo y quedaba un emoji de colores (🤱🏻) al
+                    // lado del dibujo de la misma actividad. "Fin del día" toma
+                    // el dibujo de la noche.
+                    '<span class="rut-ahora-luego">luego: ' +
+                        (sig ? itemEmoji(sig) : dibujoHtml('noche')) + ' ' +
                         escapeHtml(sig ? sig.t : 'fin del día') +
                         ' · <span class="rut-mono">' + (sig ? fmt(sig.start) : '—') + '</span></span>' +
                     accionesAhora(cur, btnAun, editable) +
@@ -956,8 +1173,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return '<span class="rut-ahora-acciones">' + btnAun +
             (editable
                 ? '<button type="button" class="rut-btn-hora" data-ahora-hora="' + cur.id + '" ' +
-                      'title="Empezó / termina a otra hora">🕐</button>' +
-                  '<button type="button" class="rut-btn-empezo" data-empezo="' + cur.id + '">⏱ Empezó ahora</button>'
+                      'title="Empezó / termina a otra hora">' + dibujoHtml('reloj') + '</button>' +
+                  '<button type="button" class="rut-btn-empezo" data-empezo="' + cur.id + '">' +
+                      dibujoHtml('reloj') + ' Empezó ahora</button>'
                 : '') +
         '</span>';
     }
@@ -975,17 +1193,22 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                              // sobrante queda como margen, no como ítems XXL)
 
     function renderTimeline(calc, esHoy, now, nocheActiva, enCurso) {
-        var usuarios = ['leon', 'mama', 'papa'].filter(function (u) { return UI.sel[u]; });
-        var porUser = {
-            leon: calc.leon.filter(function (i) { return i.kind !== 'noct'; }),
-            mama: calc.mama,
-            papa: calc.papa
-        };
-        var nocturnas = calc.leon.filter(function (i) { return i.kind === 'noct'; });
+        var usuarios = usuariosSel();
+        // Las tomas nocturnas de TODOS los bebés visibles se sacan de las
+        // columnas y van juntas a la franja "🌙 Madrugada".
+        var porUser = {};
+        var nocturnas = [];
+        usuarios.forEach(function (u) {
+            porUser[u] = (calc.porUser[u] || []).filter(function (i) {
+                if (i.kind === 'noct') { nocturnas.push(i); return false; }
+                return true;
+            });
+        });
+        nocturnas.sort(function (a, b) { return a.start - b.start; });
 
-        // Los ítems "abiertos" (dur 0: Sueño nocturno / A dormir) se extienden
-        // hasta las 00:00 — o, el de León, hasta la primera toma nocturna si
-        // cayera antes de medianoche (arrancó a dormir muy temprano).
+        // Los ítems "abiertos" (dur 0: Sueño nocturno) se extienden hasta las
+        // 00:00 — o hasta la primera toma nocturna si cayera antes de
+        // medianoche (arrancó a dormir muy temprano).
         var primeraNocturna = Infinity;
         nocturnas.forEach(function (n) { if (n.start < primeraNocturna) primeraNocturna = n.start; });
         function finAbierto(i) {
@@ -997,7 +1220,10 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
         if (!usuarios.length) {
             $('rut-filas').innerHTML = html +
-                '<div class="rut-canvas-vacio">Elegí arriba de quién querés ver la rutina 👆</div>' +
+                '<div class="rut-canvas-vacio">' + (MIEMBROS.length
+                    ? 'Elegí arriba de quién querés ver la rutina 👆'
+                    : 'Todavía no cargaste a nadie. Entrá a <strong>Familia</strong> en el menú de arriba y sumá a mamá, papá o un hijo.') +
+                '</div>' +
                 (modoEdicion ? renderZonaQuitados(calc.quitados) : '');
             return;
         }
@@ -1011,6 +1237,15 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 if (fin > max) max = fin;
             });
         });
+        // Nadie visible tiene todavía nada cargado: sin esto el eje quedaría en
+        // Infinity y el lienzo saldría en NaN.
+        if (min === Infinity) {
+            $('rut-filas').innerHTML = html + renderNoche(nocturnas, enCurso) +
+                '<div class="rut-canvas-vacio">Sin actividades para este día. ' +
+                'Cargalas desde <strong>Actividades</strong> en el menú de arriba.</div>' +
+                (modoEdicion ? renderZonaQuitados(calc.quitados) : '');
+            return;
+        }
         var ejeIni = Math.floor(min / 60) * 60;
         var ejeFin = Math.ceil(max / 60) * 60;
         var altoCanvas = Math.round((ejeFin - ejeIni) * ESCALA);
@@ -1026,8 +1261,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // Cabecera de columnas
         html += '<div class="rut-canvas-head" style="max-width:' + anchoMax + 'px">' +
             usuarios.map(function (u) {
-                return '<span class="rut-col-head rut--' + u + '">' +
-                    EMOJIS[u] + ' ' + NOMBRES[u] + '</span>';
+                return '<span class="rut-col-head rut--persona"' + styleColor(u) + '>' +
+                    escapeHtml(nombreDe(u)) + '</span>';
             }).join('') +
         '</div>';
 
@@ -1074,13 +1309,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 var n = it._lanes || 1;
                 var izq = 'calc(' + ((it._lane || 0) / n * 100) + '% + 2px)';
                 var ancho = 'calc(' + (100 / n) + '% - 4px)';
-                var clases = 'rut-item rut--' + it.user;
+                var clases = 'rut-item rut--persona';
                 if (it.kind && it.kind !== 'adulto' && it.kind !== 'juego') clases += ' rut-item--' + it.kind;
                 if (!it.dur) clases += ' rut-item--abierto';
                 if (h < 38) clases += ' rut-item--mini';
                 if (enCurso(it) || (it.kind === 'noche' && nocheActiva)) clases += ' is-ahora';
-                // Ítems atados a León (links puros, no editables): borde punteado
-                // + 🔗, para que se note que NO se arrastran (siguen a León)
                 if (!it.editable) clases += ' rut-item--fijado';
                 var tapAttr = modoEdicion ? '' : ' data-tap="' + it.id + '"';
                 // Drag estilo Teams: mover (cuerpo) y estirar (manija inferior),
@@ -1097,12 +1330,13 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                         escapeHtml(it.sub) + '</span>';
                 }
                 return '<div class="' + clases + '"' + tapAttr + dragAttr + ' data-item="' + it.id + '"' +
-                    ' style="top:' + y(it.start) + 'px;height:' + h + 'px;left:' + izq + ';width:' + ancho + '">' +
+                    ' style="--rut-color: var(--color-' + colorTokenDe(it.user) + ');top:' +
+                    y(it.start) + 'px;height:' + h + 'px;left:' + izq + ';width:' + ancho + '">' +
                     '<span class="rut-item-linea">' +
                         '<span class="rut-item-hora">' + fmt(it.start) + '</span>' +
-                        '<span class="rut-item-emoji">' + it.emoji + '</span>' +
+                        '<span class="rut-item-emoji">' + itemEmoji(it) + '</span>' +
                         '<span class="rut-item-titulo">' + escapeHtml(it.t) + '</span>' +
-                        (!it.editable && h >= 24 ? '<span class="rut-item-candado" title="Sigue el horario de León">🔗</span>' : '') +
+                        (it.compartida && h >= 24 ? '<span class="rut-item-candado" title="Compartida con otro miembro">' + dibujoHtml('link') + '</span>' : '') +
                         (it.dur && h >= 38 ? '<span class="rut-item-dur">' + fmtDur(it.dur) + '</span>' : '') +
                     '</span>' +
                     subHtml +
@@ -1122,7 +1356,10 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 '<span>' + fmt(now) + '</span></div>';
         }
 
-        html += '<div class="rut-canvas" style="height:' + altoCanvas + 'px;max-width:' + anchoMax + 'px">' +
+        // data-eje-* los lee el fondo día/noche para saber qué hora estás
+        // mirando cuando scrolleás un día que no es hoy.
+        html += '<div class="rut-canvas" data-eje-ini="' + ejeIni + '" data-escala="' + ESCALA + '"' +
+            ' style="height:' + altoCanvas + 'px;max-width:' + anchoMax + 'px">' +
             grid +
             '<div class="rut-gutter">' + horas + '</div>' +
             '<div class="rut-cols">' + cols + '</div>' +
@@ -1152,9 +1389,10 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             // popover fuera de los botones también cancela (data-q-cancelar
             // en el contenedor; Solo hoy/Siempre se chequean antes).
             var borrarAttr = (it.custom && it.permanente) ? ' data-tarea="' + it.tareaId + '"' : '';
-            return '<div class="rut-popover rut--' + it.user + '" data-q-cancelar="1" style="top:' + top + 'px">' +
+            return '<div class="rut-popover rut--persona" data-q-cancelar="1" style="--rut-color: var(--color-' +
+                colorTokenDe(it.user) + ');top:' + top + 'px">' +
                 '<div class="rut-popover-head">' +
-                    '<span class="rut-popover-titulo">' + it.emoji + ' ' + escapeHtml(it.t) + '</span>' +
+                    '<span class="rut-popover-titulo">' + itemEmoji(it) + ' ' + escapeHtml(it.t) + '</span>' +
                 '</div>' +
                 '<div class="rut-popover-botones">' +
                     '<span class="rut-quitar-txt">Quitar:</span>' +
@@ -1169,9 +1407,10 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // en el contenedor; los botones −15/+15/Ahora se chequean ANTES en el
         // handler, así que ajustan sin cerrar).
         var rango = fmt(it.start) + ' – ' + (it.dur ? fmt(it.end) + ' · ' + fmtDur(it.dur) : '…');
-        return '<div class="rut-popover rut--' + it.user + '" data-cerrar="1" style="top:' + top + 'px">' +
+        return '<div class="rut-popover rut--persona" data-cerrar="1" style="--rut-color: var(--color-' +
+            colorTokenDe(it.user) + ');top:' + top + 'px">' +
             '<div class="rut-popover-head">' +
-                '<span class="rut-popover-titulo">' + it.emoji + ' ' + escapeHtml(it.t) + '</span>' +
+                '<span class="rut-popover-titulo">' + itemEmoji(it) + ' ' + escapeHtml(it.t) + '</span>' +
                 '<span class="rut-popover-rango">' + rango + '</span>' +
             '</div>' +
             (it.sub ? '<div class="rut-popover-sub">' + escapeHtml(it.sub) + '</div>' : '') +
@@ -1207,19 +1446,22 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // tomas de madrugada lo abren). Reusan .rut-fila con su editor inline y
     // ✕ de siempre — son a demanda, el eje a escala no aporta ahí.
     function renderNoche(nocturnas, enCurso) {
-        if (!nocturnas.length || !UI.sel.leon) return '';
+        if (!nocturnas.length) return '';
         return '<div class="rut-noche">' +
-            '<div class="rut-noche-titulo">🌙 Madrugada — así arranca el día ' +
+            // La luna de las SIESTAS (creciente con zzz), no la de `noche`
+            // (llena con estrellas): elección de Mari, 2026-08-06.
+            '<div class="rut-noche-titulo">' + dibujoHtml('siesta') + ' Madrugada — así arranca el día ' +
                 '<span>a demanda, horarios orientativos</span></div>' +
             nocturnas.map(function (it) {
                 var activa = enCurso(it);
-                var clases = 'rut-fila rut--leon rut-fila--noct' + (activa ? ' is-ahora' : '');
+                var clases = 'rut-fila rut--persona rut-fila--noct' + (activa ? ' is-ahora' : '');
                 var tapAttr = modoEdicion ? '' : ' data-tap="' + it.id + '"';
-                var fila = '<div class="' + clases + '" data-item="' + it.id + '">' +
+                var fila = '<div class="' + clases + '"' + styleColor(it.user) +
+                    ' data-item="' + it.id + '">' +
                     '<div class="rut-fila-tap"' + tapAttr + '>' +
                         '<span class="rut-fila-hora">' + fmt(it.start) + '</span>' +
                         '<span class="rut-fila-dot"></span>' +
-                        '<span class="rut-fila-emoji">' + it.emoji + '</span>' +
+                        '<span class="rut-fila-emoji">' + itemEmoji(it) + '</span>' +
                         '<div class="rut-fila-cuerpo">' +
                             '<div class="rut-fila-titulo">' + escapeHtml(it.t) +
                                 (activa ? '<span class="rut-badge-ahora">ahora</span>' : '') +
@@ -1280,10 +1522,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
         return '<div class="rut-add-form">' +
             '<div class="rut-add-linea">' +
-                ['leon', 'mama', 'papa'].map(function (u) {
-                    return '<button type="button" class="rut-add-pill rut--' + u +
-                        (formAdd.user === u ? ' activo' : '') + '" data-add-user="' + u + '">' +
-                        EMOJIS[u] + ' ' + NOMBRES[u] + '</button>';
+                usuarios().map(function (u) {
+                    return '<button type="button" class="rut-add-pill rut--persona' +
+                        (String(formAdd.user) === u ? ' activo' : '') +
+                        '" data-add-user="' + u + '"' + styleColor(u) + '>' +
+                        escapeHtml(nombreDe(u)) + '</button>';
                 }).join('') +
             '</div>' +
             '<div class="rut-add-linea">' +
@@ -1352,7 +1595,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
         var html = pendientes.map(function (c) {
             return '<div class="rut-cal-card" data-cal-add="' + c.id + '">' +
-                '<span class="rut-cal-txt">📅 Hoy por calendario: <b>' + escapeHtml(c.nombre) + '</b>' +
+                '<span class="rut-cal-txt">' + dibujoHtml('calendario') + ' Hoy por calendario: <b>' + escapeHtml(c.nombre) + '</b>' +
                     ' · proponemos 10:00 – 11:00 — tocá para añadir</span>' +
                 '<button type="button" class="rut-cal-x" data-cal-x="' + c.id + '" ' +
                     'aria-label="Descartar por hoy">✕</button>' +
@@ -1370,9 +1613,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return '<div class="rut-quitados">' +
             '<div class="rut-quitados-titulo">Tareas quitadas</div>' +
             visibles.map(function (q) {
-                return '<div class="rut-quitado-fila rut--' + q.user + '">' +
+                return '<div class="rut-quitado-fila rut--persona"' + styleColor(q.user) + '>' +
                     '<span class="rut-fila-dot"></span>' +
-                    '<span class="rut-fila-emoji">' + q.emoji + '</span>' +
+                    '<span class="rut-fila-emoji">' + dibujoHtml(q.dibujo, q.emoji) + '</span>' +
                     '<span class="rut-quitado-titulo">' + escapeHtml(q.t) + '</span>' +
                     '<button type="button" class="rut-btn-restaurar" data-restaurar="' + q.id + '">↩ Restaurar</button>' +
                 '</div>';
@@ -1393,27 +1636,309 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         if (dur) formAdd.dur = Number(dur.value);
     }
 
-    function renderTips(R) {
-        var titulo = UI.etapa === 'guarderia' ? 'Qué cambia a los 4 meses'
-            : UI.etapa === 'tres' ? 'Qué cambia a los 3 meses'
-            : 'Lo que dicen los expertos (2 meses)';
-        $('rut-tips').innerHTML = '<div class="rut-tips-card">' +
-            '<div class="rut-tips-titulo">📖 ' + escapeHtml(titulo) + '</div>' +
-            R.tips.map(function (t) {
-                return '<div class="rut-tip">• ' + escapeHtml(t.texto) + '</div>';
+    // Tarjeta de tips: sale de la ventana de sueño que corresponde a la edad
+    // del bebé visible. Sin bebé cargado, no hay tarjeta.
+    function renderTips(bebe) {
+        var cont = $('rut-tips');
+        if (!bebe || !bebe.resumen) { cont.innerHTML = ''; return; }
+        var r = bebe.resumen;
+        var nombre = bebe.miembro.nombre;
+
+        var tips = [
+            'Ventana de sueño a esta edad (' + r.etiqueta + '): ' + r.ventana +
+                ' despierto entre sueño y sueño. La primera del día es la más corta.',
+            'Suelen ser ' + r.siestas + ' siestas de ' + r.siestaDur +
+                ', y ' + r.suenoDia + ' de sueño en total en 24 h.',
+            'De noche: ' + r.nocturnas + '.',
+            'Las señales de ' + nombre + ' —bostezo, mirada perdida, quejoso— mandan ' +
+                'más que el reloj. Las tomas van a demanda: la tabla se adapta a él, no al revés.'
+        ];
+
+        cont.innerHTML = '<div class="rut-tips-card">' +
+            '<div class="rut-tips-titulo">' + dibujoHtml('estudio') + ' Ventanas de sueño — ' +
+                escapeHtml(nombre) + ', ' + escapeHtml(bebe.miembro.edad_texto || r.etiqueta) +
+            '</div>' +
+            tips.map(function (t) {
+                return '<div class="rut-tip">• ' + escapeHtml(t) + '</div>';
             }).join('') +
-            '<div class="rut-tips-nota">Basada en tu Word "Rutina de León" (AAP, Sleep Foundation, ' +
-            'Taking Cara Babies, Huckleberry, Cleveland Clinic) y las actividades de tu guía ' +
-            '"Estimulación Temprana" (Karina Rivera) — validá siempre con su pediatra. ' +
+            '<div class="rut-tips-nota">Valores orientativos, consolidados de guías públicas de ' +
+            'sueño infantil (Cleveland Clinic, Taking Cara Babies, Huckleberry, Mustela). ' +
+            'La app propone un plan y te deja corregirlo: no reemplaza a su pediatra. ' +
             'Ritmo flexible, no horario rígido.</div>' +
         '</div>';
     }
 
-    // Cálculo de noche + predicado "en curso". Extraído de renderTodo() tal
-    // cual (cut-paste) para reusarlo desde hoyAhora() — la lógica NO cambió.
+    // ── Panel Familia ────────────────────────────────────────────────────────
+    // Alta, edición y baja de miembros. Es la pantalla que reemplaza a las tres
+    // etapas hardcodeadas: lo que antes había que tocar en el código, ahora se
+    // carga acá y la rutina se rearma sola.
+
+    var ROLES = [
+        { v: 'mama', t: 'Mamá' },
+        { v: 'papa', t: 'Papá' },
+        { v: 'hijo', t: 'Hijo/a' },
+        { v: 'otro', t: 'Otro' }
+    ];
+
+    function formMiembroNuevo() {
+        return {
+            id: null, nombre: '', rol: 'hijo', es_bebe: false,
+            fecha_nacimiento: '', color_token: '', ancla_min: 390, error: ''
+        };
+    }
+
+    function formMiembroDe(m) {
+        return {
+            id: m.id, nombre: m.nombre, rol: m.rol, es_bebe: !!m.es_bebe,
+            fecha_nacimiento: m.fecha_nacimiento || '',
+            color_token: m.color_token || colorTokenDe(m.id),
+            ancla_min: m.ancla_min, error: ''
+        };
+    }
+
+    // Lee lo tipeado antes de un re-render (los inputs se reconstruyen).
+    function capturarFormMiembro() {
+        if (!formMiembro) return;
+        var n = $('rut-fm-nombre'), f = $('rut-fm-fnac'), a = $('rut-fm-ancla');
+        if (n) formMiembro.nombre = n.value;
+        if (f) formMiembro.fecha_nacimiento = f.value;
+        if (a) formMiembro.ancla_min = horaAMin(a.value, formMiembro.ancla_min);
+    }
+
+    function horaAMin(valor, porDefecto) {
+        var p = String(valor || '').split(':');
+        if (p.length !== 2) return porDefecto;
+        var h = Number(p[0]), m = Number(p[1]);
+        if (isNaN(h) || isNaN(m)) return porDefecto;
+        return Math.max(0, Math.min(1439, h * 60 + m));
+    }
+
+    function minAHora(min) {
+        var m = ((min % 1440) + 1440) % 1440;
+        return String(Math.floor(m / 60)).padStart(2, '0') + ':' +
+               String(m % 60).padStart(2, '0');
+    }
+
+    function renderFamilia() {
+        var cont = $('rut-familia');
+        if (!cont) return;
+
+        var lista = MIEMBROS.map(function (m) {
+            var detalle = [];
+            ROLES.forEach(function (r) { if (r.v === m.rol) detalle.push(r.t); });
+            if (m.es_bebe) detalle.push('bebé');
+            if (m.edad_texto) detalle.push(m.edad_texto);
+            else if (!m.fecha_nacimiento) detalle.push('sin fecha de nacimiento');
+
+            return '<div class="rut-miembro rut--persona"' + styleColor(m.id) + '>' +
+                '<div class="rut-miembro-texto">' +
+                    '<div class="rut-miembro-nombre">' + escapeHtml(m.nombre) +
+                        (m.cumple_hoy ? ' <span class="rut-miembro-cumple">' + dibujoHtml('cumple') + ' hoy</span>' : '') +
+                    '</div>' +
+                    '<div class="rut-miembro-sub">' + escapeHtml(detalle.join(' · ')) +
+                        (m.es_bebe ? ' · primera toma ' + minAHora(m.ancla_min) : '') +
+                    '</div>' +
+                '</div>' +
+                '<button type="button" class="rut-btn-icono" data-fm-editar="' + m.id + '" ' +
+                    'aria-label="Editar ' + escapeHtml(m.nombre) + '">✎</button>' +
+                '<button type="button" class="rut-btn-icono" data-fm-borrar="' + m.id + '" ' +
+                    'aria-label="Borrar ' + escapeHtml(m.nombre) + '">🗑</button>' +
+            '</div>';
+        }).join('');
+
+        var vacio = MIEMBROS.length ? '' :
+            '<p class="rut-panel-vacio">Todavía no hay nadie cargado. Empezá sumando ' +
+            'a mamá, a papá o a un hijo — si es bebé, marcá la casilla y su rutina ' +
+            'se arma sola con las ventanas de sueño de su edad.</p>';
+
+        var boton = formMiembro ? '' :
+            '<button type="button" class="rut-add-btn" data-fm-nuevo="1">＋ Agregar miembro</button>';
+
+        cont.innerHTML = vacio + lista + (formMiembro ? formMiembroHtml() : boton);
+    }
+
+    function formMiembroHtml() {
+        var f = formMiembro;
+        var esHijo = f.rol === 'hijo';
+
+        var pillsRol = ROLES.map(function (r) {
+            return '<button type="button" class="rut-add-pill' +
+                (f.rol === r.v ? ' activo' : '') + '" data-fm-rol="' + r.v + '">' +
+                r.t + '</button>';
+        }).join('');
+
+        var swatches = COLOR_CICLO.map(function (tok) {
+            return '<button type="button" class="rut-swatch' +
+                (f.color_token === tok ? ' activo' : '') + '" data-fm-color="' + tok + '" ' +
+                'style="background: var(--color-' + tok + ')" ' +
+                'aria-label="Color ' + tok + '"></button>';
+        }).join('');
+
+        return '<div class="rut-fm">' +
+            (f.error ? '<div class="rut-fm-error">⚠ ' + escapeHtml(f.error) + '</div>' : '') +
+            '<div class="rut-fm-linea">' +
+                '<input type="text" class="rut-add-input" id="rut-fm-nombre" maxlength="40" ' +
+                    'placeholder="Nombre" value="' + escapeHtml(f.nombre) + '">' +
+            '</div>' +
+            '<div class="rut-fm-linea rut-fm-pills">' + pillsRol + '</div>' +
+            (esHijo
+                ? '<label class="rut-fm-check">' +
+                      '<input type="checkbox" data-fm-bebe="1"' + (f.es_bebe ? ' checked' : '') + '>' +
+                      '<span>Es bebé — armale la rutina con las ventanas de sueño</span>' +
+                  '</label>'
+                : '') +
+            '<div class="rut-fm-linea">' +
+                '<span class="rut-add-label">Nacimiento</span>' +
+                '<input type="date" class="rut-add-input rut-fm-fecha" id="rut-fm-fnac" ' +
+                    'value="' + escapeHtml(f.fecha_nacimiento) + '">' +
+            '</div>' +
+            (f.es_bebe
+                ? '<div class="rut-fm-linea">' +
+                      '<span class="rut-add-label">Primera toma del día</span>' +
+                      '<input type="time" class="rut-add-input rut-fm-hora" id="rut-fm-ancla" ' +
+                          'value="' + minAHora(f.ancla_min) + '">' +
+                  '</div>' +
+                  '<p class="rut-fm-nota">Esta hora es el ancla: todas las siestas y ' +
+                  'tomas del día se calculan a partir de ella.</p>'
+                : '') +
+            '<div class="rut-fm-linea rut-fm-colores">' + swatches + '</div>' +
+            '<div class="rut-fm-linea">' +
+                '<span class="rut-add-espacio"></span>' +
+                '<button type="button" class="rut-editor-ahora" data-fm-guardar="1">Guardar</button>' +
+                '<button type="button" class="rut-editor-ok" data-fm-cancelar="1">Cancelar</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    function guardarMiembro() {
+        capturarFormMiembro();
+        var f = formMiembro;
+        if (!f) return;
+        if (!f.nombre.trim()) {
+            f.error = 'Poné un nombre.';
+            return renderTodo();
+        }
+        if (f.es_bebe && !f.fecha_nacimiento) {
+            f.error = 'Para un bebé hace falta la fecha de nacimiento: sin edad no hay ventana de sueño.';
+            return renderTodo();
+        }
+        var campos = {
+            nombre: f.nombre.trim(),
+            rol: f.rol,
+            es_bebe: f.es_bebe ? '1' : '0',
+            fecha_nacimiento: f.fecha_nacimiento || '',
+            color_token: f.color_token || '',
+            ancla_min: f.ancla_min
+        };
+        if (f.id) {
+            campos.id = f.id;
+            campos.activo = '1';
+        }
+        formMiembro = null;
+        postAccion(f.id ? '/api/rutina/miembro/editar' : '/api/rutina/miembro/crear', campos);
+    }
+
+    // ── Panel Ajustes ────────────────────────────────────────────────────────
+    function renderAjustes() {
+        var noche = $('rut-cfg-noche');
+        var amanecer = $('rut-cfg-amanecer');
+        var cumple = $('rut-cfg-cumple');
+        // No pisar lo que el usuario está tipeando: solo sincronizar cuando el
+        // campo no tiene el foco.
+        if (noche && document.activeElement !== noche) {
+            noche.value = CFG.hora_noche || '20:00';
+        }
+        if (amanecer && document.activeElement !== amanecer) {
+            amanecer.value = CFG.hora_amanecer || '06:30';
+        }
+        if (cumple) cumple.checked = !!CFG.cumple_activo;
+    }
+
+    function guardarAjustes() {
+        var noche = $('rut-cfg-noche'), amanecer = $('rut-cfg-amanecer');
+        var cumple = $('rut-cfg-cumple');
+        postAccion('/api/rutina/ajustes', {
+            hora_noche: noche ? noche.value : '20:00',
+            hora_amanecer: amanecer ? amanecer.value : '06:30',
+            cumple_activo: (cumple && cumple.checked) ? '1' : '0'
+        });
+    }
+
+    // ── Menú de secciones (mismo patrón que Lactancia) ───────────────────────
+    // No es un <select> nativo porque las opciones llevan ícono. El wrapper
+    // recibe data-rut-sec y el CSS muestra solo la sección activa en mobile.
+    // Íconos FIJOS del template (menú de secciones, títulos de panel, título
+    // del módulo). Van con `data-dib="clave"` y los rellena esto, en vez de
+    // pegar el SVG entero ocho veces en el HTML. Se pinta ANTES de
+    // initNavMenu(): ese copia el innerHTML del ítem activo al trigger, así que
+    // si el dibujo todavía no está, el trigger se queda sin ícono.
+    function pintarIconos(raiz) {
+        var lib = window.RutinaDibujos;
+        if (!lib) return;
+        (raiz || document).querySelectorAll('[data-dib]').forEach(function (el) {
+            if (el.firstChild) return;                 // ya pintado
+            el.innerHTML = lib.html(el.dataset.dib);
+        });
+    }
+
+    function initNavMenu() {
+        var wrap = document.querySelector('.rut-wrap');
+        var trigger = $('rut-nav-trigger');
+        var lista = $('rut-nav-lista');
+        if (!wrap || !trigger || !lista) return;
+
+        function aplicar(sec) {
+            UI.sec = sec;
+            wrap.setAttribute('data-rut-sec', sec);
+            var activa = null;
+            lista.querySelectorAll('[data-sec]').forEach(function (btn) {
+                var on = btn.dataset.sec === sec;
+                btn.classList.toggle('is-activa', on);
+                if (on) activa = btn;
+            });
+            if (activa) trigger.innerHTML = activa.innerHTML;
+            lista.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+            persistirUI();
+        }
+
+        trigger.addEventListener('click', function () {
+            var abierto = !lista.hidden;
+            lista.hidden = abierto;
+            trigger.setAttribute('aria-expanded', abierto ? 'false' : 'true');
+        });
+
+        lista.addEventListener('click', function (ev) {
+            var btn = ev.target.closest('[data-sec]');
+            if (btn) aplicar(btn.dataset.sec);
+        });
+
+        document.addEventListener('click', function (ev) {
+            if (!lista.hidden && !ev.target.closest('.rut-nav-menu')) {
+                lista.hidden = true;
+                trigger.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape' && !lista.hidden) {
+                lista.hidden = true;
+                trigger.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        aplicar(UI.sec || 'hoy');
+    }
+
+    // Cálculo de noche + predicado "en curso". El ítem de noche es el del
+    // primer bebé visible (el mismo que manda en la tarjeta de tips).
     function _nocheInfo(calc, esHoy, now) {
         var nocheItem = null;
-        calc.leon.forEach(function (i) { if (!nocheItem && i.kind === 'noche') nocheItem = i; });
+        usuarios().forEach(function (u) {
+            (calc.porUser[u] || []).forEach(function (i) {
+                if (!nocheItem && i.kind === 'noche') nocheItem = i;
+            });
+        });
         function enCurso(it) {
             return esHoy && it.kind !== 'noche' && now >= it.start && now < Math.max(it.end, it.start + 1);
         }
@@ -1424,18 +1949,24 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
     function renderTodo() {
         ajustarSticky();   // remedir siempre: el alto del topbar global puede variar
-        capturarFormAdd(); // preservar lo tipeado en el form de añadir
+        capturarFormAdd();     // preservar lo tipeado en el form de añadir
+        capturarFormMiembro(); // ídem en el form de familia
+        normalizarSeleccion();
         var calc = calcular();
         var hoyIdx = new Date().getDay();
-        var esHoy = UI.dia === hoyIdx && UI.etapa === 'actual';
+        var esHoy = UI.dia === hoyIdx;
         var now = ahoraMin();
 
+        // Orden estable entre personas: a igual hora manda el orden de la
+        // familia (el `orden` de rutina_miembros).
+        var orden = usuarios();
         var items = [];
-        if (UI.sel.leon) items = items.concat(calc.leon);
-        if (UI.sel.mama) items = items.concat(calc.mama);
-        if (UI.sel.papa) items = items.concat(calc.papa);
+        usuariosSel().forEach(function (u) {
+            items = items.concat(calc.porUser[u] || []);
+        });
         items.sort(function (a, b) {
-            return a.start - b.start || (a.user === 'leon' ? -1 : 1);
+            return a.start - b.start ||
+                (orden.indexOf(String(a.user)) - orden.indexOf(String(b.user)));
         });
 
         var ni = _nocheInfo(calc, esHoy, now);
@@ -1444,12 +1975,15 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         renderHeader();
         renderChips();
         renderDias();
-        renderEtapas();
+        renderCumple();
         renderCal();
         renderAviso(esHoy);
-        renderAhora(items, calc.leon, esHoy, now, nocheItem, nocheActiva, enCurso);
+        renderAhora(items, esHoy, now, nocheItem, nocheActiva, enCurso);
         renderTimeline(calc, esHoy, now, nocheActiva, enCurso);
-        renderTips(calc.R);
+        renderTips(calc.bebe);
+        renderFamilia();
+        renderAjustes();
+        actualizarFondo();   // el cielo sigue la hora que se está mirando
 
         var btnEditar = $('rut-editar');
         if (btnEditar) {
@@ -1459,35 +1993,39 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     }
 
     // ── API pública para la tarjeta Rutina del Inicio (window.Rutina) ───────
-    // Fuerza "hoy real + etapa actual" con save/restore síncrono de UI.dia y
-    // UI.etapa (try/finally, SIN persistir: jamás toca localStorage — UI.sel
-    // no afecta a calcular() ni a la selección, no hace falta tocarlo) y
-    // devuelve, por usuario, qué está haciendo AHORA y qué viene después:
-    //   [{ user, nombre, emoji,
+    // Fuerza "hoy real" con save/restore síncrono de UI.dia (try/finally, SIN
+    // persistir: jamás toca localStorage — UI.sel no afecta a calcular() ni a
+    // la selección, no hace falta tocarlo) y devuelve, por miembro, qué está
+    // haciendo AHORA y qué viene después:
+    //   [{ user, nombre, emoji, color,
     //      actual:    { titulo, emoji, desde, hasta|null },   // null = abierto (dur 0)
     //      siguiente: { titulo, emoji, hora } | null }]
+    // `color` es el token de la variable CSS (--color-<token>): antes el color
+    // lo fijaba una clase por persona en home.js, que ya no sirve con una
+    // familia de tamaño variable.
     // Sin actividad en curso pero con siguiente → mismo "Tiempo libre" (⏳)
-    // sintético que usan las tarjetas "Ahora". Usuario sin actual ni
+    // sintético que usan las tarjetas "Ahora". Miembro sin actual ni
     // siguiente → se omite. Requiere window.RUT_DATOS inyectado ANTES de
     // cargar este script (igual que en /rutina): el estado del módulo se
     // popula al evaluar la IIFE, no en init().
     function hoyAhora() {
-        var diaOrig = UI.dia, etapaOrig = UI.etapa;
+        var diaOrig = UI.dia;
         try {
             UI.dia = new Date().getDay();   // fechaVista() pasa a ser HOY real
-            UI.etapa = 'actual';
             var calc = calcular();
             var now = ahoraMin();
             var ni = _nocheInfo(calc, true, now);
             var out = [];
-            ['leon', 'mama', 'papa'].forEach(function (u) {
-                // calc[u] ya viene ordenado por inicio (mismo orden que los
-                // `propios` que renderAhora filtra de la lista combinada)
-                var sel = _seleccionAhora(calc[u], now, true, ni.nocheActiva, ni.nocheItem, u, ni.enCurso);
+            usuarios().forEach(function (u) {
+                // calc.porUser[u] ya viene ordenado por inicio (mismo orden que
+                // los `propios` que renderAhora filtra de la lista combinada)
+                var sel = _seleccionAhora(calc.porUser[u] || [], now, true,
+                                          ni.nocheActiva, ni.nocheItem, u, ni.enCurso);
                 if (!sel.cur && !sel.sig) return;
                 var el = sel.cur || { emoji: '⏳', t: 'Tiempo libre', start: now, end: sel.sig ? sel.sig.start : now + 30, dur: 1 };
                 out.push({
-                    user: u, nombre: NOMBRES[u], emoji: EMOJIS[u],
+                    user: u, nombre: nombreDe(u),
+                    color: colorTokenDe(u),
                     actual: {
                         titulo: el.t, emoji: el.emoji,
                         desde: fmt(el.start),
@@ -1501,7 +2039,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             return out;
         } finally {
             UI.dia = diaOrig;
-            UI.etapa = etapaOrig;
         }
     }
 
@@ -1525,6 +2062,97 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // scroll interno en el timeline). En mobile la clase no tiene efecto.
         document.body.classList.add('rut-body');
 
+        pintarIconos();      // ANTES de initNavMenu: ver el comentario de arriba
+        initNavMenu();
+
+        // ── Fondo día/noche ────────────────────────────────────────────────
+        // Mirando otro día, el cielo sigue el scroll de la línea de tiempo.
+        // rAF para no recalcular en cada píxel.
+        var pidiendo = false;
+        function alScrollear() {
+            if (pidiendo) return;
+            pidiendo = true;
+            requestAnimationFrame(function () {
+                pidiendo = false;
+                var hoyIdx = new Date().getDay();
+                if (UI.dia !== hoyIdx) actualizarFondo();
+            });
+        }
+        window.addEventListener('scroll', alScrollear, { passive: true });
+        var cajaTl = $('rut-filas');
+        if (cajaTl && cajaTl.parentElement) {
+            cajaTl.parentElement.addEventListener('scroll', alScrollear, { passive: true });
+        }
+
+        // Pestaña oculta → animaciones en pausa (batería)
+        function ajustarMovimiento() {
+            document.body.classList.toggle('rut-quieto', document.hidden);
+        }
+        document.addEventListener('visibilitychange', ajustarMovimiento);
+        ajustarMovimiento();
+
+        // Panel Familia: alta / edición / baja de miembros.
+        var panelFam = $('rut-familia');
+        if (panelFam) {
+            panelFam.addEventListener('click', function (ev) {
+                var el;
+                if (ev.target.closest('[data-fm-nuevo]')) {
+                    formMiembro = formMiembroNuevo();
+                    renderTodo();
+                    var inp = $('rut-fm-nombre');
+                    if (inp) inp.focus();
+                    return;
+                }
+                if ((el = ev.target.closest('[data-fm-editar]'))) {
+                    var m = miembroDe(el.dataset.fmEditar);
+                    if (m) { formMiembro = formMiembroDe(m); renderTodo(); }
+                    return;
+                }
+                if ((el = ev.target.closest('[data-fm-borrar]'))) {
+                    var q = miembroDe(el.dataset.fmBorrar);
+                    if (!q) return;
+                    // Se lleva sus actividades y sus ajustes de horario: conviene
+                    // preguntar aunque el resto del módulo no use confirmaciones.
+                    if (!window.confirm('¿Borrar a ' + q.nombre + '? Se van también ' +
+                        'sus actividades y los horarios que hayas ajustado.')) return;
+                    formMiembro = null;
+                    return postAccion('/api/rutina/miembro/borrar', { id: q.id });
+                }
+                if ((el = ev.target.closest('[data-fm-rol]'))) {
+                    capturarFormMiembro();
+                    formMiembro.rol = el.dataset.fmRol;
+                    if (formMiembro.rol !== 'hijo') formMiembro.es_bebe = false;
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fm-color]'))) {
+                    capturarFormMiembro();
+                    formMiembro.color_token = el.dataset.fmColor;
+                    return renderTodo();
+                }
+                if (ev.target.closest('[data-fm-guardar]')) return guardarMiembro();
+                if (ev.target.closest('[data-fm-cancelar]')) {
+                    formMiembro = null;
+                    return renderTodo();
+                }
+            });
+
+            panelFam.addEventListener('change', function (ev) {
+                if (ev.target.closest('[data-fm-bebe]')) {
+                    capturarFormMiembro();
+                    formMiembro.es_bebe = ev.target.checked;
+                    renderTodo();
+                }
+            });
+        }
+
+        // Panel Ajustes: se guarda al tocar el botón (las horas se tipean).
+        var panelCfg = $('rut-ajustes');
+        if (panelCfg) {
+            panelCfg.addEventListener('click', function (ev) {
+                if (ev.target.closest('[data-cfg-guardar]')) guardarAjustes();
+            });
+        }
+
         $('rut-chips').addEventListener('click', function (ev) {
             var btn = ev.target.closest('[data-user]');
             if (!btn) return;
@@ -1538,16 +2166,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var btn = ev.target.closest('[data-dia]');
             if (!btn) return;
             UI.dia = Number(btn.dataset.dia);
-            editando = null;
-            quitando = null;
-            persistirUI();
-            renderTodo();
-        });
-
-        $('rut-etapas').addEventListener('click', function (ev) {
-            var btn = ev.target.closest('[data-etapa]');
-            if (!btn) return;
-            UI.etapa = btn.dataset.etapa;
             editando = null;
             quitando = null;
             persistirUI();
@@ -1582,7 +2200,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             if (t.closest('[data-q-cancelar]')) { quitando = null; return renderTodo(); }
             if ((el = t.closest('[data-restaurar]'))) return restaurarItem(el.dataset.restaurar);
             if (t.closest('[data-add]')) {
-                var pri = ['leon', 'mama', 'papa'].filter(function (u) { return UI.sel[u]; })[0] || 'leon';
+                var pri = usuariosSel()[0] || usuarios()[0];
+                if (!pri) return;   // familia vacía: nada a lo que añadirle
                 formAdd = { en: 'filas', user: pri, emoji: '', titulo: '', hora: 9, min: 0, dur: 30, alcance: 'siempre' };
                 renderTodo();
                 var inp = $('rut-add-titulo');
@@ -1612,7 +2231,19 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var c = null;
             CALHOY.forEach(function (x) { if (!c && x.id === id) c = x; });
             if (!c) return;
-            var persona = c.responsable === 'elias' ? 'papa' : 'mama';
+            // El Calendario habla de 'elias' | 'mari' | 'familia'; acá la
+            // persona es un miembro. Se busca por rol (papá/mamá) y, si no
+            // hay, cae en el primero seleccionado.
+            var rolBuscado = c.responsable === 'elias' ? 'papa'
+                           : c.responsable === 'mari' ? 'mama' : null;
+            var persona = null;
+            if (rolBuscado) {
+                MIEMBROS.forEach(function (m) {
+                    if (!persona && m.rol === rolBuscado) persona = String(m.id);
+                });
+            }
+            persona = persona || usuariosSel()[0] || usuarios()[0];
+            if (!persona) return;
             formAdd = { en: 'cal', user: persona, emoji: '📅', titulo: c.nombre,
                         hora: 10, min: 0, dur: 60, alcance: 'hoy' };
             renderTodo();
@@ -1732,8 +2363,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
         // Busca el ítem vigente por id en el cálculo actual
         function buscarItem(itemId) {
-            var c = calcular();
-            var todos = c.leon.concat(c.mama, c.papa);
+            var todos = todosLosItems(calcular());
             var it = null;
             todos.forEach(function (i) { if (!it && i.id === itemId) it = i; });
             return it;
@@ -1921,7 +2551,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // hoy); el resto abre el "¿Solo hoy o siempre?"
         function abrirQuitar(itemId) {
             var calc = calcular();
-            var todos = calc.leon.concat(calc.mama, calc.papa);
+            var todos = todosLosItems(calc);
             var it = null;
             todos.forEach(function (i) { if (!it && i.id === itemId) it = i; });
             if (it && it.custom && !it.permanente) return borrarTarea(it.tareaId);
@@ -1938,7 +2568,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 return;
             }
             crearTarea({
-                etapa: UI.etapa,
+                etapa: ETAPA,
                 usuario: formAdd.user,
                 titulo: titulo,
                 emoji: (formAdd.emoji || '').trim(),
@@ -1952,7 +2582,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // −15/+15 parten del inicio VIGENTE del ítem (con cascada aplicada)
         function ajustarDesdeFila(itemId, delta) {
             var calc = calcular();
-            var todos = calc.leon.concat(calc.mama, calc.papa);
+            var todos = todosLosItems(calc);
             var it = null;
             todos.forEach(function (i) { if (!it && i.id === itemId) it = i; });
             if (it) ajustar(itemId, it.start + delta);

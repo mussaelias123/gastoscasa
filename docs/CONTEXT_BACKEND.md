@@ -58,8 +58,12 @@
 | POST   | `/api/rutina/reset`       | `api_rutina_reset`    | Borra TODOS los ajustes de inicio Y duraciones de `fecha`+`etapa` ("↺ Plan original"). |
 | POST   | `/api/rutina/tarea/crear` | `api_rutina_tarea_crear` | Alta de tarea añadida (modo edición). Form `etapa`, `usuario`, `titulo`, `emoji`, `inicio_min` (0..1439), `dur` (5..720), `fecha` (`''` = permanente). Valida con `_rut_leer_form_tarea`. |
 | POST   | `/api/rutina/tarea/borrar` | `api_rutina_tarea_borrar` | Baja definitiva de una tarea añadida (form `id`); limpia también sus ocultos/ajustes `c-<id>`. |
-| POST   | `/api/rutina/ocultar`     | `api_rutina_ocultar`  | Quita un ítem de la rutina. Form `etapa`, `item_id`, `fecha` (`''` = siempre). A diferencia de `/ajustar`, acá SÍ se aceptan ids derivados `mama-*`/`papa-*`. |
+| POST   | `/api/rutina/ocultar`     | `api_rutina_ocultar`  | Quita un ítem de la rutina. Form `etapa`, `item_id`, `fecha` (`''` = siempre). |
 | POST   | `/api/rutina/restaurar`   | `api_rutina_restaurar` | Deshace TODOS los quitados de un ítem (permanente y fechados). Form `etapa`, `item_id`. |
+| POST   | `/api/rutina/miembro/crear` | `api_rutina_miembro_crear` | Alta de miembro. Form `nombre`, `rol`, `es_bebe`, `fecha_nacimiento`, `dibujo`, `color_token`, `ancla_min`. Valida con `_rut_leer_form_miembro`. |
+| POST   | `/api/rutina/miembro/editar` | `api_rutina_miembro_editar` | Edición completa (pide `id` + los campos de arriba + `activo`). |
+| POST   | `/api/rutina/miembro/borrar` | `api_rutina_miembro_borrar` | Baja definitiva (form `id`); se lleva sus actividades y todos los ajustes de sus ítems. |
+| POST   | `/api/rutina/ajustes`     | `api_rutina_ajustes`  | Preferencias de la hoja → `config.json`. Form `hora_noche`, `hora_amanecer` (`HH:MM`, noche > amanecer), `cumple_activo`. |
 
 > **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
@@ -124,23 +128,32 @@ existiendo el paso de heladera a freezer por combinación de partidas tildadas
 - `_lac_parsear_volumen(valor)` / `_lac_parsear_extraccion(form)` / `_lac_parsear_fecha_cierre(valor)` / `_lac_leer_form_alta(form)`: validaciones (ValueError). Volumen int 1..2000; la extracción combinada (fecha + hora) no puede ser futura — es la base del vencimiento (issue #48); ambas ubicaciones exigen fecha/hora de extracción (`cargada` la pone el server, solo auditoría).
 
 ## Módulo Rutina — helpers
-Rutina diaria de León + agendas de mamá/papá con horarios en cascada. Las
-DEFINICIONES de rutina por etapa y las actividades de estimulación son
-constantes JS (`static/rutina.js`, `static/rutina-actividades.js`): el backend
-persiste los AJUSTES de horario por `(fecha, etapa, item_id)` (tabla
-`rutina_ajustes`), las TAREAS añadidas por el usuario (`rutina_tareas`) y los
-ítems QUITADOS (`rutina_ocultos`) para sincronizar ambos teléfonos. La cascada
-se calcula en el front. **La fecha-clave la define SIEMPRE el cliente** (su
-fecha local): el server solo filtra por rango y hace upsert/delete — así no
-hay ambigüedad de timezone. Convención `fecha = ''` en tareas/ocultos =
-permanente (todos los días). Sin badge de nav ni parámetros de Settings (v1).
-- `_RUT_ETAPAS = ('actual', 'tres', 'guarderia')`; `_RUT_USUARIOS = ('leon', 'mama', 'papa')`; `_RUT_ITEM_RE = ^[a-z0-9-]{1,40}$`.
+Rutina diaria de la FAMILIA con horarios en cascada. La familia vive en la base
+(`rutina_miembros`) y se carga desde el menú de la propia hoja; sus actividades
+en `rutina_actividades`. Para los miembros marcados como bebé la rutina no está
+escrita en ningún lado: la GENERA el front (`static/rutina-sueno.js`) a partir
+de la edad, del ancla (primera toma del día) y de la hora de inicio de la noche.
+El backend persiste solo las DESVIACIONES: ajustes de horario por
+`(fecha, etapa, item_id)` (`rutina_ajustes`), duraciones (`rutina_dur`), tareas
+añadidas (`rutina_tareas`) e ítems quitados (`rutina_ocultos`), para sincronizar
+ambos teléfonos. La cascada se calcula en el front. **La fecha-clave la define
+SIEMPRE el cliente** (su fecha local): el server solo filtra por rango y hace
+upsert/delete — así no hay ambigüedad de timezone. Convención `fecha = ''` en
+tareas/ocultos = permanente (todos los días).
+- `_RUT_ETAPA = 'plan'`; `_RUT_ETAPAS = ('plan', 'actual', 'tres', 'guarderia')` — las tres viejas solo se aceptan por las filas históricas (nunca se dropea nada). `_RUT_ROLES = ('mama','papa','hijo','otro')`; `_RUT_COLORES` = tokens de color válidos; `_RUT_ITEM_RE = ^[a-z0-9-]{1,40}$`.
+- `_edad_desde(fecha_nacimiento, hoy=None)` → `{fecha_nacimiento, edad_texto, mes_de_vida, dias}`. **Compartido** con Lactancia (`_lac_bebe` lo usa): meses+días hasta los 2 años, después años+meses. Nunca lanza.
+- `_rut_edad(fecha_nacimiento, hoy=None)` → lo anterior + `cumple_hoy` / `cumple_anios`. El 29/2 se festeja el 28/2 en los años no bisiestos.
+- `_rut_miembros(hoy=None)` → la familia con la edad ya derivada, lista para la UI.
+- `_rut_hora_a_min(valor, default)` → `'HH:MM'` a minutos; cae al default si viene basura.
+- `_rut_config(cfg=None)` → `{hora_noche, hora_amanecer, noche_min, amanecer_min, cumple_activo}` desde `config.json`.
 - `_rut_semana_servidor()` → `(desde, hasta)` ISO, domingo..sábado de la semana de hoy. Solo fallback cuando el cliente no manda rango.
 - `_rut_parsear_fecha(valor, campo)` → valida `YYYY-MM-DD` real (strptime); ValueError. `_rut_parsear_fecha_opcional` acepta además `''` (= permanente).
 - `_rut_parsear_rango(fuente)` → lee `desde`/`hasta` de form o query; default semana del server; rechaza rango invertido o >31 días.
-- `_rut_payload(desde, hasta)` → `{'ajustes': {fecha: {etapa: {item_id: min}}}, 'duraciones': {misma forma, dur_min}, 'hoy', 'desde', 'hasta', 'tareas': [...], 'ocultos': [...], 'calendario': [...]}`. Fuente de TODAS las respuestas AJAX del módulo. `calendario` = actividades del módulo Calendario (no terminadas) cuya `_act_proxima_fecha()` es HOY, como `{id, nombre, responsable}` — alimenta la tarjeta "Hoy por calendario" de /rutina (ofrece añadirlas a la rutina; NO toca el estado del Calendario).
-- `_rut_leer_form_ajuste(form)` → `(fecha, etapa, item_id, inicio_min)`. Rechaza ids con prefijo `mama-`/`papa-` (derivados de `expandir()` en el front: heredan horario de León, NO editables) e `inicio_min` fuera de 0..2879 (las tomas nocturnas cruzan la medianoche).
-- `_rut_leer_form_tarea(form)` → `(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)`. Título 1..60 chars, emoji ≤8 chars, inicio 0..1439, dur 5..720.
+- `_rut_payload(desde, hasta)` → `{'ajustes': {fecha: {etapa: {item_id: min}}}, 'duraciones': {misma forma, dur_min}, 'miembros': [...], 'actividades': [...], 'config': {...}, 'hoy', 'desde', 'hasta', 'tareas': [...], 'ocultos': [...], 'calendario': [...]}`. Fuente de TODAS las respuestas AJAX del módulo. `calendario` = actividades del módulo Calendario (no terminadas) cuya `_act_proxima_fecha()` es HOY, como `{id, nombre, responsable}` — alimenta la tarjeta "Hoy por calendario" de /rutina (ofrece añadirlas a la rutina; NO toca el estado del Calendario).
+- `_rut_miembro_id(valor, campo)` → valida contra los miembros activos. Reemplaza a la vieja tupla fija `('leon','mama','papa')`.
+- `_rut_leer_form_ajuste(form)` → `(fecha, etapa, item_id, inicio_min)`. `inicio_min` 0..2879 (las tomas nocturnas cruzan la medianoche). Ya NO hay ítems "derivados no editables": cada ítem tiene id propio y todos se ajustan igual.
+- `_rut_leer_form_tarea(form)` → `(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)`. `usuario` pasó a ser el id del miembro (la columna sigue siendo TEXT). Título 1..60 chars, emoji ≤8 chars, inicio 0..1439, dur 5..720.
+- `_rut_leer_form_miembro(form)` → `(nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min)`. Nombre 1..40; `es_bebe` solo con `rol='hijo'`; fecha no futura y **obligatoria si es bebé** (sin edad no hay ventana de sueño); `ancla_min` 0..1439.
 
 ## Schedulers en hilo
 - `iniciar_scheduler_backup()`: chequea cada hora; backup de `fondo.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.
