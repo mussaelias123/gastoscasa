@@ -112,14 +112,50 @@ CÓMO SE USA
             '<g class="an-lluvia an-lluvia-3"><path d="M15 15.4v2"/></g>'
         ),
 
-        // Pelota que pica y un bloque — el juego
+        // Trencito: la máquina y un vagón, con humo y las ruedas girando.
+        // Pedido de Mari (2026-08-06) en reemplazo de la pelota y el bloque.
+        // La clave sigue siendo `juego` A PROPÓSITO: es lo que quedó guardado
+        // en las actividades y en POR_EMOJI. Cambia el dibujo, no el dato.
         juego: svg(
-            '<g class="an-pica"><circle class="relleno" cx="8.6" cy="8.6" r="4.6"/>' +
-            '<circle cx="8.6" cy="8.6" r="4.6"/>' +
-            '<path d="M4.4 6.8c2.8 1 5.6 1 8.4 0M8.6 4v9.2"/></g>' +
-            '<path class="relleno" d="M13.6 14.4h6.4v6h-6.4Z"/>' +
-            '<path d="M13.6 14.4h6.4v6h-6.4Z"/>' +
-            '<path d="M3.4 20.4h6.8"/>'
+            '<path d="M2 20.6h20"/>' +
+            '<path class="relleno" d="M2.6 11.8h6v5.6h-6Z"/>' +
+            '<path d="M2.6 11.8h6v5.6h-6Z"/>' +
+            '<path d="M8.6 15h2"/>' +
+            '<path class="relleno" d="M14.4 12.2h6.8v5.2h-6.8Z"/>' +
+            '<path d="M10.6 8.6h3.8v8.8h-3.8Z"/>' +
+            '<path d="M14.4 12.2h6.8v5.2h-6.8Z"/>' +
+            '<path d="M11.6 10h1.8v2h-1.8Z"/>' +
+            '<path d="M18 12.2V9.4h2.4v2.8"/>' +
+            '<g class="an-burbuja an-burbuja-1"><circle cx="19.2" cy="7" r="1.1"/></g>' +
+            '<g class="an-burbuja an-burbuja-3"><circle cx="17.2" cy="4.6" r="0.85"/></g>' +
+            '<g class="an-rueda"><circle cx="5.6" cy="18.8" r="1.5"/></g>' +
+            '<g class="an-rueda an-rueda-2"><circle cx="12.4" cy="18.8" r="1.5"/></g>' +
+            '<g class="an-rueda"><circle cx="18.6" cy="18.8" r="1.5"/></g>'
+        ),
+
+        // Auto — "salir al trabajo". Antes salía el 🚗 crudo: era el único
+        // emoji de la rutina de la familia que no tenía dibujo propio, y se
+        // veía de colores en medio de una hoja donde todo el resto va en el
+        // color de la persona.
+        auto: svg(
+            '<path d="M2.6 20.4h18.8"/>' +
+            '<path class="relleno" d="M3.6 12.8h16.8v4.2H3.6Z"/>' +
+            '<path d="M3 17v-4l2.4-.8 1.9-3.2a2 2 0 0 1 1.7-1h6a2 2 0 0 1 1.7 1l1.9 3.2 2.4.8v4"/>' +
+            '<path d="M7.6 12.2 8.9 9.6h6.2l1.3 2.6Z"/>' +
+            '<path d="M12 9.6v2.6"/>' +
+            '<g class="an-rueda"><circle cx="7.2" cy="17.4" r="1.9"/></g>' +
+            '<g class="an-rueda an-rueda-2"><circle cx="16.8" cy="17.4" r="1.9"/></g>'
+        ),
+
+        // Despertador — el ⏰ del título del módulo, en los tres lugares donde
+        // aparece "Rutina" (la hoja, el Inicio y el menú).
+        reloj: svg(
+            '<circle class="relleno" cx="12" cy="13.4" r="7.4"/>' +
+            '<circle cx="12" cy="13.4" r="7.4"/>' +
+            '<path d="M12 9.2v4.2l2.8 1.8"/>' +
+            '<path d="M6.4 4.6 3.8 7.2M17.6 4.6l2.6 2.6"/>' +
+            '<path class="relleno" d="M5.4 3.4a2.4 2.4 0 0 1 2.6 1.6M18.6 3.4A2.4 2.4 0 0 0 16 5"/>' +
+            '<path d="M8.4 20.6 7 22.4M15.6 20.6l1.4 1.8"/>'
         ),
 
         // Cochecito con las ruedas girando — el paseo
@@ -141,12 +177,73 @@ CÓMO SE USA
             '<path class="an-bandera relleno" d="M12 3.6h4.2l-1.2 1.6 1.2 1.6H12Z"/>'
         ),
 
-        // Maletín — el trabajo
+        // Notebook — el trabajo. Era un maletín; Mari (2026-08-06): "tanto mamá
+        // como papá usan una portátil". Clave `trabajo` intacta: cambia el
+        // dibujo, no el dato (mismo criterio que el trencito).
         trabajo: svg(
-            '<path d="M3.4 8.4h17.2a1.4 1.4 0 0 1 1.4 1.4v8.2a1.4 1.4 0 0 1-1.4 1.4H3.4A1.4 1.4 0 0 1 2 18V9.8a1.4 1.4 0 0 1 1.4-1.4Z"/>' +
-            '<path class="relleno" d="M2 12.4h20v5.6a1.4 1.4 0 0 1-1.4 1.4H3.4A1.4 1.4 0 0 1 2 18Z"/>' +
-            '<path d="M9 8.4V6.2a1.4 1.4 0 0 1 1.4-1.4h3.2A1.4 1.4 0 0 1 15 6.2v2.2"/>' +
-            '<path class="an-cierre" d="M10.6 13.6h2.8"/>'
+            '<path class="relleno" d="M6.4 4.6h11.2v8.4H6.4Z"/>' +
+            '<path d="M6.4 4.6h11.2v8.4H6.4Z"/>' +
+            '<path class="relleno" d="M3.2 17.8 5.6 13h12.8l2.4 4.8Z"/>' +
+            '<path d="M3.2 17.8 5.6 13h12.8l2.4 4.8Z"/>' +
+            '<path d="M2.6 17.8h18.8"/>' +
+            '<path class="an-cierre" d="M10.2 15.6h3.6"/>'
+        ),
+
+        // Dos grandes y un chiquito — la sección Familia
+        familia: svg(
+            '<circle class="relleno" cx="6.4" cy="6.2" r="2.5"/>' +
+            '<circle cx="6.4" cy="6.2" r="2.5"/>' +
+            '<path d="M2.6 20.4v-4a3.8 3.8 0 0 1 7.6 0v4"/>' +
+            '<circle class="relleno" cx="17.6" cy="6.2" r="2.5"/>' +
+            '<circle cx="17.6" cy="6.2" r="2.5"/>' +
+            '<path d="M13.8 20.4v-4a3.8 3.8 0 0 1 7.6 0v4"/>' +
+            '<circle class="relleno an-respira" cx="12" cy="13" r="1.9"/>' +
+            '<circle class="an-respira" cx="12" cy="13" r="1.9"/>' +
+            '<path d="M9.2 20.4v-2.6a2.8 2.8 0 0 1 5.6 0v2.6"/>'
+        ),
+
+        // Portapapeles con renglones — la sección Actividades
+        lista: svg(
+            '<path d="M8.6 4.4H6.4A1.6 1.6 0 0 0 4.8 6v13a1.6 1.6 0 0 0 1.6 1.6h11.2A1.6 1.6 0 0 0 19.2 19V6a1.6 1.6 0 0 0-1.6-1.6h-2.2"/>' +
+            '<path class="relleno" d="M9.4 2.6h5.2a1 1 0 0 1 1 1v2.2H8.4V3.6a1 1 0 0 1 1-1Z"/>' +
+            '<path d="M9.4 2.6h5.2a1 1 0 0 1 1 1v2.2H8.4V3.6a1 1 0 0 1 1-1Z"/>' +
+            '<path d="M8.4 10.6h7.2M8.4 13.8h7.2M8.4 17h4.4"/>'
+        ),
+
+        // Reloj de arena — "Tiempo libre" y "Aún en…". Era el ⏳ crudo, el
+        // último relojito viejo que quedaba en la hoja (Mari, 2026-08-07).
+        libre: svg(
+            '<path d="M6.6 2.8h10.8M6.6 21.2h10.8"/>' +
+            '<path d="M8.2 2.8v3.6L12 12l-3.8 5.6v3.6M15.8 2.8v3.6L12 12l3.8 5.6v3.6"/>' +
+            '<path class="relleno" d="M9.6 5.4h4.8L12 9Z"/>' +
+            '<path class="relleno" d="M9.4 19.4h5.2L12 15.8Z"/>' +
+            '<path class="an-gota" d="M12 11.2v2.6"/>'
+        ),
+
+        // Cadena — la marca de "esto lo hacen dos". Antes era un 🔗 crudo; se
+        // veía poco porque no había compartidas, y con las tomas de León
+        // ancladas a mamá pasó a aparecer siete veces por día.
+        link: svg(
+            '<path d="M10.2 7.6H7.8a4.4 4.4 0 0 0 0 8.8h2.4"/>' +
+            '<path d="M13.8 7.6h2.4a4.4 4.4 0 0 1 0 8.8h-2.4"/>' +
+            '<path d="M8.6 12h6.8"/>'
+        ),
+
+        // Engranaje — la sección Ajustes
+        ajustes: svg(
+            '<circle class="relleno" cx="12" cy="12" r="3.1"/>' +
+            '<circle cx="12" cy="12" r="3.1"/>' +
+            '<path d="M12 2.8v2.8M12 18.4v2.8M2.8 12h2.8M18.4 12h2.8"/>' +
+            '<path d="m5.5 5.5 2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2"/>'
+        ),
+
+        // Almanaque — el calendario / los cumpleaños del mes
+        calendario: svg(
+            '<path d="M4.6 5.6h14.8A1.4 1.4 0 0 1 20.8 7v11.8a1.4 1.4 0 0 1-1.4 1.4H4.6a1.4 1.4 0 0 1-1.4-1.4V7a1.4 1.4 0 0 1 1.4-1.4Z"/>' +
+            '<path class="relleno" d="M3.2 10.4h17.6v8.4a1.4 1.4 0 0 1-1.4 1.4H4.6a1.4 1.4 0 0 1-1.4-1.4Z"/>' +
+            '<path d="M3.2 10.4h17.6"/>' +
+            '<path d="M7.6 3.4v4M16.4 3.4v4"/>' +
+            '<path d="M7 13.8h2M11 13.8h2M15 13.8h2M7 17h2M11 17h2"/>'
         ),
 
         // Mancuerna que sube y baja — la gimnasia
@@ -209,7 +306,15 @@ CÓMO SE USA
         '🍳': 'comida',   '🛁': 'bano',      '🚿': 'ducha',      '🧸': 'juego',
         '🚶': 'paseo',    '🏫': 'escuela',   '💼': 'trabajo',    '🏋️': 'gimnasia',
         '🏋': 'gimnasia', '📚': 'estudio',   '🫂': 'upa',        '🧺': 'tareas',
-        '🎂': 'cumple',   '🎉': 'cumple'
+        '🎂': 'cumple',   '🎉': 'cumple',    '🚗': 'auto',       '🚙': 'auto',
+        '🚕': 'auto',     '⏰': 'reloj',     '⏱️': 'reloj',      '🕐': 'reloj',
+        '👪': 'familia',  '👨‍👩‍👦': 'familia',   '👩‍👧': 'familia',    '🧑‍🤝‍🧑': 'familia',
+        '📋': 'lista',    '📌': 'lista',     '📝': 'lista',      '🗒️': 'lista',
+        '⚙️': 'ajustes',  '⚙': 'ajustes',    '🔧': 'ajustes',    '🛠️': 'ajustes',
+        '📅': 'calendario', '📆': 'calendario', '🗓️': 'calendario',
+        '📖': 'estudio',  '📕': 'estudio',
+        '⏳': 'libre',    '⌛': 'libre',     '⏱': 'reloj',       '🕒': 'reloj',
+        '🔗': 'link',     '⛓️': 'link'
     };
 
     function resolver(valor) {

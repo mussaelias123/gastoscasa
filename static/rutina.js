@@ -159,17 +159,14 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return m ? m.nombre : '';
     }
 
-    // Hasta que existan los dibujos propios (PR de visuales), cada miembro se
-    // identifica con un emoji según su rol; si el usuario cargó uno, gana el suyo.
-    var EMOJI_ROL = { mama: '💜', papa: '💙', hijo: '🧒', otro: '🙂' };
-
-    function emojiDe(u) {
-        var m = miembroDe(u);
-        if (!m) return '🙂';
-        if (m.dibujo) return m.dibujo;
-        if (m.es_bebe) return '🍼';
-        return EMOJI_ROL[m.rol] || '🙂';
-    }
+    // A las personas NO las acompaña ningún ícono: va el nombre solo (pedido de
+    // Mari, 2026-08-06). Había un emoji por rol (💜 mamá, 💙 papá, 🍼 bebé) que
+    // era provisorio "hasta que existan los dibujos propios"; con los dibujos ya
+    // hechos, competía con ellos y metía color ajeno a la paleta. A quién
+    // pertenece cada cosa lo dice el COLOR (`--rut-color`), que está en el borde
+    // de la tarjeta, en el chip y en el dibujo de la actividad.
+    // El campo `dibujo` de `rutina_miembros` queda en la base pero ya no se
+    // muestra; los emojis de ACTIVIDAD siguen igual (pasan por RutinaDibujos).
 
     // Color identificador. El token lo valida el backend contra _RUT_COLORES,
     // así que se puede inyectar como valor de custom property sin riesgo. Si el
@@ -587,7 +584,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 var sub = it.sub;
                 if (it.act && pool.length) {
                     var a = pool[(seed * 3 + slot * 7) % pool.length];
-                    sub = '✨ ' + a.n + ' (' + a.d + ', ' + a.min + '): ' + a.p;
+                    // Sin ✨ adelante: este `sub` viaja como TEXTO (se pinta con
+                    // escapeHtml en el popover y en las tarjetas), así que no
+                    // puede llevar dibujo, y el emoji suelto era el último
+                    // pegote de color ajeno a la paleta.
+                    sub = a.n + ' (' + a.d + ', ' + a.min + '): ' + a.p;
                     slot++;
                 }
                 items.push(Object.assign({}, it, {
@@ -896,14 +897,15 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
         var b = bebes()[0];
         if (b) {
-            nombre.textContent = emojiDe(b.id) + ' ' + b.nombre;
+            nombre.textContent = b.nombre;
             edad.textContent = b.edad_texto || '';
         } else if (MIEMBROS.length) {
-            nombre.textContent = '👪 Familia';
+            // innerHTML y no textContent: lleva dibujo. El texto es fijo.
+            nombre.innerHTML = dibujoHtml('familia') + ' Familia';
             edad.textContent = MIEMBROS.length +
                 (MIEMBROS.length === 1 ? ' integrante' : ' integrantes');
         } else {
-            nombre.textContent = '👪 Familia';
+            nombre.innerHTML = dibujoHtml('familia') + ' Familia';
             edad.textContent = 'sin cargar';
         }
     }
@@ -919,7 +921,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             return '<button type="button" class="rut-chip rut--persona' +
                 (UI.sel[u] ? ' activo' : '') + '" data-user="' + u + '"' +
                 styleColor(u) + '>' +
-                emojiDe(u) + ' ' + escapeHtml(nombreDe(u)) + '</button>';
+                escapeHtml(nombreDe(u)) + '</button>';
         }).join('');
     }
 
@@ -951,7 +953,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 ? '¡su primer día!'
                 : (anios === 1 ? '¡1 añito!' : '¡' + anios + ' años!');
             return '<div class="rut-cumple-card rut--persona"' + styleColor(m.id) + '>' +
-                '<span class="rut-cumple-emoji">🎂</span>' +
+                '<span class="rut-cumple-emoji">' + dibujoHtml('cumple') + '</span>' +
                 '<div class="rut-cumple-texto">' +
                     '<div class="rut-cumple-titulo">¡Feliz cumple, ' +
                         escapeHtml(m.nombre) + '! ' + cuantos + '</div>' +
@@ -1041,7 +1043,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 });
                 if (prev && prev.editable) {
                     btnAun = '<button type="button" class="rut-btn-aun" data-aun="' + prev.id + '" ' +
-                        'data-aun-cur="' + cur.id + '">⏳ Aún en ' + escapeHtml(prev.t) + '</button>';
+                        'data-aun-cur="' + cur.id + '">' + dibujoHtml('libre') +
+                        ' Aún en ' + escapeHtml(prev.t) + '</button>';
                 }
             }
             // Emoji clickeable: salta al ítem en la línea de tiempo (si es
@@ -1053,7 +1056,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 : '<span class="rut-ahora-emoji">' + itemEmoji(el) + '</span>';
             html += '<div class="rut-card-ahora rut--persona"' + styleColor(u) + '>' +
                 '<div class="rut-ahora-head">' +
-                    '<span class="rut-ahora-quien">' + emojiDe(u) + ' ' +
+                    '<span class="rut-ahora-quien">' +
                         escapeHtml(nombreDe(u)) + ' · ahora</span>' +
                     '<span class="rut-ahora-rango">' + rango + '</span>' +
                 '</div>' +
@@ -1070,7 +1073,12 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     (enVentana ? '<span class="rut-barra-knob" style="left:' + pct + '%"></span>' : '') +
                 '</div>' +
                 '<div class="rut-ahora-pie">' +
-                    '<span class="rut-ahora-luego">luego: ' + (sig ? sig.emoji : '🌙') + ' ' +
+                    // El pie va por `itemEmoji`, igual que el cuerpo: usaba
+                    // `sig.emoji` crudo y quedaba un emoji de colores (🤱🏻) al
+                    // lado del dibujo de la misma actividad. "Fin del día" toma
+                    // el dibujo de la noche.
+                    '<span class="rut-ahora-luego">luego: ' +
+                        (sig ? itemEmoji(sig) : dibujoHtml('noche')) + ' ' +
                         escapeHtml(sig ? sig.t : 'fin del día') +
                         ' · <span class="rut-mono">' + (sig ? fmt(sig.start) : '—') + '</span></span>' +
                     accionesAhora(cur, btnAun, editable) +
@@ -1108,8 +1116,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return '<span class="rut-ahora-acciones">' + btnAun +
             (editable
                 ? '<button type="button" class="rut-btn-hora" data-ahora-hora="' + cur.id + '" ' +
-                      'title="Empezó / termina a otra hora">🕐</button>' +
-                  '<button type="button" class="rut-btn-empezo" data-empezo="' + cur.id + '">⏱ Empezó ahora</button>'
+                      'title="Empezó / termina a otra hora">' + dibujoHtml('reloj') + '</button>' +
+                  '<button type="button" class="rut-btn-empezo" data-empezo="' + cur.id + '">' +
+                      dibujoHtml('reloj') + ' Empezó ahora</button>'
                 : '') +
         '</span>';
     }
@@ -1196,7 +1205,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         html += '<div class="rut-canvas-head" style="max-width:' + anchoMax + 'px">' +
             usuarios.map(function (u) {
                 return '<span class="rut-col-head rut--persona"' + styleColor(u) + '>' +
-                    emojiDe(u) + ' ' + escapeHtml(nombreDe(u)) + '</span>';
+                    escapeHtml(nombreDe(u)) + '</span>';
             }).join('') +
         '</div>';
 
@@ -1270,7 +1279,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                         '<span class="rut-item-hora">' + fmt(it.start) + '</span>' +
                         '<span class="rut-item-emoji">' + itemEmoji(it) + '</span>' +
                         '<span class="rut-item-titulo">' + escapeHtml(it.t) + '</span>' +
-                        (it.compartida && h >= 24 ? '<span class="rut-item-candado" title="Compartida con otro miembro">🔗</span>' : '') +
+                        (it.compartida && h >= 24 ? '<span class="rut-item-candado" title="Compartida con otro miembro">' + dibujoHtml('link') + '</span>' : '') +
                         (it.dur && h >= 38 ? '<span class="rut-item-dur">' + fmtDur(it.dur) + '</span>' : '') +
                     '</span>' +
                     subHtml +
@@ -1382,7 +1391,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     function renderNoche(nocturnas, enCurso) {
         if (!nocturnas.length) return '';
         return '<div class="rut-noche">' +
-            '<div class="rut-noche-titulo">🌙 Madrugada — así arranca el día ' +
+            // La luna de las SIESTAS (creciente con zzz), no la de `noche`
+            // (llena con estrellas): elección de Mari, 2026-08-06.
+            '<div class="rut-noche-titulo">' + dibujoHtml('siesta') + ' Madrugada — así arranca el día ' +
                 '<span>a demanda, horarios orientativos</span></div>' +
             nocturnas.map(function (it) {
                 var activa = enCurso(it);
@@ -1458,7 +1469,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     return '<button type="button" class="rut-add-pill rut--persona' +
                         (String(formAdd.user) === u ? ' activo' : '') +
                         '" data-add-user="' + u + '"' + styleColor(u) + '>' +
-                        emojiDe(u) + ' ' + escapeHtml(nombreDe(u)) + '</button>';
+                        escapeHtml(nombreDe(u)) + '</button>';
                 }).join('') +
             '</div>' +
             '<div class="rut-add-linea">' +
@@ -1527,7 +1538,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
         var html = pendientes.map(function (c) {
             return '<div class="rut-cal-card" data-cal-add="' + c.id + '">' +
-                '<span class="rut-cal-txt">📅 Hoy por calendario: <b>' + escapeHtml(c.nombre) + '</b>' +
+                '<span class="rut-cal-txt">' + dibujoHtml('calendario') + ' Hoy por calendario: <b>' + escapeHtml(c.nombre) + '</b>' +
                     ' · proponemos 10:00 – 11:00 — tocá para añadir</span>' +
                 '<button type="button" class="rut-cal-x" data-cal-x="' + c.id + '" ' +
                     'aria-label="Descartar por hoy">✕</button>' +
@@ -1587,7 +1598,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         ];
 
         cont.innerHTML = '<div class="rut-tips-card">' +
-            '<div class="rut-tips-titulo">📖 Ventanas de sueño — ' +
+            '<div class="rut-tips-titulo">' + dibujoHtml('estudio') + ' Ventanas de sueño — ' +
                 escapeHtml(nombre) + ', ' + escapeHtml(bebe.miembro.edad_texto || r.etiqueta) +
             '</div>' +
             tips.map(function (t) {
@@ -1663,10 +1674,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             else if (!m.fecha_nacimiento) detalle.push('sin fecha de nacimiento');
 
             return '<div class="rut-miembro rut--persona"' + styleColor(m.id) + '>' +
-                '<span class="rut-miembro-emoji">' + emojiDe(m.id) + '</span>' +
                 '<div class="rut-miembro-texto">' +
                     '<div class="rut-miembro-nombre">' + escapeHtml(m.nombre) +
-                        (m.cumple_hoy ? ' <span class="rut-miembro-cumple">🎂 hoy</span>' : '') +
+                        (m.cumple_hoy ? ' <span class="rut-miembro-cumple">' + dibujoHtml('cumple') + ' hoy</span>' : '') +
                     '</div>' +
                     '<div class="rut-miembro-sub">' + escapeHtml(detalle.join(' · ')) +
                         (m.es_bebe ? ' · primera toma ' + minAHora(m.ancla_min) : '') +
@@ -1800,6 +1810,20 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // ── Menú de secciones (mismo patrón que Lactancia) ───────────────────────
     // No es un <select> nativo porque las opciones llevan ícono. El wrapper
     // recibe data-rut-sec y el CSS muestra solo la sección activa en mobile.
+    // Íconos FIJOS del template (menú de secciones, títulos de panel, título
+    // del módulo). Van con `data-dib="clave"` y los rellena esto, en vez de
+    // pegar el SVG entero ocho veces en el HTML. Se pinta ANTES de
+    // initNavMenu(): ese copia el innerHTML del ítem activo al trigger, así que
+    // si el dibujo todavía no está, el trigger se queda sin ícono.
+    function pintarIconos(raiz) {
+        var lib = window.RutinaDibujos;
+        if (!lib) return;
+        (raiz || document).querySelectorAll('[data-dib]').forEach(function (el) {
+            if (el.firstChild) return;                 // ya pintado
+            el.innerHTML = lib.html(el.dataset.dib);
+        });
+    }
+
     function initNavMenu() {
         var wrap = document.querySelector('.rut-wrap');
         var trigger = $('rut-nav-trigger');
@@ -1943,7 +1967,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 if (!sel.cur && !sel.sig) return;
                 var el = sel.cur || { emoji: '⏳', t: 'Tiempo libre', start: now, end: sel.sig ? sel.sig.start : now + 30, dur: 1 };
                 out.push({
-                    user: u, nombre: nombreDe(u), emoji: emojiDe(u),
+                    user: u, nombre: nombreDe(u),
                     color: colorTokenDe(u),
                     actual: {
                         titulo: el.t, emoji: el.emoji,
@@ -1981,6 +2005,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // scroll interno en el timeline). En mobile la clase no tiene efecto.
         document.body.classList.add('rut-body');
 
+        pintarIconos();      // ANTES de initNavMenu: ver el comentario de arriba
         initNavMenu();
 
         // ── Fondo día/noche ────────────────────────────────────────────────

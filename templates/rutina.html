@@ -111,7 +111,13 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
   <div class="rut-topbar" id="rut-topbar">
     <header class="rut-header">
       <div>
-        <h1 class="rut-header-titulo">⏰ Rutina</h1>
+        <!-- El despertador va como dibujo de la paleta (RutinaDibujos.reloj),
+             no como emoji: adentro del módulo todo lo que es ícono se dibuja.
+             Va inline y no por JS porque es contenido fijo del template.
+             El menú global y la tarjeta del Inicio SIGUEN con ⏰: ahí convive
+             con los emojis de las otras secciones (🏠 💸 📊 📅 🍼 ⚙) y cambiar
+             uno solo rompe esa fila. -->
+        <h1 class="rut-header-titulo"><span class="rut-ico" data-dib="reloj" aria-hidden="true"></span> Rutina</h1>
         <p class="rut-header-fecha" id="rut-fecha"></p>
       </div>
       <div class="rut-header-leon">
@@ -138,10 +144,12 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
         <span class="rut-nav-chevron" aria-hidden="true">▾</span>
       </button>
       <ul class="rut-nav-lista" id="rut-nav-lista" role="listbox" hidden>
-        <li><button type="button" class="rut-nav-opt" data-sec="hoy" role="option"><span class="rut-nav-ico" aria-hidden="true">🕐</span><span>Hoy</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="familia" role="option"><span class="rut-nav-ico" aria-hidden="true">👪</span><span>Familia</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="actividades" role="option"><span class="rut-nav-ico" aria-hidden="true">📋</span><span>Actividades</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="ajustes" role="option"><span class="rut-nav-ico" aria-hidden="true">⚙️</span><span>Ajustes</span></button></li>
+        {# Los íconos los rellena `pintarIconos()` con la librería de dibujos:
+           `data-dib` en vez del SVG entero repetido ocho veces. #}
+        <li><button type="button" class="rut-nav-opt" data-sec="hoy" role="option"><span class="rut-nav-ico" data-dib="reloj" aria-hidden="true"></span><span>Hoy</span></button></li>
+        <li><button type="button" class="rut-nav-opt" data-sec="familia" role="option"><span class="rut-nav-ico" data-dib="familia" aria-hidden="true"></span><span>Familia</span></button></li>
+        <li><button type="button" class="rut-nav-opt" data-sec="actividades" role="option"><span class="rut-nav-ico" data-dib="lista" aria-hidden="true"></span><span>Actividades</span></button></li>
+        <li><button type="button" class="rut-nav-opt" data-sec="ajustes" role="option"><span class="rut-nav-ico" data-dib="ajustes" aria-hidden="true"></span><span>Ajustes</span></button></li>
       </ul>
     </div>
   </div>
@@ -161,7 +169,7 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
       <!-- Línea de tiempo del día completo -->
       <div class="rut-dia-completo">
         <div class="rut-tl-head">
-          <span class="rut-tl-titulo">📋 El día completo</span>
+          <span class="rut-tl-titulo"><span class="rut-ico" data-dib="lista" aria-hidden="true"></span> El día completo</span>
           <span class="rut-tl-botones">
             <button type="button" class="rut-btn-fantasma" id="rut-editar">✎ Editar</button>
             <button type="button" class="rut-btn-fantasma" id="rut-reset">↺ Plan original</button>
@@ -187,7 +195,7 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
     <!-- ══ 4. Sección FAMILIA ═════════════════════════════════════════════ -->
     <section class="rut-sec rut-sec--familia">
       <div class="rut-panel">
-        <div class="rut-panel-titulo">👪 Familia</div>
+        <div class="rut-panel-titulo"><span class="rut-ico" data-dib="familia" aria-hidden="true"></span> Familia</div>
         <p class="rut-panel-ayuda">Cargá a cada integrante con su fecha de
           nacimiento. Si un hijo es bebé, marcá la casilla: su rutina se arma
           sola con las ventanas de sueño que le corresponden por edad, y se va
@@ -199,7 +207,7 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
     <!-- ══ 5. Sección ACTIVIDADES ═════════════════════════════════════════ -->
     <section class="rut-sec rut-sec--actividades">
       <div class="rut-panel">
-        <div class="rut-panel-titulo">📋 Actividades</div>
+        <div class="rut-panel-titulo"><span class="rut-ico" data-dib="lista" aria-hidden="true"></span> Actividades</div>
         <p class="rut-panel-ayuda">Acá va a vivir el editor de actividades: los
           días de la semana en circulitos, los meses, las fechas de inicio y fin
           (con la opción de repetir todos los años), los recesos y los miembros
@@ -212,7 +220,7 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
     <!-- ══ 6. Sección AJUSTES ═════════════════════════════════════════════ -->
     <section class="rut-sec rut-sec--ajustes">
       <div class="rut-panel" id="rut-ajustes">
-        <div class="rut-panel-titulo">⚙️ Ajustes de la hoja</div>
+        <div class="rut-panel-titulo"><span class="rut-ico" data-dib="ajustes" aria-hidden="true"></span> Ajustes de la hoja</div>
         <p class="rut-panel-ayuda">La hora de inicio de la noche es el tope del
           día: hasta ahí se encadenan las siestas del bebé, y después arranca el
           sueño nocturno.</p>

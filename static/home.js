@@ -91,7 +91,7 @@
     /* ════════════════════════════════════════════════════════════════════════
        TARJETA RUTINA — qué hace cada uno AHORA + qué viene después
        Fuente: window.Rutina.hoyAhora() (rutina.js), que fuerza "hoy real" y
-       devuelve [{user, nombre, emoji, color, actual, siguiente}].
+       devuelve [{user, nombre, color, actual, siguiente}].
        Color por persona: `color` es el token de la paleta y se escribe inline
        en --home-rut-color (la familia sale de rutina_miembros y es de tamaño
        variable, así que no hay una clase por persona).
@@ -121,12 +121,14 @@
                 el.style.setProperty('--home-rut-color', 'var(--color-' + p.color + ')');
             }
 
-            // "{emoji persona} {nombre}: {emoji act} {titulo} · desde–hasta"
+            // "{nombre}: {emoji act} {titulo} · desde–hasta"
+            // A la persona la acompaña su COLOR, no un ícono (pedido de Mari,
+            // 2026-08-06): `hoyAhora()` ya no devuelve `emoji` de miembro.
             var linea = document.createElement('div');
             linea.className = 'home-rut-linea';
             var quien = document.createElement('span');
             quien.className = 'home-rut-quien';
-            quien.textContent = p.emoji + ' ' + p.nombre + ':';
+            quien.textContent = p.nombre + ':';
             var act = document.createElement('span');
             act.className = 'home-rut-act';
             act.textContent = p.actual.emoji + ' ' + p.actual.titulo;
