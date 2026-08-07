@@ -519,10 +519,12 @@ def _lac_payload():
 
     rec = _lac_recordatorio()
     recordatorio = {**rec, 'pendiente': _lac_recordatorio_pendiente(rec, ahora)}
+    bebe = _lac_bebe(ahora=ahora)
 
     return {'freezer': freezer, 'heladera': heladera, 'historial': historial,
             'tablero': tablero, 'params': params, 'badge': badge,
-            'recordatorio': recordatorio, 'bebe': _lac_bebe(ahora=ahora)}
+            'recordatorio': recordatorio, 'bebe': bebe,
+            'muestras': _lac_muestras(partidas, bebe)}
 
 
 def _home_lactancia_payload():
@@ -617,6 +619,58 @@ def _lac_dia_de_vida(nac, dia):
     if dia.day < nac.day:
         meses -= 1
     return (dia - nac).days + 1, max(meses, 0) + 1
+
+
+def _lac_muestras(partidas=None, bebe=None):
+    """Una fila por EXTRACCIÓN REAL: la materia prima del gráfico del Resumen.
+
+    Cada fila es una vez que se sacó leche: cuándo (fecha, hora y día de la
+    semana), cuánta, y qué edad tenía el bebé ese día. Con esa lista el
+    navegador puede cruzar cualquier par de variables —hora contra volumen, día
+    de la semana contra cantidad, lo que sea— sin volver a preguntarle nada al
+    servidor: cambiar de eje no es un pedido más, es reagrupar lo que ya tiene.
+
+    Cuenta SOLO la leche FRESCA, el mismo criterio de _lac_dia_a_dia. Una bolsa
+    freezada (varias de heladera combinadas en una) o una bajada a descongelar
+    es la MISMA leche cambiando de lugar: si se contara otra vez, los mismos
+    mililitros aparecerían dos y tres veces y el gráfico mentiría.
+
+    Una bolsita ya usada o descartada SÍ cuenta: esa extracción existió igual, y
+    acá se mira lo que se produjo, no lo que queda guardado.
+
+    Sin fecha de nacimiento cargada, dia_vida y mes_vida quedan en None (la
+    pantalla deshabilita esos ejes; nada se rompe). Lo mismo con la hora: la
+    app la pide siempre, pero en la base puede faltar.
+    """
+    if partidas is None:
+        partidas = database.obtener_partidas_lactancia()
+    if bebe is None:
+        bebe = _lac_bebe()
+    try:
+        nac = datetime.strptime(bebe['fecha_nacimiento'], '%Y-%m-%d').date()
+    except ValueError:
+        nac = None
+
+    muestras = []
+    for fila in partidas:
+        p = dict(fila)
+        if (p.get('tipo') or 'fresca') != 'fresca':
+            continue
+        try:
+            dia = datetime.strptime(str(p['fecha_extraccion']), '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            continue
+        dia_vida, mes_vida = _lac_dia_de_vida(nac, dia)
+        muestras.append({
+            'id':         p['id'],
+            'fecha':      dia.isoformat(),
+            'hora':       (p.get('hora_extraccion') or '').strip() or None,
+            'ml':         p['volumen_ml'],
+            'dia_vida':   dia_vida,
+            'mes_vida':   mes_vida,
+            'dia_semana': dia.weekday(),      # 0 = lunes … 6 = domingo
+        })
+    return muestras
 
 
 def _lac_dia_a_dia(hoy=None):
@@ -995,6 +1049,7 @@ def _static_version():
             os.path.join(app.static_folder, 'app.js'),
             os.path.join(app.static_folder, 'calendario.js'),
             os.path.join(app.static_folder, 'lactancia.js'),
+            os.path.join(app.static_folder, 'grafico.js'),
             os.path.join(app.static_folder, 'rutina.js'),
             os.path.join(app.static_folder, 'rutina-actividades.js'),
             os.path.join(app.static_folder, 'home.js'),

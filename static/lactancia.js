@@ -237,7 +237,11 @@
                 recordatorio: data.recordatorio || DATOS.recordatorio ||
                     { activo: false, hora: '21:00', pendiente: false },
                 bebe: data.bebe || DATOS.bebe ||
-                    { nombre: '', fecha_nacimiento: '', edad_texto: '', mes_de_vida: null }
+                    { nombre: '', fecha_nacimiento: '', edad_texto: '', mes_de_vida: null },
+                // Las extracciones que alimentan el gráfico del Resumen. Va en
+                // esta lista como todo lo demás: lo que no se nombre acá, el
+                // servidor lo manda igual pero la pantalla lo tira.
+                muestras: data.muestras || []
             };
             // El cambio YA quedó guardado. Si fallara el repintado de la
             // pantalla no hay que decirle que falló la acción (sería mentira):
@@ -335,11 +339,64 @@
         '</div>';
     }
 
-    // Tarjeta de KPI de ciclo de vida (emoji + número grande + etiqueta, con un
+    // ── Íconos propios de los KPI ────────────────────────────────────────────
+    // Antes acá había emojis (💧🍼📅…). El problema del emoji es que no es
+    // nuestro: cada teléfono lo dibuja distinto —en Android la mamadera es
+    // celeste, en iPhone es blanca— y ninguno acompaña la paleta cálida del
+    // módulo. Estos son dibujos propios, con el mismo lenguaje que el resto de
+    // los íconos: caja de 24×24, trazo en currentColor (así heredan el color de
+    // la tarjeta) y un `.relleno` translúcido para el segundo tono.
+    var ICO_KPI = {
+        // Gota de leche con un corazón adentro: la producción, los "litros de amor"
+        gota_corazon:
+            '<path class="relleno" d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/>' +
+            '<path d="M12 3.4c3.1 3.7 5.4 6.7 5.4 9.6a5.4 5.4 0 1 1-10.8 0C6.6 10.1 8.9 7.1 12 3.4Z"/>' +
+            '<path d="M12 17.2s-2.8-1.8-2.8-3.8a1.5 1.5 0 0 1 2.8-.9 1.5 1.5 0 0 1 2.8.9c0 2-2.8 3.8-2.8 3.8Z"/>',
+        // Mamadera con leche hasta la mitad: lo que tomó el bebé
+        mamadera:
+            '<path class="relleno" d="M7.3 12.4h9.4v6.9a1.6 1.6 0 0 1-1.6 1.6H8.9a1.6 1.6 0 0 1-1.6-1.6Z"/>' +
+            '<path d="M10.7 5.1c-.4-1.6.2-2.9 1.3-2.9s1.7 1.3 1.3 2.9Z"/>' +
+            '<path d="M8.7 5.1h6.6a.6.6 0 0 1 .6.6v1.4H8.1V5.7a.6.6 0 0 1 .6-.6Z"/>' +
+            '<path d="M8.9 7.1h6.2a1.6 1.6 0 0 1 1.6 1.6v10.6a1.6 1.6 0 0 1-1.6 1.6H8.9a1.6 1.6 0 0 1-1.6-1.6V8.7a1.6 1.6 0 0 1 1.6-1.6Z"/>' +
+            '<path d="M7.3 12.4h9.4"/>',
+        // Copo derritiéndose en una gota: la leche que se bajó a descongelar
+        copo_gota:
+            '<path class="relleno" d="M12 13.2c1.7 2 2.9 3.6 2.9 4.9a2.9 2.9 0 0 1-5.8 0c0-1.3 1.2-2.9 2.9-4.9Z"/>' +
+            '<path d="M12 3.4v6.8M9 5.2l6 3.2M15 5.2l-6 3.2"/>' +
+            '<path d="M12 13.2c1.7 2 2.9 3.6 2.9 4.9a2.9 2.9 0 0 1-5.8 0c0-1.3 1.2-2.9 2.9-4.9Z"/>',
+        // Gota tachada: la leche que no llegó a tomarse. El `corte` es un trazo
+        // grueso del color del fondo que va DEBAJO de la barra: abre un hueco a
+        // los costados para que la barra se lea por encima de la gota y no se
+        // empasten las dos. Es el mismo truco de los carteles de "prohibido".
+        gota_tachada:
+            '<path class="relleno" d="M12 4.6c2.7 3.2 4.6 5.8 4.6 8.3a4.6 4.6 0 1 1-9.2 0c0-2.5 1.9-5.1 4.6-8.3Z"/>' +
+            '<path d="M12 4.6c2.7 3.2 4.6 5.8 4.6 8.3a4.6 4.6 0 1 1-9.2 0c0-2.5 1.9-5.1 4.6-8.3Z"/>' +
+            '<path class="corte" d="M6.2 18.4 17.8 5.6"/>' +
+            '<path d="M6.2 18.4 17.8 5.6"/>',
+        // Almanaque: para cuántos días alcanza el stock
+        almanaque:
+            '<path class="relleno" d="M5.4 6.2h13.2a1.4 1.4 0 0 1 1.4 1.4v2.8H4V7.6a1.4 1.4 0 0 1 1.4-1.4Z"/>' +
+            '<path d="M5.4 6.2h13.2a1.4 1.4 0 0 1 1.4 1.4v11.2a1.4 1.4 0 0 1-1.4 1.4H5.4A1.4 1.4 0 0 1 4 18.8V7.6a1.4 1.4 0 0 1 1.4-1.4Z"/>' +
+            '<path d="M4 10.4h16M8.4 4v3.4M15.6 4v3.4"/>' +
+            '<path d="M8.2 14h.01M12 14h.01M15.8 14h.01M8.2 17.1h.01M12 17.1h.01"/>',
+        // Bolsita con la marca de hasta dónde llenarla: el tamaño sugerido
+        bolsita:
+            '<path class="relleno" d="M6.9 11.6h10.2v5.6a3.2 3.2 0 0 1-3.2 3.2h-3.8a3.2 3.2 0 0 1-3.2-3.2Z"/>' +
+            '<path d="M6.9 3.6h10.2v13.6a3.2 3.2 0 0 1-3.2 3.2h-3.8a3.2 3.2 0 0 1-3.2-3.2Z"/>' +
+            '<path d="M6.9 6.4h10.2"/>' +
+            '<path d="M6.9 11.6h10.2"/>'
+    };
+
+    function icoKpi(nombre) {
+        return '<svg class="lac-ico lac-kpi-ico" viewBox="0 0 24 24" aria-hidden="true">' +
+            ICO_KPI[nombre] + '</svg>';
+    }
+
+    // Tarjeta de KPI de ciclo de vida (ícono + número grande + etiqueta, con un
     // sub-texto opcional). `clase` permite resaltar (ej. "litros de amor").
-    function kpiCard(emoji, num, label, sub, clase) {
+    function kpiCard(ico, num, label, sub, clase) {
         return '<div class="lac-kpi' + (clase ? ' ' + clase : '') + '">' +
-            '<span class="lac-kpi-emoji">' + emoji + '</span>' +
+            icoKpi(ico) +
             '<span class="lac-kpi-num">' + num + '</span>' +
             '<span class="lac-kpi-label">' + label +
                 (sub ? ' <small>' + sub + '</small>' : '') + '</span>' +
@@ -399,16 +456,16 @@
             ? fmtMl(t.bolsa_sugerida_ml) : '—';
         html += '<div class="lac-kpis-titulo">' + T('Ciclo de la leche') + '</div>' +
             '<div class="lac-kpis">' +
-            kpiCard('💧', fmtLitros(t.producido_ml), T('Producción total'),
+            kpiCard('gota_corazon', fmtLitros(t.producido_ml), T('Producción total'),
                     T('todo lo que produjiste'), 'lac-kpi--amor') +
-            kpiCard('🍼', fmtMl(t.consumida_ml || 0), T('Consumida por {bebe}', { bebe: nombreBebe() })) +
-            kpiCard('🧊→🥛', fmtMl(t.descongelada_ml || 0), T('Descongelada')) +
-            kpiCard('🚱', fmtMl(t.desperdicio_ml || 0), T('Desperdicio'), null,
+            kpiCard('mamadera', fmtMl(t.consumida_ml || 0), T('Consumida por {bebe}', { bebe: nombreBebe() })) +
+            kpiCard('copo_gota', fmtMl(t.descongelada_ml || 0), T('Descongelada')) +
+            kpiCard('gota_tachada', fmtMl(t.desperdicio_ml || 0), T('Desperdicio'), null,
                     (t.desperdicio_ml ? 'is-alerta' : '')) +
-            kpiCard('📅', dias, T('Alcanza para'),
+            kpiCard('almanaque', dias, T('Alcanza para'),
                     (t.dias_stock == null ? T('cuando {bebe} tome de las bolsitas', { bebe: nombreBebe() })
                                           : T('al ritmo actual'))) +
-            kpiCard('📏', bolsa, T('Bolsita sugerida'),
+            kpiCard('bolsita', bolsa, T('Bolsita sugerida'),
                     (t.bolsa_sugerida_ml == null ? T('según el consumo de {bebe}', { bebe: nombreBebe() })
                                                  : T('promedio real'))) +
         '</div>';
@@ -566,6 +623,17 @@
             T('Todavía no se cerró ninguna bolsita.'));
     }
 
+    // El botón ⬆ está apagado mientras no haya ninguna bolsita tildada en la
+    // heladera, y se enciende apenas hay una. El estado se mira siempre del DOM
+    // (los checkbox son la fuente de verdad de lo que se tildó) y se repinta al
+    // dibujar las listas y con cada tilde.
+    function pintarBotonFreezar() {
+        var btn = $('lac-btn-freezar');
+        if (!btn) return;
+        var hay = !!document.querySelector('#lac-lista-heladera .lac-check-input:checked');
+        btn.classList.toggle('is-lista', hay);
+    }
+
     function renderTodo() {
         renderAviso();
         renderBebe();
@@ -573,6 +641,12 @@
         renderConfig();
         renderTablero();
         renderListas();
+        // Va DESPUÉS de renderListas: los checkbox se dibujan ahí, y al
+        // redibujarse arrancan todos destildados.
+        pintarBotonFreezar();
+        // El gráfico se repinta con cada payload fresco: si se acaba de cargar
+        // una bolsita, ya se ve reflejada sin recargar la página.
+        if (window.LAC_GRAFICO) window.LAC_GRAFICO.render(DATOS);
         // Tarjeta de vencimiento del form de alta: se repinta con los
         // parámetros vigentes (si la mamá los cambió en Ajustes, se ve acá).
         if ($('lac-ex-hint')) pintarVencimiento();
@@ -1261,6 +1335,14 @@
         initForms();
         initNavMobile();
 
+        // El gráfico del Resumen vive en static/grafico.js. Le prestamos los
+        // ayudantes de acá para que formatee igual que el resto del módulo (y
+        // no tenga su propia versión de "120 ml" ni de "12 ago").
+        if (window.LAC_GRAFICO) {
+            window.LAC_GRAFICO.init({ T: T, fmtMl: fmtMl, esc: esc,
+                                      fmtFechaCorta: fmtFechaCorta });
+        }
+
         // Botones fijos
         $('lac-cf-guardar').addEventListener('click', guardarCierre);
         $('lac-ed-guardar').addEventListener('click', guardarEditor);
@@ -1275,6 +1357,11 @@
             inEl.value = inEl.max || '';
         });
         $('lac-btn-freezar').addEventListener('click', freezarSeleccionadas);
+        // Los checkbox de la heladera nacen y mueren con cada repintado, así que
+        // el oyente va en el contenedor, que sí es siempre el mismo.
+        $('lac-lista-heladera').addEventListener('change', function (e) {
+            if (e.target.classList.contains('lac-check-input')) pintarBotonFreezar();
+        });
         $('lac-rec-guardar').addEventListener('click', guardarRecordatorio);
         $('lac-bebe-guardar').addEventListener('click', guardarBebe);
         $('lac-config-guardar').addEventListener('click', guardarConfig);
