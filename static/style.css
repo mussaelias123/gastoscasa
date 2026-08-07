@@ -6856,7 +6856,11 @@ span.rut-ahora-emoji { cursor: default; }
   border-left: 3px solid var(--rut-color);
   overflow: hidden;
   cursor: pointer;
-  background: var(--color-superficie);
+  /* El color del bloque viaja por `--rut-item-bg` y NO por `background` a
+     secas: así el tema de la hoja puede envolverlo en un color-mix y darle
+     transparencia sin tener que repetir los seis tintes de abajo. */
+  --rut-item-bg: var(--color-superficie);
+  background: var(--rut-item-bg);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--color-texto) 10%, transparent);
 }
 
@@ -6916,13 +6920,15 @@ span.rut-ahora-emoji { cursor: default; }
   .rut-item-hora { font-size: 0.62rem; }
 }
 
-/* Tintes por tipo (mismos color-mix que las filas) */
-.rut-item--sueno     { background: color-mix(in srgb, var(--color-acento) 8%,        var(--color-superficie)); }
-.rut-item--noche     { background: color-mix(in srgb, var(--color-acento) 14%,       var(--color-superficie)); }
-.rut-item--teta      { background: color-mix(in srgb, var(--color-persona-mari) 8%,  var(--color-superficie)); }
-.rut-item--bano      { background: color-mix(in srgb, var(--color-persona-leon) 12%, var(--color-superficie)); }
-.rut-item--guarderia { background: color-mix(in srgb, var(--color-alerta) 10%,       var(--color-superficie)); }
-.rut-item--custom    { background: color-mix(in srgb, var(--color-exito) 8%,         var(--color-superficie)); }
+/* Tintes por tipo (mismos color-mix que las filas). Escriben `--rut-item-bg`,
+   no `background`: el `.rut-item` de arriba lo pinta y el tema de la hoja lo
+   envuelve para darle transparencia. */
+.rut-item--sueno     { --rut-item-bg: color-mix(in srgb, var(--color-acento) 8%,        var(--color-superficie)); }
+.rut-item--noche     { --rut-item-bg: color-mix(in srgb, var(--color-acento) 14%,       var(--color-superficie)); }
+.rut-item--teta      { --rut-item-bg: color-mix(in srgb, var(--color-persona-mari) 8%,  var(--color-superficie)); }
+.rut-item--bano      { --rut-item-bg: color-mix(in srgb, var(--color-persona-leon) 12%, var(--color-superficie)); }
+.rut-item--guarderia { --rut-item-bg: color-mix(in srgb, var(--color-alerta) 10%,       var(--color-superficie)); }
+.rut-item--custom    { --rut-item-bg: color-mix(in srgb, var(--color-exito) 8%,         var(--color-superficie)); }
 
 .rut-item.is-ahora {
   box-shadow: 0 0 0 2px var(--color-acento);
@@ -8589,6 +8595,7 @@ body.lac-body .lac-item { border-radius: 12px; }
 
    Cuánta luz hay lo decide rutina.js con estas custom properties:
      --rut-luz     0 = noche cerrada · 1 = pleno día  → cruza los dos cielos
+                   y ADEMÁS decide el modo claro/oscuro (`seguirTema()`)
      --rut-sol-x/y --rut-luna-x/y    posición en el arco, en %
      --rut-sol-op  --rut-luna-op     opacidad de cada astro
    Cross-fade por opacidad en vez de interpolar colores: es más barato y
@@ -8610,9 +8617,12 @@ body:has(.rut-wrap) {
   --fuente-principal: 'Archivo Narrow', 'Segoe UI', Tahoma, sans-serif;
   --radio-borde: 14px;
 
-  /* Cielo */
-  --rut-cielo-dia-alto:   #A9D3E8;
-  --rut-cielo-dia-bajo:   #E4EEDC;
+  /* Cielo. El de día se profundizó el 2026-08-05: el celeste viejo era tan
+     pálido que, detrás de una tarjeta translúcida, seguía dando blanco —
+     bajar la opacidad de las tarjetas no alcanzaba, el problema era que
+     no había color atrás que mostrar. */
+  --rut-cielo-dia-alto:   #6FB6DC;
+  --rut-cielo-dia-bajo:   #BFDCC9;
   --rut-cielo-noche-alto: #1C2440;
   --rut-cielo-noche-bajo: #38405E;
 
@@ -8630,10 +8640,58 @@ body:has(.rut-wrap) {
   --rut-sol:  #F2C46B;
   --rut-luna: #EDEFF5;
 
-  /* Cuánto se ve el fondo. Suavecito, como lo pediste. */
-  --rut-fondo-fuerza: 0.34;
+  /* ⚠ Cuánto se ve el fondo YA NO SE FIJA ACÁ: lo calcula `fuerzaFondo()` en
+     rutina.js y llega como `--rut-fondo-op`. Historia, para no volver atrás:
+     eran dos valores fijos (0.85 de día / 0.45 de noche) porque con el cielo
+     nocturno pleno y las tarjetas CLARAS el texto caía a 3.78:1. Atenuar la
+     capa entera traía dos males que Mari cazó el 2026-08-06: (a) el cielo
+     nocturno se mezclaba con el blanco de la página y se veía GRIS CLARO — "el
+     fondo se ve blanco" — y (b) la luna se atenúa junto con la capa, así que
+     brillaba MENOS de noche que el sol de día, justo al revés.
+     La causa real era el choque cielo oscuro + tarjeta clara, y eso depende del
+     MODO, no de la hora: por eso ahora la fuerza sigue al acuerdo entre los dos
+     y el paisaje va PLENO de día en claro y de noche en oscuro. */
 
-  /* Valores por defecto por si el JS todavía no corrió (mediodía) */
+  /* Texto secundario más oscuro que el global (#6b7280 en claro): sobre una
+     tarjeta translúcida con el paisaje atrás, ese gris perdía contraste.
+     Derivado con color-mix de vars existentes → sigue valiendo cero hardcode
+     y se adapta solo a claro/oscuro (en oscuro sale MÁS claro, no más gris).
+     2026-08-05: de 72% a 85% — Mari: "las letras están demasiado claritas". */
+  --color-texto-muted: color-mix(in srgb, var(--color-texto) 85%, var(--color-superficie));
+
+  /* ── LA PERILLA DEL VIDRIO ───────────────────────────────────────────────
+     Cuánta superficie queda en las tarjetas: más bajo = se ve más el paisaje.
+     Está en un solo lugar a propósito, para poder regular toda la hoja de una.
+     Si Mari pide "más/menos fondo", se toca ACÁ, no tarjeta por tarjeta.
+     El blur es lo que sostiene la lectura cuando la opacidad baja. */
+  --rut-vidrio: 20%;
+  --rut-blur: 16px;
+
+  /* El lienzo del día y lo que va ADENTRO suyo van más abajo todavía: los
+     bloques, los números de hora y los nombres de arriba se veían como
+     parches blancos sobre el lienzo (pedido de Mari: "que sean igual que la
+     tarjeta de fondo"). Bloque y lienzo comparten valor a propósito — como
+     el bloque se apoya SOBRE el lienzo, las dos capas se suman y el bloque
+     igual queda un pelito más sólido, que es justo lo que hace falta para
+     que se lea el texto sin que parezca una etiqueta pegada. */
+  --rut-vidrio-lienzo: 10%;
+  --rut-vidrio-bloque: 12%;
+}
+
+/* El modo oscuro YA NO NECESITA vidrios propios. Tenía 72/50/62 — casi opacos —
+   por un solo caso: tarjetas OSCURAS con el cielo de DÍA fuerte detrás, que las
+   aclaraba y se comía el texto (3.39:1 al 42%). Ese caso ahora lo cubre
+   `fuerzaFondo()` bajando el PAISAJE en vez de tapar la tarjeta, así que los
+   dos modos comparten los mismos valores y el fondo se ve igual de bien en los
+   dos. Si volvés a separarlos, medí primero: puede que no haga falta. */
+
+/* Valores por defecto por si el JS todavía no corrió (mediodía).
+   ⚠ VAN EN `:root` Y NO EN `body.rut-body`. `pintarFondo()` los escribe como
+   estilo INLINE sobre `<html>`; si el defecto vive en el body, el body es un
+   ancestro MÁS CERCANO de `.rut-fondo` y su valor gana siempre — el ciclo
+   día/noche quedaba congelado en mediodía (cielo de día, sol prendido y luna
+   apagada a las 23 h). Bug encontrado el 2026-08-04. No mover de acá. */
+:root {
   --rut-luz: 1;
   --rut-sol-x: 50%;
   --rut-sol-y: 18%;
@@ -8641,17 +8699,165 @@ body:has(.rut-wrap) {
   --rut-luna-x: 50%;
   --rut-luna-y: 80%;
   --rut-luna-op: 0;
+  --rut-fondo-op: 1;   /* la recalcula fuerzaFondo() en cada pintada */
 }
 
-/* Con el paisaje detrás, las tarjetas se despegan mejor con un poco de
-   translucidez (mismo recurso que los paneles de Lactancia). */
+/* ── Tarjetas translúcidas ────────────────────────────────────────────────
+   Para que el paisaje se vea DE VERDAD (pedido de Mari) las superficies bajan
+   a 70% y se les suma desenfoque: el blur es lo que sostiene la lectura, no la
+   opacidad — el texto se apoya en una mancha suave, no en el dibujo crudo.
+   REGLA DEL MÓDULO (igual que en Lactancia): la legibilidad manda. Ante la
+   duda se sube la opacidad de la tarjeta, no se apaga el fondo.
+   Los bloques de la línea de tiempo (`.rut-item--*`) quedan OPACOS a propósito:
+   son los que llevan el texto chico, y el fondo se aprecia en los huecos. */
 body.rut-body .rut-filas,
 body.rut-body .rut-panel,
-body.rut-body .rut-card-ahora,
-body.rut-body .rut-tips-card {
+body.rut-body .rut-tips-card,
+body.rut-body .rut-tl-head,
+body.rut-body .rut-cal-card,
+body.rut-body .rut-dia-btn,
+body.rut-body .rut-header,
+body.rut-body .rut-chips-nav {
   background: var(--color-superficie);
-  background: color-mix(in srgb, var(--color-superficie) 88%, transparent);
-  backdrop-filter: blur(3px);
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio), transparent);
+  backdrop-filter: blur(var(--rut-blur));
+}
+
+/* ── La tarjeta del título del módulo ─────────────────────────────────────
+   Era el único bloque NEGRO de la hoja (`--color-deco-1` con texto invertido)
+   y cortaba el paisaje en seco. Pedido de Mari (2026-08-05): que use el mismo
+   formato que las demás. Al pasar a vidrio claro hay que dar vuelta TODO lo
+   que estaba pensado para fondo oscuro — si no, queda texto blanco sobre
+   blanco. Los chips traían `rgba(255,255,255,…)` hardcodeado justamente por
+   eso; acá pasan a variables de paleta y se saldó ese hardcode viejo. */
+body.rut-body .rut-header,
+body.rut-body .rut-header-titulo { color: var(--color-texto); }
+
+body.rut-body .rut-chips-nav { border-top: 1px solid var(--color-borde); }
+
+body.rut-body .rut-chip {
+  border-color: var(--color-borde);
+  color: var(--color-texto-muted);
+}
+
+body.rut-body .rut-chip.activo {
+  background: color-mix(in srgb, var(--rut-color) 16%, var(--color-superficie));
+  border-color: var(--rut-color);
+  color: var(--rut-color);
+}
+
+body.rut-body .rut-chips-leyenda,
+body.rut-body .rut-chips-vacio { color: var(--color-texto-muted); }
+
+/* Estas dos llevan tinte de persona: se conserva y se le agrega la
+   translucidez encima (color-mix anidado), en vez de pisarlo con superficie. */
+body.rut-body .rut-card-ahora,
+body.rut-body .rut-miembro {
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio), transparent);
+  background: color-mix(in srgb,
+              color-mix(in srgb, var(--rut-color) 9%, var(--color-superficie)) var(--rut-vidrio),
+              transparent);
+  backdrop-filter: blur(var(--rut-blur));
+}
+
+body.rut-body .rut-cumple-card {
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio), transparent);
+  background: color-mix(in srgb,
+              color-mix(in srgb, var(--rut-color) 14%, var(--color-superficie)) var(--rut-vidrio),
+              transparent);
+  backdrop-filter: blur(var(--rut-blur));
+}
+
+/* Los dibujos de las tarjetas "Ahora" heredaban `--color-texto` y salían casi
+   negros (a Mari no le gustaban así). Van en el color de la persona, igual que
+   los de la línea de tiempo: turquesa León, violeta Mamá, azul Papá. */
+body.rut-body .rut-ahora-emoji .rut-dib { color: var(--rut-color); }
+
+/* El lienzo es la superficie más grande de la hoja: es la que más tapaba el
+   cielo. Va translúcido pero SIN backdrop-filter — atrás tiene el degradé del
+   cielo, que ya es parejo, y desenfocar una capa tan alta que scrollea cuesta
+   batería al re-pintar en cada scroll. */
+body.rut-body .rut-canvas,
+body.rut-body .rut-canvas-head {
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio-lienzo), transparent);
+}
+
+/* ── Las barras de scroll, una tarjeta más ────────────────────────────────
+   Eran las del sistema: una franja BLANCA, opaca, pegada al lienzo, que
+   cortaba el paisaje justo al lado (pedido de Mari, 2026-08-06). Son las DOS
+   que tiene la hoja — el lienzo del día completo y la columna de paneles —,
+   detectadas mirando qué scrollea de verdad, no a ojo.
+   El riel va TRANSPARENTE (ahí se ve el fondo) y el pulgar sale del color de
+   texto con alfa: así se adapta solo a claro/oscuro sin sumar variables, y
+   sigue valiendo "cero hardcode" porque el color sale de `var()`.
+   El borde transparente + `background-clip: padding-box` es lo que le da aire
+   al pulgar: sin eso toca los dos bordes y vuelve a parecer una franja. */
+body.rut-body .rut-dia-completo,
+body.rut-body .rut-paneles {
+  scrollbar-width: thin;                                   /* Firefox */
+  scrollbar-color: color-mix(in srgb, var(--color-texto) 30%, transparent) transparent;
+}
+
+body.rut-body .rut-dia-completo::-webkit-scrollbar,
+body.rut-body .rut-paneles::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body.rut-body .rut-dia-completo::-webkit-scrollbar-track,
+body.rut-body .rut-paneles::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body.rut-body .rut-dia-completo::-webkit-scrollbar-thumb,
+body.rut-body .rut-paneles::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-texto) 26%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+body.rut-body .rut-dia-completo::-webkit-scrollbar-thumb:hover,
+body.rut-body .rut-paneles::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-texto) 44%, transparent);
+  background-clip: padding-box;
+}
+
+/* Lo que vive DENTRO del lienzo: los bloques, los números de hora del costado
+   y los nombres de las personas de arriba. Antes eran los tres parches
+   blancos sobre un lienzo transparente. Van todos al mismo valor. */
+body.rut-body .rut-item {
+  background: color-mix(in srgb, var(--rut-item-bg) var(--rut-vidrio-bloque), transparent);
+}
+
+body.rut-body .rut-col-head {
+  background: color-mix(in srgb,
+              color-mix(in srgb, var(--rut-color) 10%, var(--color-superficie))
+              var(--rut-vidrio-bloque), transparent);
+}
+
+/* ── Los nombres de persona, cuando son TEXTO ─────────────────────────────
+   No pueden ir en `--rut-color` puro: los colores de persona son pasteles
+   claros, pensados para bordes y tintes, no para letras. Con el vidrio al
+   16% el nombre de la columna daba 1.18:1 — ilegible. Mezclados con el color
+   de texto conservan la identidad (se sigue viendo "el celeste de León") y
+   se leen. Se adapta solo: en modo oscuro mezcla hacia el texto CLARO.
+   Va inline en cada regla y NO en una variable del body: `--rut-color` se
+   define inline por elemento, así que una variable declarada en el body
+   resolvería con el color del body y saldrían los tres del mismo color. */
+body.rut-body .rut-col-head,
+body.rut-body .rut-ahora-quien,
+body.rut-body .rut-chip.activo {
+  color: color-mix(in srgb, var(--rut-color) 25%, var(--color-texto));
+}
+
+/* Las filas de la madrugada y los chips de hora tenían superficie opaca
+   propia, que anulaba la translucidez del contenedor. */
+body.rut-body .rut-fila { background: transparent; }
+
+body.rut-body .rut-hora-label {
+  background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio-bloque), transparent);
 }
 
 /* ── La capa del fondo ───────────────────────────────────────────────────── */
@@ -8661,7 +8867,11 @@ body.rut-body .rut-tips-card {
   z-index: -1;                 /* detrás de todo el contenido de la app */
   overflow: hidden;
   pointer-events: none;
-  opacity: var(--rut-fondo-fuerza);
+  /* La calcula rutina.js (`fuerzaFondo()`), no el CSS: depende del ACUERDO
+     entre el cielo y el modo claro/oscuro, y esa cuenta en `calc()` quedaba
+     ilegible. Pleno (1) de día en claro y de noche en oscuro; baja sola en el
+     amanecer/atardecer y si el modo se fuerza en contra de la hora. */
+  opacity: var(--rut-fondo-op, 1);
 }
 
 .rut-fondo-cielo {
@@ -8680,11 +8890,12 @@ body.rut-body .rut-tips-card {
 }
 
 /* ── Sol y luna ──────────────────────────────────────────────────────────── */
+/* Más grandes que antes (74px): son lo que Mari más quiere ver del fondo. */
 .rut-astro {
   position: absolute;
-  width: 74px;
-  height: 74px;
-  margin: -37px 0 0 -37px;      /* centrado en su punto */
+  width: 108px;
+  height: 108px;
+  margin: -54px 0 0 -54px;      /* centrado en su punto */
   border-radius: 50%;
   transition: left 1.2s linear, top 1.2s linear, opacity 1.2s linear;
 }
@@ -8694,7 +8905,7 @@ body.rut-body .rut-tips-card {
   top: var(--rut-sol-y);
   opacity: var(--rut-sol-op);
   background: var(--rut-sol);
-  box-shadow: 0 0 44px 20px color-mix(in srgb, var(--rut-sol) 55%, transparent);
+  box-shadow: 0 0 66px 30px color-mix(in srgb, var(--rut-sol) 55%, transparent);
 }
 
 .rut-astro--luna {
@@ -8702,7 +8913,7 @@ body.rut-body .rut-tips-card {
   top: var(--rut-luna-y);
   opacity: var(--rut-luna-op);
   background: var(--rut-luna);
-  box-shadow: 0 0 34px 14px color-mix(in srgb, var(--rut-luna) 40%, transparent);
+  box-shadow: 0 0 50px 22px color-mix(in srgb, var(--rut-luna) 40%, transparent);
 }
 
 /* El brillo late despacio, como respirando */
@@ -8741,13 +8952,22 @@ body.rut-body .rut-tips-card {
 }
 
 /* ── El paisaje de bloques, pegado abajo ─────────────────────────────────── */
+/* Franja finita abajo: antes se comía 46vh de pantalla y el cielo quedaba
+   relegado a una banda arriba. Ahora el paisaje es un zócalo y todo el resto
+   es cielo con el sol o la luna (pedido de Mari).
+
+   El alto sale del ANCHO (`aspect-ratio`, la misma proporción que el viewBox)
+   y no de `vh`: así la escala es exacta, los bloques quedan cuadrados y en un
+   monitor ancho el `slice` no recorta la copa de los árboles. El `min-height`
+   es para el celular: ahí sí recorta, pero de los costados (el suelo sigue
+   yendo de borde a borde) y los bloques no quedan de 10 px. */
 .rut-mapa {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 46vh;
-  min-height: 220px;
+  aspect-ratio: 240 / 42;
+  min-height: 110px;
 }
 
 .rut-mapa svg {
@@ -8757,12 +8977,15 @@ body.rut-body .rut-tips-card {
   shape-rendering: crispEdges;   /* bordes duros: es dibujo de bloques */
 }
 
-/* De noche el paisaje se apaga: un velo azulado encima */
+/* De noche el paisaje se apaga: un velo azulado encima. Es un degradé y no un
+   color plano porque la parte de arriba de esta franja ya es cielo: con un velo
+   parejo se veía el borde del velo como una raya horizontal. */
 .rut-mapa::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: var(--rut-cielo-noche-alto);
+  background: linear-gradient(to bottom,
+              transparent 0%, var(--rut-cielo-noche-alto) 45%);
   opacity: calc((1 - var(--rut-luz)) * 0.62);
   transition: opacity 1.2s linear;
 }

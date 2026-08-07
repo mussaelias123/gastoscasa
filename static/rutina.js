@@ -243,6 +243,36 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // tiempo (fue la decisión de Mari: "las dos cosas").
     var horaFondo = null;   // minuto que se está reflejando (null = todavía nada)
 
+    // ── El modo claro/oscuro sigue a la luz (2026-08-06, decisión de Mari) ───
+    // POR QUÉ: el paisaje se pintaba a media opacidad de noche (0.45) para que
+    // el texto oscuro sobre tarjeta clara no se cayera de contraste. Efecto no
+    // buscado: el cielo nocturno se mezclaba con el blanco de la página y se
+    // veía GRIS CLARO — "el fondo se ve blanco" —, y la luna, que se atenúa con
+    // toda la capa, brillaba MENOS de noche que el sol de día. Con tarjetas
+    // oscuras y letra clara el problema no existe: el cielo nocturno puede ir a
+    // fondo pleno y la letra se lee mejor. Eso es lo que destraba subir el
+    // paisaje al 100% y bajar la opacidad de las tarjetas al mismo tiempo.
+    //
+    // ⚠ NO toca localStorage('tema'): la preferencia que Mari guardó vale para
+    // el resto de la app. Esto pisa el atributo solo mientras estás en la hoja;
+    // al salir, el script anti-flicker de base.html vuelve a leer su valor.
+    // Y si ella toca el botón de tema a mano, GANA lo suyo: lo detectamos
+    // porque el atributo dejó de ser el último que escribimos nosotros.
+    var temaEscrito = null;    // último valor que puso este módulo
+    var temaAMano   = false;   // el usuario lo cambió → no lo tocamos más
+
+    function seguirTema(luz) {
+        var raiz = document.documentElement;
+        if (temaAMano) return;
+        if (temaEscrito !== null && raiz.dataset.theme !== temaEscrito) {
+            temaAMano = true;
+            return;
+        }
+        var quiere = luz < 0.5 ? 'dark' : 'light';
+        if (raiz.dataset.theme !== quiere) raiz.dataset.theme = quiere;
+        temaEscrito = quiere;
+    }
+
     function pintarFondo(min) {
         var fondo = document.querySelector('.rut-fondo');
         if (!fondo) return;
@@ -287,6 +317,33 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         raiz.style.setProperty('--rut-luna-x', luna.x);
         raiz.style.setProperty('--rut-luna-y', luna.y);
         raiz.style.setProperty('--rut-luna-op', esDeDia ? '0' : '1');
+
+        seguirTema(luz);                                  // ANTES de fuerzaFondo:
+        raiz.style.setProperty('--rut-fondo-op', fuerzaFondo(luz));   // lee el tema ya aplicado
+    }
+
+    // ── Cuánta fuerza tiene el paisaje ──────────────────────────────────────
+    // NO sigue a la luz: sigue al ACUERDO entre el cielo y el modo. Un cielo
+    // oscuro detrás de tarjetas claras (o al revés) se come el texto; cuando
+    // los dos van para el mismo lado, el fondo puede ir pleno.
+    //   acorde = 1 → cielo y modo coinciden (pleno día en claro, noche cerrada
+    //               en oscuro): fondo al 100%, que es el 90% del tiempo.
+    //   acorde = 0.5 → el CRUCE (amanecer/atardecer): el cielo está a mitad de
+    //               camino y no contrasta ni con letra oscura ni con letra
+    //               clara. Es el único agujero real: sin esto, medido, la
+    //               etiqueta "AHORA" cae a 3.11:1 y falla AA.
+    //   acorde = 0 → Mari forzó el modo en contra de la hora con el botón
+    //               (noche en claro / día en oscuro). Ahí manda la lectura.
+    // La curva es cuadrática a propósito: cae despacio cerca del acuerdo (para
+    // no apagar el paisaje por nada) y rápido cerca del desacuerdo. Medido con
+    // el vidrio en 20/10/12, el techo que aguanta cada momento es 1.00 / 0.60 /
+    // 0.40 y la curva da 1.00 / 0.55 / 0.40 — entra en los tres con aire.
+    var FONDO_PISO = 0.40;
+
+    function fuerzaFondo(luz) {
+        var claro = (document.documentElement.dataset.theme !== 'dark') ? 1 : 0;
+        var acorde = luz * claro + (1 - luz) * (1 - claro);
+        return (FONDO_PISO + (1 - FONDO_PISO) * acorde * acorde).toFixed(3);
     }
 
     // Qué hora refleja el fondo: hoy → el reloj; otro día → lo que estés
