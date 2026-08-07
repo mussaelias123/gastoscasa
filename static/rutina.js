@@ -458,11 +458,18 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     function sinSolapes(items) {
         var arr = items.filter(function (i) { return i.dur > 0; })
                        .sort(function (a, b) { return a.start - b.start; });
-        var fijos = arr.filter(function (i) { return !i.editable; })
+        // `ancla`: inamovible para el reacomodo PERO editable en la UI. Lo usan
+        // las tomas del bebé en la columna de quien amamanta: si se dejaban que
+        // el solape las corriera, la misma toma quedaba a las 19:09 en la
+        // columna del bebé y a las 19:50 en la de mamá — el mismo bloque en dos
+        // horas distintas, justo lo que NO puede pasar. Manda la toma y se
+        // corren las actividades de alrededor; sigue arrastrable desde las dos.
+        function clavado(i) { return !i.editable || i.ancla; }
+        var fijos = arr.filter(clavado)
                        .map(function (i) { return { s: i.start, e: i.end }; });
         var cursor = -Infinity;
         arr.forEach(function (it) {
-            if (!it.editable) { cursor = Math.max(cursor, it.end); return; }
+            if (clavado(it)) { cursor = Math.max(cursor, it.end); return; }
             var s = Math.max(it.start, cursor);
             var choco = true, vueltas = 0;
             while (choco && vueltas++ < 50) {
@@ -666,19 +673,64 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             return out;
         }
 
+        // — Las tomas del bebé ocupan también a quien le da la teta —
+        // ⚠ REGLA DE ESTA FAMILIA, no del dominio: mamá amamanta a León, así que
+        // la toma pasa las dos cosas a la vez y su hora es UNA sola (Mari,
+        // 2026-08-07: "si el usuario modifica cualquiera de las dos, la otra se
+        // modifica sí o sí"). Se resuelve con el MISMO id en las dos columnas:
+        // los ajustes se guardan por `item_id`, así que mover el bloque desde
+        // cualquiera de las dos lo mueve en las dos, sin código de sincronismo.
+        // Mismo patrón que una actividad compartida (`actividadesDe`), que
+        // también emite una copia por participante con el id compartido.
+        // Solo las tomas del DÍA (`kind: 'teta'`): las nocturnas viven en la
+        // franja "Madrugada", que no es una columna y no compite con nada.
+        // ⚠ VENCIMIENTO: vale "hasta que mamá arranque a trabajar" (dicho por
+        // Mari). Cuando pase, se apaga acá — es el único lugar.
+        function tomasQueOcupanAMama(rutinas) {
+            var out = {};
+            var mama = MIEMBROS.filter(function (m) {
+                return m.rol === 'mama' && !m.es_bebe;
+            })[0];
+            if (!mama) return out;
+            var um = String(mama.id);
+            out[um] = [];
+            Object.keys(rutinas).forEach(function (ub) {
+                if (ub === um) return;
+                (rutinas[ub].items || []).forEach(function (it) {
+                    if (it.kind !== 'teta') return;
+                    out[um].push(Object.assign({}, it, {
+                        user: um, compartida: true, ancla: true,
+                        sub: 'con ' + nombreDe(ub)
+                    }));
+                });
+            });
+            return out;
+        }
+
         function porInicio(a, b) { return a.start - b.start; }
 
+        // Las rutinas de los bebés se calculan PRIMERO, en su propia pasada: la
+        // agenda de quien amamanta necesita las tomas ya armadas para poder
+        // sumárselas (antes esto era un solo bucle por miembro y no se podía).
         var porUser = {};
         var bebe = null;
+        var rutinas = {};
+        MIEMBROS.forEach(function (m) {
+            if (!m.es_bebe) return;
+            var r = rutinaBebe(m);
+            rutinas[String(m.id)] = r;
+            if (!bebe) bebe = { miembro: m, resumen: r.resumen };
+        });
+
+        var tomasDe = tomasQueOcupanAMama(rutinas);
+
         MIEMBROS.forEach(function (m) {
             var u = String(m.id);
             var propios = [];
-            if (m.es_bebe) {
-                var r = rutinaBebe(m);
-                propios = r.items.concat(r.noct);
-                if (!bebe) bebe = { miembro: m, resumen: r.resumen };
-            }
-            propios = propios.concat(actividadesDe(u)).concat(tareasDe(u));
+            var r = rutinas[u];
+            if (r) propios = r.items.concat(r.noct);
+            propios = propios.concat(tomasDe[u] || [])
+                             .concat(actividadesDe(u)).concat(tareasDe(u));
             porUser[u] = sinSolapes(propios).sort(porInicio);
         });
 
