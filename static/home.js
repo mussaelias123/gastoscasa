@@ -322,10 +322,13 @@
         })
         .then(function (data) {
             if (!data.ok) throw new Error(data.error || 'Error del servidor');
-            // Proyección del payload completo (misma que _home_lactancia_payload)
+            // Proyección del payload completo (misma que _home_lactancia_payload).
+            // params entra igual que los demás: lo usa el vencimiento en vivo
+            // del form, que si no se quedaría con los valores del primer paint.
             window.LAC_HOME = {
                 heladera: data.heladera || [],
-                freezer_primera: (data.freezer && data.freezer.length) ? data.freezer[0] : null
+                freezer_primera: (data.freezer && data.freezer.length) ? data.freezer[0] : null,
+                params: data.params || (window.LAC_HOME && window.LAC_HOME.params) || {}
             };
             renderLacHome();
             if (window.Notif) window.Notif.refrescar();
@@ -358,18 +361,113 @@
             time_24hr: true, allowInput: true, disableMobile: true
         });
 
-        // Defaults: hoy + ahora (el backend EXIGE fecha y hora no vacías).
+        // Defaults: 30 minutos atrás (igual que /lactancia — lo más común es
+        // cargar la extracción un rato después de haberla hecho). Se toman del
+        // MISMO Date, así cruzar medianoche corrige la fecha solo.
         // form.reset() no repone el altInput de flatpickr: siempre re-fijar.
         function resetFormLac() {
-            form.reset();
-            var d = new Date();
+            form.reset();   // reset devuelve el radio del destino a heladera
+            var d = new Date(Date.now() - 30 * 60 * 1000);
             var iso = d.getFullYear() + '-' +
                 String(d.getMonth() + 1).padStart(2, '0') + '-' +
                 String(d.getDate()).padStart(2, '0');
             fpFecha.setDate(iso, true);
             fpHora.setDate(String(d.getHours()).padStart(2, '0') + ':' +
                 String(d.getMinutes()).padStart(2, '0'), true);
+            pintarDestinoLac();
+            pintarVencimientoLac();
         }
+
+        // ── Stepper ±10 ml ──────────────────────────────────────────────────
+        // Sin focus() desde los botones: en el celular abriría el teclado en
+        // cada tap. El número igual se toca directo y se escribe a mano.
+        var inpVol = document.getElementById('lac-ex-volumen');
+        function pasoLac(delta) {
+            var v = parseInt(inpVol.value, 10);
+            if (isNaN(v)) {
+                if (delta < 0) return;   // vacío y "−" → se queda vacío
+                v = 0;
+            }
+            inpVol.value = Math.min(2000, Math.max(1, v + delta));
+        }
+        document.getElementById('lac-ex-menos')
+            .addEventListener('click', function () { pasoLac(-10); });
+        document.getElementById('lac-ex-mas')
+            .addEventListener('click', function () { pasoLac(10); });
+
+        // ── Destino (heladera / freezer) ────────────────────────────────────
+        // La tarjeta elegida se pinta por CSS con :has(input:checked), pero
+        // algunos navegadores no la repintan al vuelo cuando cambia el radio.
+        // Por eso además se marca is-activa: mismo estilo, repintado seguro.
+        function ubicacionElegidaLac() {
+            var r = form.querySelector('input[name="ubicacion"]:checked');
+            return r ? r.value : 'heladera';
+        }
+
+        function pintarDestinoLac() {
+            [].slice.call(form.querySelectorAll('.lac-destino-card')).forEach(function (c) {
+                var r = c.querySelector('input[name="ubicacion"]');
+                c.classList.toggle('is-activa', !!(r && r.checked));
+            });
+        }
+
+        // ── Vencimiento en vivo ─────────────────────────────────────────────
+        // Espeja _lac_vencimiento del backend: heladera = extracción +
+        // heladera_horas; freezer = extracción + freezer_meses (al fin del
+        // día). Es SOLO informativo — el backend recalcula por su cuenta.
+        var LAC_MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+                         'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+        // Suma meses clampeando al último día del mes, igual que
+        // _act_sumar_intervalo en app.py (31-ene + 1 mes → 28-feb, no 3-mar).
+        function sumarMesesLac(d, n) {
+            var total = d.getMonth() + n;
+            var anio = d.getFullYear() + Math.floor(total / 12);
+            var mes = ((total % 12) + 12) % 12;
+            var ultimoDia = new Date(anio, mes + 1, 0).getDate();
+            return new Date(anio, mes, Math.min(d.getDate(), ultimoDia));
+        }
+
+        function pintarVencimientoLac() {
+            var hint = document.getElementById('lac-ex-hint');
+            if (!hint) return;
+            var f = document.getElementById('lac-ex-fecha').value;
+            var h = document.getElementById('lac-ex-hora').value;
+            if (!f || !h) { hint.textContent = ''; return; }
+            var p = String(f).split('-'), hm = String(h).split(':');
+            if (p.length !== 3 || hm.length < 2) { hint.textContent = ''; return; }
+            var base = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]),
+                                Number(hm[0]), Number(hm[1]));
+            if (isNaN(base.getTime())) { hint.textContent = ''; return; }
+
+            var par = (window.LAC_HOME && window.LAC_HOME.params) || {};
+            if (ubicacionElegidaLac() === 'freezer') {
+                var m = par.freezer_meses || 6;
+                var vf = sumarMesesLac(base, m);
+                hint.textContent = 'Vence el ' + vf.getDate() + ' ' +
+                    LAC_MESES[vf.getMonth()] + ' (' + m + ' meses en freezer).';
+            } else {
+                var hs = par.heladera_horas || 48;
+                var v = new Date(base.getTime() + hs * 3600 * 1000);
+                hint.textContent = 'Vence el ' + v.getDate() + ' ' +
+                    LAC_MESES[v.getMonth()] + ' a las ' +
+                    String(v.getHours()).padStart(2, '0') + ':' +
+                    String(v.getMinutes()).padStart(2, '0') +
+                    ' (' + hs + ' h en heladera).';
+            }
+        }
+
+        form.addEventListener('change', function (e) {
+            if (e.target.name === 'ubicacion') {
+                pintarDestinoLac();
+                pintarVencimientoLac();
+            }
+        });
+        document.getElementById('lac-ex-fecha')
+            .addEventListener('change', pintarVencimientoLac);
+        document.getElementById('lac-ex-hora')
+            .addEventListener('change', pintarVencimientoLac);
+
         resetFormLac();
 
         // Alta de extracción (submit AJAX; sin JS el form POSTea igual y el
@@ -382,8 +480,9 @@
                 document.getElementById('lac-ex-volumen').focus();
                 return;
             }
+            var destino = ubicacionElegidaLac();
             var params = new URLSearchParams();
-            params.append('ubicacion', 'heladera');
+            params.append('ubicacion', destino);
             params.append('volumen_ml', vol);
             params.append('fecha_extraccion', document.getElementById('lac-ex-fecha').value || '');
             params.append('hora_extraccion', document.getElementById('lac-ex-hora').value || '');
@@ -392,7 +491,8 @@
             var btn = document.getElementById('lac-ex-guardar');
             btn.disabled = true;
             lacPost('/api/lactancia/crear', params, function () {
-                lacToast('🥛 ' + vol + ' ml a la heladera.');
+                lacToast('🥛 ' + vol + ' ml ' +
+                         (destino === 'freezer' ? 'al freezer.' : 'a la heladera.'));
                 resetFormLac();
                 window.cerrarHomeSheet('lactancia');
             }, function () { btn.disabled = false; });

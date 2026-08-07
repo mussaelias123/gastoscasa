@@ -43,7 +43,8 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.j
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 import re as _re
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask import (Flask, render_template, request, redirect, url_for, jsonify,
+                   flash, Response)
 import database
 import config
 import cotizacion
@@ -287,25 +288,43 @@ LAC_UBICACIONES = ('freezer', 'heladera')
 LAC_MOTIVOS_CIERRE = ('usada', 'descartada', 'trasladada')
 
 
+# Los parámetros que la usuaria ajusta desde el panel "Ajustes" de /lactancia.
+# Numéricos y booleanos van por separado porque castean distinto: en los
+# numéricos un 0 es un valor válido (combinar_min_horas = 0 significa "no me
+# lo verifiques"), así que nunca se decide por verdadero/falso.
+LAC_PARAMS_NUM = (
+    ('freezer_meses',            'lactancia_freezer_meses'),
+    ('heladera_horas',           'lactancia_heladera_horas'),
+    ('descongelada_horas',       'lactancia_descongelada_horas'),
+    ('aviso_freezer_dias',       'lactancia_aviso_freezer_dias'),
+    ('aviso_heladera_horas',     'lactancia_aviso_heladera_horas'),
+    ('aviso_descongelada_horas', 'lactancia_aviso_descongelada_horas'),
+    ('freezar_hasta_horas',      'lactancia_freezar_hasta_horas'),
+    ('combinar_min_horas',       'lactancia_combinar_min_horas'),
+    ('bolsa_capacidad_ml',       'lactancia_bolsa_capacidad_ml'),
+)
+
+LAC_PARAMS_BOOL = (
+    ('bolsa_capacidad_activa', 'lactancia_bolsa_capacidad_activa'),
+    ('pedir_confirmacion',     'lactancia_pedir_confirmacion'),
+)
+
+
 def _lac_params(cfg=None):
-    """Devuelve los 5 parámetros de conservación/aviso casteados a int
-    (claves cortas). Si un valor viene corrupto en config.json, cae al DEFAULT."""
+    """Devuelve los parámetros de conservación/aviso del módulo con claves
+    cortas (las que viajan al front dentro de `params`). Si un valor viene
+    corrupto en config.json, cae al DEFAULT."""
     if cfg is None:
         cfg = config.cargar_config(CONFIG_FILE)
     params = {}
-    for clave, corta in (
-        ('lactancia_freezer_meses',            'freezer_meses'),
-        ('lactancia_heladera_horas',           'heladera_horas'),
-        ('lactancia_descongelada_horas',       'descongelada_horas'),
-        ('lactancia_aviso_freezer_dias',       'aviso_freezer_dias'),
-        ('lactancia_aviso_heladera_horas',     'aviso_heladera_horas'),
-        ('lactancia_aviso_descongelada_horas', 'aviso_descongelada_horas'),
-        ('lactancia_freezar_hasta_horas',      'freezar_hasta_horas'),
-    ):
+    for corta, clave in LAC_PARAMS_NUM:
         try:
             params[corta] = int(cfg.get(clave, config.DEFAULTS[clave]))
         except (TypeError, ValueError):
             params[corta] = config.DEFAULTS[clave]
+    for corta, clave in LAC_PARAMS_BOOL:
+        valor = cfg.get(clave, config.DEFAULTS[clave])
+        params[corta] = bool(valor)
     return params
 
 
@@ -510,10 +529,15 @@ def _home_lactancia_payload():
     """Proyección de _lac_payload() para la tarjeta Lactancia del Inicio:
     TODAS las partidas de heladera + la PRIMERA del freezer (FIFO: la que se
     consumiría a continuación). Solo recorta el payload completo — JAMÁS
-    reimplementa vencimientos/estados (viven en los helpers _lac_*)."""
+    reimplementa vencimientos/estados (viven en los helpers _lac_*).
+
+    `params` viaja también porque el form de alta del Inicio es el MISMO partial
+    que el de /lactancia: necesita los tiempos para pintar el vencimiento en
+    vivo mientras se carga."""
     datos = _lac_payload()
     return {'heladera': datos['heladera'],
-            'freezer_primera': datos['freezer'][0] if datos['freezer'] else None}
+            'freezer_primera': datos['freezer'][0] if datos['freezer'] else None,
+            'params': datos['params']}
 
 
 def _lac_parsear_volumen(valor):
@@ -580,6 +604,121 @@ def _lac_leer_form_alta(form):
     fecha, hora = _lac_parsear_extraccion(form)
     return dict(ubicacion=ubicacion, fecha_extraccion=fecha, hora_extraccion=hora,
                 volumen_ml=volumen_ml, notas=notas)
+
+
+def _lac_dia_de_vida(nac, dia):
+    """(día de vida, mes de vida) de una fecha, o (None, None) sin nacimiento.
+
+    El día del parto es el DÍA 1 y el MES 1 (así se cuenta en pediatría), y el
+    mes cambia el mismo número de día de cada mes (14/05 → 14/06 = mes 2)."""
+    if nac is None or dia < nac:
+        return None, None
+    meses = (dia.year - nac.year) * 12 + (dia.month - nac.month)
+    if dia.day < nac.day:
+        meses -= 1
+    return (dia - nac).days + 1, max(meses, 0) + 1
+
+
+def _lac_dia_a_dia(hoy=None):
+    """Un renglón por cada día de vida del bebé: qué se extrajo y qué tomó.
+
+    Es la base de la descarga. Cada renglón mira el día completo:
+      - ml extraídos: lo que se sacó ESE día. Solo cuenta la leche FRESCA: una
+        bolsa combinada (freezada) o una bajada a descongelar es la MISMA leche
+        cambiando de lugar, contarla otra vez la duplicaría.
+      - ml tomados: lo de las bolsitas marcadas "usada" ese día. Si se anotó
+        cuánto tomó de verdad, va ese número; si no, lo que tenía la bolsita
+        (mismo criterio que la tarjeta "Consumida por" del Resumen).
+      - ml descartados: lo de las bolsitas tiradas ese día.
+
+    Sin fecha de nacimiento cargada la tabla igual sale: arranca en el primer
+    movimiento y las columnas de día/mes de vida quedan vacías."""
+    from datetime import date
+    if hoy is None:
+        hoy = date.today()
+    partidas = [dict(f) for f in database.obtener_partidas_lactancia()]
+    bebe = _lac_bebe()
+    try:
+        nac = datetime.strptime(bebe['fecha_nacimiento'], '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        nac = None
+
+    def _fecha(valor):
+        try:
+            return datetime.strptime(str(valor), '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    extraido, tomado, descartado = {}, {}, {}
+    movimientos = []
+    for p in partidas:
+        f_ex = _fecha(p['fecha_extraccion'])
+        if f_ex:
+            movimientos.append(f_ex)
+            if (p.get('tipo') or 'fresca') == 'fresca':
+                extraido[f_ex] = extraido.get(f_ex, 0) + p['volumen_ml']
+        f_ci = _fecha(p.get('fecha_cierre'))
+        if f_ci:
+            movimientos.append(f_ci)
+            if p.get('motivo_cierre') == 'usada':
+                ml = (p['consumido_ml'] if p.get('consumido_ml') is not None
+                      else p['volumen_ml'])
+                tomado[f_ci] = tomado.get(f_ci, 0) + ml
+            elif p.get('motivo_cierre') == 'descartada':
+                descartado[f_ci] = descartado.get(f_ci, 0) + p['volumen_ml']
+
+    candidatas = [d for d in [nac] + movimientos if d is not None]
+    desde = min(candidatas) if candidatas else hoy
+    hasta = max([hoy] + movimientos) if movimientos else hoy
+
+    filas = []
+    dia = desde
+    while dia <= hasta:
+        dia_vida, mes_vida = _lac_dia_de_vida(nac, dia)
+        filas.append({
+            'fecha': dia.isoformat(),
+            'dia_vida': dia_vida,
+            'mes_vida': mes_vida,
+            'extraido_ml': extraido.get(dia, 0),
+            'tomado_ml': tomado.get(dia, 0),
+            'descartado_ml': descartado.get(dia, 0),
+        })
+        dia += timedelta(days=1)
+
+    return {
+        'filas': filas,
+        'bebe': bebe,
+        'desde': desde.isoformat(),
+        'hasta': hasta.isoformat(),
+        'totales': {
+            'extraido_ml': sum(f['extraido_ml'] for f in filas),
+            'tomado_ml': sum(f['tomado_ml'] for f in filas),
+            'descartado_ml': sum(f['descartado_ml'] for f in filas),
+        },
+    }
+
+
+def _horas_texto(horas):
+    """Horas (float) → texto corto para un mensaje: '40 min', '2 h', '2 h 20 min'.
+    Se usa en el aviso de cuánto le falta a una partida para poder combinarse."""
+    minutos = max(1, int(round(horas * 60)))
+    h, m = divmod(minutos, 60)
+    if not h:
+        return f"{m} min"
+    return f"{h} h" if not m else f"{h} h {m} min"
+
+
+def _lac_validar_capacidad(volumen_ml, params):
+    """Si la capacidad de bolsita está activada, no deja pasar un volumen que
+    no entre en una bolsita. Es un tope declarado por la usuaria en Ajustes,
+    no una regla sanitaria: apagado por defecto. Lanza ValueError."""
+    if not params.get('bolsa_capacidad_activa'):
+        return
+    tope = params['bolsa_capacidad_ml']
+    if volumen_ml > tope:
+        raise ValueError(
+            f"Son {volumen_ml} ml y tus bolsitas son de {tope} ml. "
+            "Cambiá la capacidad en Ajustes o repartilo en varias bolsitas.")
 
 
 # =============================================================================
@@ -1641,6 +1780,7 @@ def api_lactancia():
 def api_lactancia_crear():
     try:
         datos = _lac_leer_form_alta(request.form)
+        _lac_validar_capacidad(datos['volumen_ml'], _lac_params())
         database.agregar_partida_lactancia(**datos)
         if _es_ajax():
             return jsonify({'ok': True, **_lac_payload()})
@@ -1744,9 +1884,25 @@ def api_lactancia_freezar():
                 "al freezer antes de vencerse para poder freezarlas."
             )
 
+        # Para juntar DOS o más extracciones en una misma bolsita las dos tienen
+        # que estar a la misma temperatura, así que cada una necesita un mínimo
+        # de horas en la heladera. Con una sola partida no aplica (no se mezcla
+        # nada) y con el parámetro en 0 la usuaria pidió que no lo verifiquemos.
+        if len(partidas) >= 2 and params['combinar_min_horas'] > 0:
+            minimo = params['combinar_min_horas']
+            for p in partidas:
+                horas = _lac_horas_en_heladera(p, ahora)
+                if horas < minimo:
+                    falta = minimo - horas
+                    raise ValueError(
+                        f"La bolsita de {p['volumen_ml']} ml lleva "
+                        f"{_horas_texto(horas)} en la heladera y para juntarla con "
+                        f"otra necesita {minimo} h. Faltan {_horas_texto(falta)}.")
+
         volumen_ml = sum(p['volumen_ml'] for p in partidas)
         if volumen_ml > 2000:
             raise ValueError("El volumen combinado supera los 2000 ml; freezá en tandas.")
+        _lac_validar_capacidad(volumen_ml, params)
 
         # La más vieja: fecha asc, luego hora asc (hora NULL primero = conservador)
         mas_vieja = min(partidas,
@@ -1837,6 +1993,110 @@ def api_lactancia_bebe():
             'bebe_nombre': nombre,           # vacío → la UI usa "el bebé"
             'bebe_fecha_nacimiento': fnac,
         }, CONFIG_FILE)
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+# ── Descarga: la tabla día a día, para abrir en Excel ────────────────────────
+# Un renglón por cada día de vida de León (aunque ese día no haya pasado nada),
+# así se puede mirar la evolución completa y hacer gráficos aparte.
+# Detalles que hacen que Excel la abra bien de una: empieza con la marca
+# invisible (BOM) — sin eso rompe los acentos — y el separador es ';', que es
+# lo que espera el Excel en castellano. Las fechas en día/mes/año.
+def _csv_campo(valor, sep):
+    """Un valor listo para el CSV: se entrecomilla solo si hace falta."""
+    texto = '' if valor is None else str(valor)
+    if any(c in texto for c in (sep, '"', '\n', '\r')):
+        return '"' + texto.replace('"', '""') + '"'
+    return texto
+
+
+@app.route('/descargar/dia-a-dia.csv')
+def descargar_dia_a_dia():
+    tabla = _lac_dia_a_dia()
+    sep = ';'
+
+    def dmy(iso):
+        d = datetime.strptime(iso, '%Y-%m-%d').date()
+        return f"{d.day:02d}/{d.month:02d}/{d.year}"
+
+    encabezados = ['Fecha', 'Día de vida', 'Mes de vida',
+                   'ml extraídos', 'ml tomados', 'ml descartados']
+    lineas = [sep.join(_csv_campo(h, sep) for h in encabezados)]
+    for f in tabla['filas']:
+        lineas.append(sep.join(_csv_campo(v, sep) for v in (
+            dmy(f['fecha']), f['dia_vida'], f['mes_vida'],
+            f['extraido_ml'], f['tomado_ml'], f['descartado_ml'],
+        )))
+    t = tabla['totales']
+    lineas.append(sep.join(_csv_campo(v, sep) for v in (
+        'Totales', '', '',
+        t['extraido_ml'], t['tomado_ml'], t['descartado_ml'],
+    )))
+
+    csv = '\ufeff' + '\r\n'.join(lineas) + '\r\n'
+    nombre = f"lactancia-dia-a-dia-{datetime.now().date().isoformat()}.csv"
+    return Response(csv, mimetype='text/csv', headers={
+        'Content-Disposition': f'attachment; filename="{nombre}"',
+        'Cache-Control': 'no-store',
+    })
+
+
+@app.route('/api/lactancia/config', methods=['POST'])
+def api_lactancia_config():
+    """Guarda el panel "Ajustes" del módulo: tiempos de conservación, ventanas
+    de aviso, mínimo para combinar, capacidad de bolsitas y confirmaciones.
+
+    Solo se tocan los campos que vengan en el formulario, así que cada grupo de
+    la pantalla puede guardarse por su cuenta sin pisar el resto."""
+    try:
+        campos = {}
+
+        for corto, clave in LAC_PARAMS_NUM:
+            if corto not in request.form:
+                continue
+            crudo = (request.form.get(corto) or '').strip()
+            try:
+                valor = int(crudo)
+            except ValueError:
+                raise ValueError(f"«{corto.replace('_', ' ')}» tiene que ser un número entero.")
+            minimo, maximo = config.LIMITES_LACTANCIA[corto]
+            if not minimo <= valor <= maximo:
+                raise ValueError(
+                    f"«{corto.replace('_', ' ')}» tiene que estar entre {minimo} y {maximo}.")
+            campos[clave] = valor
+
+        for corto, clave in LAC_PARAMS_BOOL:
+            if corto in request.form:
+                campos[clave] = request.form.get(corto) in ('1', 'true', 'on', 'True')
+
+        if not campos:
+            raise ValueError("No llegó ninguna configuración para guardar.")
+
+        # Coherencia: avisar ANTES de que venza, no después. Se valida sobre la
+        # mezcla de lo guardado y lo que llega, porque el formulario puede mandar
+        # un solo grupo (ej. cambiar el aviso sin tocar el vencimiento).
+        nuevos = {**_lac_params(), **{c: campos[k] for c, k in LAC_PARAMS_NUM if k in campos}}
+        if nuevos['aviso_heladera_horas'] > nuevos['heladera_horas']:
+            raise ValueError("El aviso de la heladera no puede ser mayor que el "
+                             "tiempo de vencimiento en la heladera.")
+        if nuevos['aviso_descongelada_horas'] > nuevos['descongelada_horas']:
+            raise ValueError("El aviso de la leche descongelada no puede ser mayor "
+                             "que su tiempo de vencimiento.")
+        if nuevos['aviso_freezer_dias'] > nuevos['freezer_meses'] * 30:
+            raise ValueError("El aviso del freezer no puede ser mayor que el tiempo "
+                             "de vencimiento en el freezer.")
+
+        config.guardar_config(campos, CONFIG_FILE)
         if _es_ajax():
             return jsonify({'ok': True, **_lac_payload()})
         return redirect(url_for('lactancia'))
@@ -2395,30 +2655,9 @@ def settings():
             flash('Carpeta de backups guardada.')
             return redirect(url_for('settings') + '#backup-db')
 
-        if accion == 'guardar_lactancia':
-            # Parámetros de conservación del banco de leche. Se validan de a
-            # uno; si alguno falla no se guarda nada (config intacta).
-            campos = (
-                ('lactancia_freezer_meses',        1, 24,  'Meses en freezer'),
-                ('lactancia_heladera_horas',       1, 168, 'Horas en heladera'),
-                ('lactancia_aviso_freezer_dias',   0, 365, 'Aviso freezer (días)'),
-                ('lactancia_aviso_heladera_horas', 0, 168, 'Aviso heladera (horas)'),
-                ('lactancia_freezar_hasta_horas',  1, 168, 'Freezar hasta (horas)'),
-            )
-            nuevos = {}
-            for clave, minimo, maximo, etiqueta in campos:
-                try:
-                    valor = int(request.form.get(clave, ''))
-                except (TypeError, ValueError):
-                    flash(f'No se guardó: "{etiqueta}" debe ser un número entero.')
-                    return redirect(url_for('settings') + '#lactancia')
-                if not minimo <= valor <= maximo:
-                    flash(f'No se guardó: "{etiqueta}" debe estar entre {minimo} y {maximo}.')
-                    return redirect(url_for('settings') + '#lactancia')
-                nuevos[clave] = valor
-            config.guardar_config(nuevos, CONFIG_FILE)
-            flash('Parámetros del banco de leche guardados.')
-            return redirect(url_for('settings') + '#lactancia')
+        # Los parámetros del banco de leche NO se configuran acá: viven en el
+        # panel "Ajustes" de /lactancia (POST /api/lactancia/config), que se
+        # trajo entero de la app suelta. Settings ya no los toca.
 
         # Guardado general: solo campos visibles en la UI de Settings.
         # ngrok / OAuth / puerto se manejan fuera (config.json) y NO se tocan acá:
