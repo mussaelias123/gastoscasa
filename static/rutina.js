@@ -939,6 +939,18 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         }
         var sig = null;
         propios.forEach(function (i) { if (!sig && i.start > now) sig = i; });
+        // Ya no queda NADA por delante en el día (o es la madrugada): el
+        // último ítem se queda en la tarjeta. Sin esto la persona se cae de
+        // "Ahora": el "A dormir" de un adulto es una actividad común con
+        // duración (30'), no un ítem abierto, así que en cuanto termina no lo
+        // agarra ninguna de las reglas de arriba — la de `abierto` pide
+        // dur === 0 y la del sueño nocturno es solo del bebé. Síntoma real:
+        // 23:13, mamá durmiendo desde las 22:30 y su tarjeta no estaba.
+        if (!cur && esHoy) {
+            var ultimo = null;
+            propios.forEach(function (i) { if (!ultimo || i.start >= ultimo.start) ultimo = i; });
+            if (ultimo && (now < 300 || (!sig && now >= ultimo.start))) cur = ultimo;
+        }
         return { cur: cur, sig: sig };
     }
 
