@@ -1973,7 +1973,14 @@ _RUT_ROLES = ('mama', 'papa', 'hijo', 'otro')
 # Los tres primeros son los que ya usaba la app; los rut-p* se definen en el
 # bloque scoped de Rutina en static/style.css.
 _RUT_COLORES = ('persona-leon', 'persona-mari', 'persona-elias',
-                'rut-p4', 'rut-p5', 'rut-p6', 'rut-p7', 'rut-p8')
+                'rut-p4', 'rut-p5', 'rut-p6', 'rut-p7', 'rut-p8',
+                'rut-p9', 'rut-p10', 'rut-p11', 'rut-p12',
+                'rut-p13', 'rut-p14', 'rut-p15', 'rut-p16')
+# ⚠ Esta lista vive TRES veces y las tres tienen que coincidir: acá (valida lo
+# que entra), COLOR_CICLO en static/rutina.js (arma los círculos para elegir) y
+# las vars --color-rut-p* en static/style.css (los pinta). Si agregás un color
+# y te olvidás de alguna, el síntoma cambia según cuál: el backend lo rechaza
+# con "Color inválido", el círculo no aparece, o aparece transparente.
 
 
 def _rut_semana_servidor():

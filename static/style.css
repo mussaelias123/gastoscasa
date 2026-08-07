@@ -5882,6 +5882,20 @@ details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde)
   --color-rut-p6: #B08968;   /* tierra */
   --color-rut-p7: #6C8EA4;   /* azul apagado */
   --color-rut-p8: #A88BC0;   /* lila */
+  /* Ampliación 2026-08-07 (Mari: "que se puedan elegir más colores"). Van de
+     luminancia MEDIA a propósito, no pasteles: el color se usa tal cual para
+     los dibujos de cada persona, y un pastel claro sobre tarjeta clara casi no
+     se ve (es el mismo motivo por el que los nombres en texto van mezclados
+     con --color-texto y no en el color puro). Elegidos bien separados de tono
+     entre sí y de los ocho de arriba, para que dos hermanos no se confundan. */
+  --color-rut-p9:  #C98A3E;  /* ámbar */
+  --color-rut-p10: #3F9B95;  /* agua */
+  --color-rut-p11: #96608F;  /* ciruela */
+  --color-rut-p12: #7E9440;  /* oliva */
+  --color-rut-p13: #C0655A;  /* ladrillo */
+  --color-rut-p14: #5C6BA8;  /* índigo */
+  --color-rut-p15: #3F9268;  /* jade */
+  --color-rut-p16: #B04A5A;  /* frambuesa */
 }
 
 /* ── Selector de sección (SOLO mobile) ───────────────────────────────────

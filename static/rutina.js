@@ -171,8 +171,13 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // Color identificador. El token lo valida el backend contra _RUT_COLORES,
     // así que se puede inyectar como valor de custom property sin riesgo. Si el
     // miembro no tiene color propio, se reparte uno de la paleta por posición.
+    // ⚠ Esta lista vive TRES veces y las tres tienen que coincidir: _RUT_COLORES
+    // en app.py (valida), estas vars en style.css (pintan) y esto (arma los
+    // círculos para elegir). Ampliada a 16 el 2026-08-07 a pedido de Mari.
     var COLOR_CICLO = ['persona-leon', 'persona-mari', 'persona-elias',
-                       'rut-p4', 'rut-p5', 'rut-p6', 'rut-p7', 'rut-p8'];
+                       'rut-p4', 'rut-p5', 'rut-p6', 'rut-p7', 'rut-p8',
+                       'rut-p9', 'rut-p10', 'rut-p11', 'rut-p12',
+                       'rut-p13', 'rut-p14', 'rut-p15', 'rut-p16'];
 
     function colorTokenDe(u) {
         var m = miembroDe(u);
