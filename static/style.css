@@ -4891,8 +4891,21 @@ body.has-dev-banner .settings-aside {
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  /* Apagado mientras no haya ninguna bolsita tildada: así se ve de un vistazo
+     si hay algo listo para mandar al freezer o no. Se enciende solo (clase
+     is-lista, la pone lactancia.js). Sigue siendo clickeable apagado — si se
+     toca sin tildar nada, avisa qué falta. */
+  opacity: 0.4;
+  transition: background 0.15s, transform 0.1s, opacity 0.15s;
 }
+
+/* Hay al menos una tildada → el botón toma su color pleno */
+.lac-btn-freezar.is-lista { opacity: 1; }
+
+/* Al pasarle por encima o al llegar con el teclado también se enciende: si no,
+   apagado parecería que no se puede tocar. */
+.lac-btn-freezar:hover,
+.lac-btn-freezar:focus-visible { opacity: 1; }
 
 .lac-btn-freezar:hover { background: var(--color-acento-oscuro); transform: translateY(-2px); }
 .lac-btn-freezar:disabled { opacity: 0.55; cursor: default; transform: none; }
@@ -5736,7 +5749,17 @@ html[data-theme="dark"] .lac-destino-card { color: var(--color-texto-muted); }
   flex-direction: column;
   gap: 0.12rem;
 }
-.lac-kpi-emoji { font-size: 0.95rem; line-height: 1; }
+/* Ícono propio de cada KPI (antes era un emoji del sistema). Va en coral, como
+   todos los íconos del módulo; en la tarjeta de Desperdicio acompaña al número
+   y se pone ámbar, para que la tarjeta hable con una sola voz. */
+.lac-kpi-ico {
+  width: 19px;
+  height: 19px;
+  vertical-align: 0;
+  color: var(--color-acento);
+  margin-bottom: 0.1rem;
+}
+.lac-kpi.is-alerta .lac-kpi-ico { color: var(--color-alerta); }
 .lac-kpi-num {
   font-size: 1.05rem;
   font-weight: 800;
@@ -5788,6 +5811,157 @@ html[data-theme="dark"] .lac-destino-card { color: var(--color-texto-muted); }
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--color-texto-muted);
+}
+
+/* ── "Explorar mis datos": el gráfico y la tabla del Resumen ────────────────
+   OJO: casi todas estas clases NO aparecen en ningún .html. Las escribe
+   static/grafico.js al dibujar el SVG y la tabla (lac-gr-punto, lac-gr-barra,
+   lac-gr-linea, lac-gr-guia, lac-gr-rotulo…). Buscarlas en las plantillas y no
+   encontrarlas no significa que sobren.
+
+   Ningún color va escrito acá: todos salen de la paleta, que cambia sola entre
+   el modo día y el modo noche. */
+.lac-subpanel--grafico { margin-top: 0.9rem; }
+
+.lac-grafico { padding: 0.6rem 0.65rem 0.75rem; border-top: 1px solid var(--color-borde); }
+
+/* Los dos desplegables. En el celular entran uno al lado del otro igual: son
+   cortos y así se ve de un vistazo qué está cruzando con qué. */
+.lac-gr-ejes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.lac-gr-eje-campo { min-width: 0; }
+
+.lac-gr-eje-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+  margin-bottom: 0.18rem;
+}
+
+.lac-gr-ejes select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.8rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background: var(--color-superficie);
+}
+
+.lac-gr-ejes select:focus {
+  outline: none;
+  border-color: var(--color-acento);
+  box-shadow: var(--sombra-focus);
+}
+
+.lac-gr-nota-bebe {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--color-texto-muted);
+}
+
+.lac-gr-lienzo { margin-top: 0.7rem; }
+
+/* El SVG se dibuja en una grilla de 440×250 y se estira al ancho que haya:
+   así el mismo gráfico entra en un teléfono y en una pantalla grande. */
+.lac-gr-svg { display: block; width: 100%; height: auto; }
+
+.lac-gr-guia {
+  stroke: var(--color-borde);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.lac-gr-eje { stroke: var(--color-borde); stroke-width: 1.2; }
+
+.lac-gr-rotulo { fill: var(--color-texto-muted); font-size: 11px; }
+.lac-gr-unidad { fill: var(--color-texto-muted); font-size: 11px; font-weight: 600; }
+.lac-gr-titulo-eje { fill: var(--color-texto-muted); font-size: 11.5px; font-weight: 600; }
+
+/* El dato se dibuja en AZUL (--color-exito, el de las etiquetas "Disponible" y
+   "En heladera") y no en el coral del acento. Dos razones: el coral es el color
+   de las acciones —los botones, lo que se toca— y un gráfico no se toca; y como
+   ese azul se usa poco, acá tiene lugar para respirar.
+
+   Los puntos van semitransparentes a propósito: donde se amontonan varias
+   extracciones el color se hace más intenso, y esa mancha ES el dato. */
+.lac-gr-punto { fill: var(--color-exito); fill-opacity: 0.5; }
+.lac-gr-barra { fill: var(--color-exito); fill-opacity: 0.8; }
+.lac-gr-linea { fill: none; stroke: var(--color-exito); stroke-width: 2; stroke-linejoin: round; }
+.lac-gr-nodo  { fill: var(--color-exito); }
+
+/* La frase que traduce el gráfico a castellano */
+.lac-gr-lectura-txt {
+  margin: 0.7rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border-left: 3px solid var(--color-exito);
+  border-radius: 0 var(--radio-borde) var(--radio-borde) 0;
+  background: var(--color-fondo);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-texto);
+}
+
+.lac-gr-lectura-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--color-texto-muted);
+}
+
+/* La tabla scrollea DENTRO de su caja: si no, en el celular una tabla larga se
+   lleva puesta a la página entera. */
+.lac-gr-tabla-scroll {
+  margin-top: 0.7rem;
+  max-height: 250px;
+  overflow: auto;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+}
+
+.lac-gr-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.lac-gr-tabla th,
+.lac-gr-tabla td {
+  padding: 0.32rem 0.5rem;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.lac-gr-tabla thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-superficie);
+  color: var(--color-texto-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.lac-gr-tabla tbody th,
+.lac-gr-tabla tfoot th { text-align: left; font-weight: 600; }
+
+.lac-gr-tabla tfoot th,
+.lac-gr-tabla tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: var(--color-fondo);
+  border-bottom: none;
+  border-top: 1px solid var(--color-borde);
+  font-weight: 700;
 }
 
 /* Cuánto tomó el bebé, en el modal de confirmación. Es opcional, pero es el
@@ -6136,6 +6310,12 @@ details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde)
   stroke-linejoin: round;
 }
 .lac-ico .relleno { fill: currentColor; stroke: none; opacity: 0.16; }
+
+/* Trazo "borrador": va del color del fondo de la tarjeta y se dibuja DEBAJO de
+   otro trazo para abrirle un hueco a los costados. Sirve cuando dos líneas se
+   cruzan y hay que dejar claro cuál pasa por encima (la barra de la gota
+   tachada en Desperdicio). Ojo: asume que el ícono está sobre --color-fondo. */
+.lac-ico .corte { fill: none; stroke: var(--color-fondo); stroke-width: 4.2; }
 
 /* Íconos de los títulos de panel: en el color del título */
 .lac-panel-title .lac-ico { color: var(--color-acento); }

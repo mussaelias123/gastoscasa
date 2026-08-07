@@ -103,6 +103,46 @@ su vencimiento se muestra relativo ("Vence en 5 h").
         </div>
         <div class="lac-tablero" id="lac-tablero"></div>
 
+        {# ── Explorar mis datos ────────────────────────────────────────────
+           Un gráfico VACÍO: se elige qué va en cada eje y static/grafico.js
+           dibuja lo que corresponda (nube de puntos, barras o línea), con la
+           lectura en castellano abajo y la tabla con los números.
+
+           Arranca CERRADO a propósito: el Resumen se abre para ver el stock,
+           no un tablero de análisis.
+
+           Se eligen los ejes con desplegables y no arrastrando fichas: la
+           pantalla se usa con el pulgar, y arrastrar en una pantalla táctil
+           pelea con el scroll de la página. #}
+        <details class="lac-subpanel lac-subpanel--grafico">
+          <summary class="lac-subpanel-summary">
+            <svg class="lac-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16h16"/><path d="M7.5 15.5 11 11l3 2.5 4.2-5.6"/><circle class="relleno" cx="7.5" cy="15.5" r="1.4"/><circle cx="7.5" cy="15.5" r="1.4"/><circle class="relleno" cx="11" cy="11" r="1.4"/><circle cx="11" cy="11" r="1.4"/><circle class="relleno" cx="14" cy="13.5" r="1.4"/><circle cx="14" cy="13.5" r="1.4"/></svg>
+            Explorar mis datos
+          </summary>
+          <div class="lac-grafico">
+            <p class="lac-config-hint">Elegí qué querés ver en cada eje y me encargo de armar el gráfico. Por ejemplo, la hora de extracción contra los ml que te extrajiste, esto te ayuda a visualizar los momentos del día con mayor producción.</p>
+
+            <div class="lac-gr-ejes">
+              <label class="lac-gr-eje-campo">
+                <span class="lac-gr-eje-label">Eje horizontal</span>
+                <select id="lac-gr-x"></select>
+              </label>
+              <label class="lac-gr-eje-campo">
+                <span class="lac-gr-eje-label">Eje vertical</span>
+                <select id="lac-gr-y"></select>
+              </label>
+            </div>
+
+            <p class="lac-gr-nota-bebe" id="lac-gr-nota-bebe" hidden>
+              Para ver los ejes por edad del bebé, cargá su fecha de nacimiento en Ajustes.
+            </p>
+
+            <div class="lac-gr-lienzo" id="lac-gr-lienzo"></div>
+            <div id="lac-gr-lectura"></div>
+            <div id="lac-gr-tabla"></div>
+          </div>
+        </details>
+
         {# Descarga de la tabla día a día: un <a> de verdad (no JavaScript), así
            funciona igual si el JS falla y el navegador la baja como archivo. #}
         <div class="lac-descarga">
@@ -413,4 +453,9 @@ su vencimiento se muestra relativo ("Vence en 5 h").
   window.LAC_DATOS = {{ datos|tojson }};
 </script>
 <script src="{{ url_for('static', filename='lactancia.js') }}?v={{ static_version }}"></script>
+{# El gráfico del Resumen va en su propio archivo: es el único pedazo del módulo
+   que no sabe de leche (recibe muestras y ejes, y dibuja), así que puede crecer
+   con variables nuevas sin tocar lactancia.js. Se carga DESPUÉS porque
+   lactancia.js le presta sus ayudantes al arrancar. #}
+<script src="{{ url_for('static', filename='grafico.js') }}?v={{ static_version }}"></script>
 {% endblock %}
