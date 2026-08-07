@@ -21,7 +21,9 @@ DEFAULTS = {
     "ngrok_domain": "",
     "app_name": "Gastos Casa",
     "factor_sueldo": 0.7,
-    # ── Lactancia (banco de leche) — editables desde Settings ──────────────
+    # ── Lactancia (banco de leche) — editables desde el panel "Ajustes" de
+    # /lactancia (NO desde Settings: la pantalla se trajo entera de la app
+    # suelta, que configura el módulo desde adentro del propio módulo).
     # Vencimiento freezer = extracción + N meses; heladera = carga + N horas.
     # Los avisos definen la ventana "vence pronto" de cada ubicación.
     # freezar_hasta_horas: antigüedad máxima en heladera para poder pasar la
@@ -37,6 +39,19 @@ DEFAULTS = {
     "lactancia_aviso_heladera_horas":     12,
     "lactancia_aviso_descongelada_horas":  6,
     "lactancia_freezar_hasta_horas":      24,
+    # combinar_min_horas: horas mínimas que dos extracciones tienen que llevar
+    # en la heladera para poder juntarse en una misma bolsita (las dos tienen
+    # que estar a la misma temperatura). 0 = no verificar.
+    "lactancia_combinar_min_horas":        3,
+    # Capacidad de las bolsitas. Con `activa` en True no se deja cargar ni
+    # combinar más de `ml` en una sola bolsita. Apagado por defecto: no todas
+    # las bolsitas tienen el mismo tamaño y no queremos bloquear de entrada.
+    "lactancia_bolsa_capacidad_activa":    False,
+    "lactancia_bolsa_capacidad_ml":        150,
+    # Pedir confirmación antes de cada acción que cierra una partida. Vivía en
+    # el localStorage del navegador (clave `lac-confirmar`), o sea que cada
+    # dispositivo tenía la suya; ahora es del servidor y vale para todos.
+    "lactancia_pedir_confirmacion":        True,
     # Recordatorio nocturno de "bajar bolsitas" del freezer a la heladera (para
     # el día siguiente de jardín). activo = interruptor (modo jardín off hasta
     # que León arranque); hora = HH:MM local a partir de la cual avisa. Es un
@@ -135,6 +150,23 @@ DEFAULTS = {
         "deco-3":         "#64748b",
         "deco-4":         "#334155",
     },
+}
+
+
+# Rangos válidos de los parámetros numéricos del panel "Ajustes" de Lactancia.
+# Se validan en el servidor (POST /api/lactancia/config) además del min/max del
+# HTML: el navegador es una comodidad, no una garantía. Las claves son las
+# cortas de LAC_PARAMS_NUM (app.py), no las de config.json.
+LIMITES_LACTANCIA = {
+    'freezer_meses':            (1, 24),
+    'heladera_horas':           (1, 168),
+    'descongelada_horas':       (1, 72),
+    'aviso_freezer_dias':       (1, 90),
+    'aviso_heladera_horas':     (1, 72),
+    'aviso_descongelada_horas': (1, 48),
+    'freezar_hasta_horas':      (1, 72),
+    'combinar_min_horas':       (0, 24),
+    'bolsa_capacidad_ml':       (10, 2000),
 }
 
 

@@ -4719,13 +4719,25 @@ body.has-dev-banner .settings-aside {
 
 /* ============================================================================
    LACTANCIA — módulo banco de leche (templates/lactancia.html)
-   Espejo estructural del módulo Calendario. Clases con prefijo lac-.
-   Base = apilado (mobile: alta primero, para cargar en el momento). Desktop
-   >= 900px = grilla de 2 columnas sin scroll de página (alto = viewport;
-   scroll interno en las listas de freezer/heladera/historial).
-   Estados → paleta (cero hardcode): vencida = peligro · vence_pronto = alerta
-   · disponible / en_heladera = exito · cierres históricos = deco / muted.
-   ============================================================================ */
+   --------------------------------------------------------------------------
+   Traído entero de la app suelta de banco de leche
+   (C:\Proyectos\lactancia, publicada en paralasmamas.pythonanywhere.com).
+   Clases con prefijo lac-. Base = apilado con barra de 5 pestañas fija
+   abajo (mobile); desktop >= 900px = 3 columnas sin scroll de página
+   (alto = viewport, scroll interno en las listas).
+
+   Estados → paleta (cero hardcode): vencida = peligro ·
+   vence_pronto = alerta · disponible/en_heladera = exito.
+
+   OJO: el JS arma varias clases por pedazos y no se ven buscando en
+   este archivo — si se borran, la pantalla se rompe y las pruebas
+   igual pasan: lac-pill-<estado> (7), is-<estado>, t-<estado>,
+   lac-toast-*, lac-item--*, lac-tipo--*.
+
+   El tema cálido (paleta coral/crema, fuentes y fondo ilustrado) NO
+   está acá: vive en su propio bloque más abajo, scopeado a
+   body.lac-body / body:has(.lac-wrap).
+   ========================================================================== */
 
 /* ── Layout base: apilado, scroll de página normal ────────────────────────── */
 .lac-wrap {
@@ -4751,10 +4763,6 @@ body.has-dev-banner .settings-aside {
   min-width: 0;
 }
 
-/* Freezer SIEMPRE arriba y heladera abajo, en desktop y mobile: la columna
-   central se dibuja como una heladera con freezer superior (.lac-fridge), así
-   que el orden físico se respeta en todos los tamaños. */
-
 /* Aviso al entrar (solo si hay vencidas / por vencer) */
 .lac-aviso {
   font-size: 0.88rem;
@@ -4769,7 +4777,7 @@ body.has-dev-banner .settings-aside {
 .lac-aviso.is-peligro { background: var(--color-peligro-suave); border-left-color: var(--color-peligro); }
 .lac-aviso.is-alerta { background: var(--color-alerta-suave); border-left-color: var(--color-alerta); }
 
-/* ── Panel base (mismo lenguaje que .cal-panel / .tarjeta) ────────────────── */
+/* ── Panel base (mismo lenguaje visual que .tarjeta) ──────────────────────── */
 .lac-panel {
   background: var(--color-superficie);
   border-radius: var(--radio-borde);
@@ -4816,12 +4824,6 @@ body.has-dev-banner .settings-aside {
 /* ── Alta rápida (2 forms siempre visibles) ───────────────────────────────── */
 .lac-quickadd { padding: 0.7rem 0.9rem 0.85rem; }
 
-.lac-form-titulo {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--color-texto);
-  margin-bottom: 0.45rem;
-}
 
 .lac-form-grid {
   display: grid;
@@ -4844,6 +4846,8 @@ body.has-dev-banner .settings-aside {
 .lac-campo input[type="text"],
 .lac-campo input[type="number"],
 .lac-campo input[type="time"],
+.lac-campo input[type="email"],
+.lac-campo input[type="password"],
 .lac-campo input.flatpickr-mobile {
   width: 100%;
   box-sizing: border-box;
@@ -4887,8 +4891,21 @@ body.has-dev-banner .settings-aside {
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  /* Apagado mientras no haya ninguna bolsita tildada: así se ve de un vistazo
+     si hay algo listo para mandar al freezer o no. Se enciende solo (clase
+     is-lista, la pone lactancia.js). Sigue siendo clickeable apagado — si se
+     toca sin tildar nada, avisa qué falta. */
+  opacity: 0.4;
+  transition: background 0.15s, transform 0.1s, opacity 0.15s;
 }
+
+/* Hay al menos una tildada → el botón toma su color pleno */
+.lac-btn-freezar.is-lista { opacity: 1; }
+
+/* Al pasarle por encima o al llegar con el teclado también se enciende: si no,
+   apagado parecería que no se puede tocar. */
+.lac-btn-freezar:hover,
+.lac-btn-freezar:focus-visible { opacity: 1; }
 
 .lac-btn-freezar:hover { background: var(--color-acento-oscuro); transform: translateY(-2px); }
 .lac-btn-freezar:disabled { opacity: 0.55; cursor: default; transform: none; }
@@ -4912,7 +4929,7 @@ body.has-dev-banner .settings-aside {
 }
 
 /* Casilla deshabilitada (ya no se usa para vencidas, se deja por si acaso) */
-.lac-check.is-off { cursor: not-allowed; }
+
 .lac-check .lac-check-input:disabled { cursor: not-allowed; opacity: 0.4; }
 
 /* Partida VENCIDA: se puede tildar igual (se freezó a término y se cargó
@@ -4940,14 +4957,264 @@ body.has-dev-banner .settings-aside {
 /* Variante para footers de modal y para la fila de heladera */
 .lac-btn-block.lac-btn-auto { width: auto; margin-top: 0; flex-shrink: 0; }
 
-.lac-help {
-  font-size: 0.74rem;
-  color: var(--color-texto-muted);
-  margin-top: 0.3rem;
-  line-height: 1.4;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Tarjeta de carga rediseñada (mockup móvil aprobado por Mari, 2026-07)
+   Stepper ±10 ml · pastilla "Hoy · HH:MM" · tarjetas de destino · tarjeta de
+   vencimiento. Todo con las variables --color-* (el modo noche sale gratis).
+   Los sub-elementos son TRANSLÚCIDOS a propósito: el panel deja ver la
+   ilustración de fondo y estas piezas la dejan seguir viéndose, apenas más
+   opacas para que el texto se lea. Sin backdrop-filter acá (el blur sobre
+   esquinas redondeadas generaba halos de color).
+   ══════════════════════════════════════════════════════════════════════════ */
+.lac-form-alta {
+  max-width: 340px;
+  margin: 0 auto;
 }
 
-.lac-help[hidden] { display: none; }
+.lac-ex-titulo {
+  margin: 0 0 0.7rem;
+  text-align: center;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--color-texto);
+}
+
+/* ── Stepper de volumen ──────────────────────────────────────────────────── */
+.lac-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.62rem 0.7rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 14px;
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) 72%, transparent);
+}
+
+/* Misma pinta que el botón ⬆ de enviar al freezer (.lac-btn-freezar): coral
+   lleno, sin borde y SIN halo alrededor (el halo se veía como un segundo
+   círculo clarito debajo — lo marcó Mari).
+   Círculos PERFECTOS: sin aspect-ratio + place-items quedaban ovalados y el
+   −/+ descentrado en cuanto se achicaban. */
+.lac-stepper-btn {
+  flex-shrink: 0;
+  width: 33px;
+  aspect-ratio: 1;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-acento);
+  color: var(--color-texto-invertido);
+  font-family: var(--fuente-principal);
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.lac-stepper-btn:hover,
+.lac-stepper-btn:focus-visible {
+  background: var(--color-acento-oscuro);
+  outline: none;
+}
+
+.lac-stepper-btn:active { transform: scale(0.93); }
+
+.lac-stepper-valor {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 0;
+  cursor: text;
+}
+
+/* El input queda FUERA de .lac-campo a propósito: así no le pega la regla
+   global de inputs chicos. Sin spinners nativos (dejaban un recuadro feo). */
+.lac-stepper-valor input[type="number"] {
+  width: 4ch;
+  padding: 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  text-align: center;
+  font-family: var(--fuente-principal);
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--color-acento);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.lac-stepper-valor input[type="number"]::-webkit-outer-spin-button,
+.lac-stepper-valor input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.lac-stepper-valor input[type="number"]:focus {
+  outline: none;
+  border-bottom-color: var(--color-acento);
+}
+
+.lac-stepper-unidad {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+/* ── Pastilla fecha · hora ───────────────────────────────────────────────── */
+.lac-fechahora,
+.lac-destino { margin-top: 0.75rem; }
+
+.lac-fechahora-label {
+  display: block;
+  margin-bottom: 0.28rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  /* Un punto más oscuro que --color-texto-muted: sobre la ilustración de
+     fondo el muted de la paleta se lavaba (no se toca la variable global). */
+  color: #6B5145;
+}
+html[data-theme="dark"] .lac-fechahora-label { color: var(--color-texto-muted); }
+
+.lac-pill-fechahora {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0.34rem 0.8rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 999px;
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) 72%, transparent);
+}
+.lac-pill-fechahora:focus-within {
+  border-color: var(--color-acento);
+  box-shadow: var(--sombra-focus);
+}
+.lac-pill-fechahora .lac-ico { color: var(--color-acento); }
+
+/* Los dos inputs reales (flatpickr le pone el altInput a la fecha). Sin JS se
+   ven crudos pero funcionan igual. */
+.lac-pill-fechahora input[type="text"] {
+  width: 5.2ch;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-family: var(--fuente-principal);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-texto);
+  cursor: pointer;
+}
+.lac-pill-fechahora input[type="text"]:focus { outline: none; }
+.lac-pill-fechahora .lac-pill-sep {
+  color: var(--color-texto-muted);
+  font-weight: 700;
+}
+
+/* ── Tarjetas de destino (heladera / freezer) ────────────────────────────── */
+.lac-destino-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.lac-destino-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.5rem 0.3rem;
+  border: 2px solid var(--color-borde);
+  border-radius: 13px;
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) 72%, transparent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #6B5145;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+html[data-theme="dark"] .lac-destino-card { color: var(--color-texto-muted); }
+
+/* El radio real sigue ahí (accesible y funcional sin JS), solo invisible */
+.lac-destino-card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.lac-destino-card .lac-ico { width: 1.5em; height: 1.5em; }
+.lac-destino-card:hover { border-color: var(--color-acento); }
+.lac-destino-card:focus-within { box-shadow: var(--sombra-focus); }
+
+/* Dos vías para la misma pinta: :has() (funciona sin JS) y la clase is-activa
+   que pone lactancia.js (los navegadores que no repintan el :has al vuelo). */
+.lac-destino-card:has(input:checked),
+.lac-destino-card.is-activa {
+  border-color: var(--color-acento);
+  background: color-mix(in srgb, var(--color-acento) 12%, var(--color-superficie));
+  color: var(--color-acento);
+}
+
+/* ── Tarjeta de vencimiento (se recalcula sola) ──────────────────────────── */
+.lac-nota-venc {
+  margin-top: 0.6rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 12px;
+  background: var(--color-exito-suave);
+  color: var(--color-exito);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+.lac-nota-venc:empty { display: none; }
+
+/* ── Notas: discretas, debajo de todo ────────────────────────────────────── */
+.lac-campo-notas { margin-top: 0.7rem; }
+.lac-campo-notas label { text-align: center; }
+.lac-campo-notas input[type="text"] {
+  font-size: 0.8rem;
+  background: color-mix(in srgb, var(--color-superficie) 72%, transparent);
+}
+
+/* Autocompletado del navegador: Chrome/Safari pintan el campo con SU fondo
+   (blanco/celeste) y se comen los colores y la transparencia de la app. Esa
+   pintura la aplican como una animación, así que una transición eterna la deja
+   siempre en el valor nuestro. El color del texto va aparte porque el UA usa
+   -webkit-text-fill-color, no `color`. */
+.lac-form-alta input:-webkit-autofill,
+.lac-form-alta input:-webkit-autofill:hover,
+.lac-form-alta input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-texto);
+  transition: background-color 600000s 0s, color 600000s 0s;
+}
+.lac-stepper-valor input:-webkit-autofill {
+  -webkit-text-fill-color: var(--color-acento);
+}
+
+.lac-btn-guardar {
+  margin-top: 0.85rem;
+  padding: 0.62rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+}
 
 /* ── Tablero de stock ─────────────────────────────────────────────────────── */
 .lac-tablero { padding: 0.7rem 0.9rem 0.85rem; }
@@ -5085,6 +5352,10 @@ body.has-dev-banner .settings-aside {
 
 .lac-venc-fecha { opacity: 0.85; }
 
+/* Edad de la muestra (cuánto pasó desde la extracción). Se lee como dato
+   secundario: no compite con el vencimiento, que es el que manda. */
+.lac-edad { font-weight: 600; opacity: 0.9; }
+
 .lac-item-notas {
   margin-top: 0.15rem;
   font-size: 0.74rem;
@@ -5103,8 +5374,7 @@ body.has-dev-banner .settings-aside {
   flex-shrink: 0;
 }
 
-/* Botón principal de fila: marcar Usada (verde, misma familia que
-   .cal-btn-completar) */
+/* Botón principal de fila: marcar Usada (verde, el de confirmar) */
 .lac-btn-usar {
   display: inline-flex;
   align-items: center;
@@ -5343,8 +5613,8 @@ body.has-dev-banner .settings-aside {
    abajo, como una heladera de casa) · Derecha = historial. Sin scroll de
    página: cada lista scrollea internamente. */
 @media (min-width: 900px) {
-  /* Mismo patrón que body.cal-body: la página fija su alto al viewport.
-     body.lac-body la agrega lactancia.js; :has() cubre el primer paint. */
+  /* La página fija su alto al viewport: body.lac-body la agrega lactancia.js;
+     :has() cubre el primer paint, antes de que corra el JavaScript. */
   body.lac-body,
   body:has(.lac-wrap) {
     height: 100dvh;
@@ -5419,8 +5689,6 @@ body.has-dev-banner .settings-aside {
   .lac-btn-icono { width: 36px; height: 36px; }
 }
 
-/* ── Lactancia v2: bajar a descongelar, tipos de leche, KPIs, disclaimer ──── */
-
 /* Botón "⬇ Bajar" (freezer → heladera): acción principal de una bolsa de
    freezer, en acento coral (misma familia que .lac-btn-usar pero acento). */
 .lac-btn-bajar {
@@ -5481,7 +5749,17 @@ body.has-dev-banner .settings-aside {
   flex-direction: column;
   gap: 0.12rem;
 }
-.lac-kpi-emoji { font-size: 0.95rem; line-height: 1; }
+/* Ícono propio de cada KPI (antes era un emoji del sistema). Va en coral, como
+   todos los íconos del módulo; en la tarjeta de Desperdicio acompaña al número
+   y se pone ámbar, para que la tarjeta hable con una sola voz. */
+.lac-kpi-ico {
+  width: 19px;
+  height: 19px;
+  vertical-align: 0;
+  color: var(--color-acento);
+  margin-bottom: 0.1rem;
+}
+.lac-kpi.is-alerta .lac-kpi-ico { color: var(--color-alerta); }
 .lac-kpi-num {
   font-size: 1.05rem;
   font-weight: 800;
@@ -5500,41 +5778,262 @@ body.has-dev-banner .settings-aside {
 }
 .lac-kpi--amor .lac-kpi-num { color: var(--color-acento); }
 
-/* Cartel fijo: los tiempos son orientativos, ajustar con el profesional */
-.lac-disclaimer {
-  margin: 0.7rem 0 0;
-  padding: 0.5rem 0.1rem 0;
+/* ── Descarga de la tabla día a día (al pie del Resumen) ──────────────────── */
+.lac-descarga {
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
   border-top: 1px dashed var(--color-borde);
+}
+
+.lac-btn-descarga {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--color-acento);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-acento);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.lac-btn-descarga:hover {
+  background: color-mix(in srgb, var(--color-acento) 12%, transparent);
+}
+
+/* El ícono hereda el color del botón (el trazo de .lac-ico usa currentColor) */
+.lac-btn-descarga .lac-ico { width: 18px; height: 18px; }
+
+.lac-descarga-hint {
+  margin: 0.45rem 0 0;
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--color-texto-muted);
 }
 
-/* Input numérico opcional del modal de confirmación (ej. ml que tomó León) */
+/* ── "Explorar mis datos": el gráfico y la tabla del Resumen ────────────────
+   OJO: casi todas estas clases NO aparecen en ningún .html. Las escribe
+   static/grafico.js al dibujar el SVG y la tabla (lac-gr-punto, lac-gr-barra,
+   lac-gr-linea, lac-gr-guia, lac-gr-rotulo…). Buscarlas en las plantillas y no
+   encontrarlas no significa que sobren.
+
+   Ningún color va escrito acá: todos salen de la paleta, que cambia sola entre
+   el modo día y el modo noche. */
+.lac-subpanel--grafico { margin-top: 0.9rem; }
+
+.lac-grafico { padding: 0.6rem 0.65rem 0.75rem; border-top: 1px solid var(--color-borde); }
+
+/* Los dos desplegables. En el celular entran uno al lado del otro igual: son
+   cortos y así se ve de un vistazo qué está cruzando con qué. */
+.lac-gr-ejes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.lac-gr-eje-campo { min-width: 0; }
+
+.lac-gr-eje-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-texto-muted);
+  margin-bottom: 0.18rem;
+}
+
+.lac-gr-ejes select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  font-size: 0.8rem;
+  font-family: var(--fuente-principal);
+  color: var(--color-texto);
+  background: var(--color-superficie);
+}
+
+.lac-gr-ejes select:focus {
+  outline: none;
+  border-color: var(--color-acento);
+  box-shadow: var(--sombra-focus);
+}
+
+.lac-gr-nota-bebe {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--color-texto-muted);
+}
+
+.lac-gr-lienzo { margin-top: 0.7rem; }
+
+/* El SVG se dibuja en una grilla de 440×250 y se estira al ancho que haya:
+   así el mismo gráfico entra en un teléfono y en una pantalla grande. */
+.lac-gr-svg { display: block; width: 100%; height: auto; }
+
+.lac-gr-guia {
+  stroke: var(--color-borde);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.lac-gr-eje { stroke: var(--color-borde); stroke-width: 1.2; }
+
+.lac-gr-rotulo { fill: var(--color-texto-muted); font-size: 11px; }
+.lac-gr-unidad { fill: var(--color-texto-muted); font-size: 11px; font-weight: 600; }
+.lac-gr-titulo-eje { fill: var(--color-texto-muted); font-size: 11.5px; font-weight: 600; }
+
+/* El dato se dibuja en AZUL (--color-exito, el de las etiquetas "Disponible" y
+   "En heladera") y no en el coral del acento. Dos razones: el coral es el color
+   de las acciones —los botones, lo que se toca— y un gráfico no se toca; y como
+   ese azul se usa poco, acá tiene lugar para respirar.
+
+   Los puntos van semitransparentes a propósito: donde se amontonan varias
+   extracciones el color se hace más intenso, y esa mancha ES el dato. */
+.lac-gr-punto { fill: var(--color-exito); fill-opacity: 0.5; }
+.lac-gr-barra { fill: var(--color-exito); fill-opacity: 0.8; }
+.lac-gr-linea { fill: none; stroke: var(--color-exito); stroke-width: 2; stroke-linejoin: round; }
+.lac-gr-nodo  { fill: var(--color-exito); }
+
+/* La frase que traduce el gráfico a castellano */
+.lac-gr-lectura-txt {
+  margin: 0.7rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border-left: 3px solid var(--color-exito);
+  border-radius: 0 var(--radio-borde) var(--radio-borde) 0;
+  background: var(--color-fondo);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-texto);
+}
+
+.lac-gr-lectura-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--color-texto-muted);
+}
+
+/* La tabla scrollea DENTRO de su caja: si no, en el celular una tabla larga se
+   lleva puesta a la página entera. */
+.lac-gr-tabla-scroll {
+  margin-top: 0.7rem;
+  max-height: 250px;
+  overflow: auto;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+}
+
+.lac-gr-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.lac-gr-tabla th,
+.lac-gr-tabla td {
+  padding: 0.32rem 0.5rem;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.lac-gr-tabla thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-superficie);
+  color: var(--color-texto-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.lac-gr-tabla tbody th,
+.lac-gr-tabla tfoot th { text-align: left; font-weight: 600; }
+
+.lac-gr-tabla tfoot th,
+.lac-gr-tabla tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: var(--color-fondo);
+  border-bottom: none;
+  border-top: 1px solid var(--color-borde);
+  font-weight: 700;
+}
+
+/* Cuánto tomó el bebé, en el modal de confirmación. Es opcional, pero es el
+   dato que alimenta "Bolsita sugerida", "Alcanza para" y la tabla que se
+   descarga: por eso va en su propia tarjeta con el color de acento, y no como
+   un rengloncito más del cartel. */
 .lac-confirm-input-wrap {
   display: block;
-  margin-top: 0.7rem;
-  font-size: 0.85rem;
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.8rem 0.75rem;
+  border: 1px solid var(--color-acento);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-acento) 9%, var(--color-superficie));
+  font-size: 0.9rem;
   color: var(--color-texto);
 }
 .lac-confirm-input-wrap[hidden] { display: none; }
+
+.lac-confirm-input-label {
+  display: block;
+  font-weight: 700;
+  font-size: 0.98rem;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.lac-confirm-input-hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--color-texto-muted);
+}
+.lac-confirm-input-hint:empty { display: none; }
+
 .lac-confirm-input-row {
-  margin-top: 0.35rem;
-  display: inline-flex;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
 }
+
+/* "Tomó todo (120 ml)": el caso más común, de un toque. */
+.lac-confirm-input-todo {
+  margin-left: auto;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--color-acento);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-acento);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lac-confirm-input-todo:hover {
+  background: color-mix(in srgb, var(--color-acento) 14%, transparent);
+}
+.lac-confirm-input-todo[hidden] { display: none; }
+
 #lac-confirm-input {
   width: 110px;
-  padding: 0.4rem 0.55rem;
+  padding: 0.5rem 0.6rem;
+  font-size: 1.15rem;
   border: 1px solid var(--color-borde);
   border-radius: var(--radio-borde);
   background: var(--color-fondo);
   color: var(--color-texto);
-  font-size: 0.95rem;
   font-weight: 700;
 }
-.lac-confirm-input-suf { color: var(--color-texto-muted); font-size: 0.85rem; }
+.lac-confirm-input-suf { color: var(--color-texto-muted); font-size: 0.9rem; }
 
 /* ── La heladera dibujada: cuerpo del electrodoméstico + dos puertas ──────────
    Un solo cuerpo (.lac-fridge) con el freezer (arriba) y la heladera (abajo)
@@ -5649,17 +6148,14 @@ body.has-dev-banner .settings-aside {
   font-weight: 700;
   text-align: center;
 }
+/* Solo achica el botón: el aspecto (fondo, borde, tipografía) lo pone
+   .lac-btn-block, el mismo de todos los "Guardar" de la app. OJO: si se le saca
+   esa clase vuelve el borde gris que Windows le pone a los <button> pelados. */
 .lac-rec-guardar {
   margin-left: auto;
   padding: 0.4rem 0.85rem;
   font-size: 0.82rem;
   border-radius: var(--radio-borde);
-}
-.lac-rec-hint {
-  margin: 0;
-  font-size: 0.7rem;
-  line-height: 1.35;
-  color: var(--color-texto-muted);
 }
 
 /* ── Perfil del bebé (nombre + fecha de nacimiento) ───────────────────────── */
@@ -5682,31 +6178,9 @@ body.has-dev-banner .settings-aside {
 .lac-bebe-row { display: flex; align-items: center; gap: 0.5rem; }
 .lac-bebe-label { font-size: 0.82rem; color: var(--color-texto-muted); white-space: nowrap; }
 .lac-bebe-nac { flex: 1 1 auto; min-width: 0; }
+/* Igual que .lac-rec-guardar: acá solo el tamaño, el aspecto lo da .lac-btn-block */
 .lac-bebe-guardar { padding: 0.42rem 0.8rem; font-size: 0.82rem; border-radius: var(--radio-borde); }
 .lac-bebe-edad { font-size: 0.78rem; font-weight: 600; color: var(--color-texto-muted); }
-
-/* Toggle de preferencia (ej. "pedir confirmación") en el pie del Resumen */
-.lac-pref-toggle {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  margin: 0.55rem 0.1rem 0;
-  padding-top: 0.55rem;
-  border-top: 1px dashed var(--color-borde);
-  font-size: 0.78rem;
-  line-height: 1.3;
-  color: var(--color-texto-muted);
-  cursor: pointer;
-}
-.lac-pref-toggle input {
-  width: 17px;
-  height: 17px;
-  margin: 1px 0 0;
-  flex-shrink: 0;
-  cursor: pointer;
-  accent-color: var(--color-acento);
-}
-.lac-pref-toggle strong { color: var(--color-texto); }
 
 /* Banner: aparece arriba cuando el recordatorio está vigente esta noche */
 .lac-rec-banner {
@@ -5743,85 +6217,67 @@ details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde)
 /* El bebé gateando: un pelín más grande para que se lea el gesto */
 .lac-ico-bebe { width: 1.4em; height: 1.4em; }
 
-/* ── Selector de sección (SOLO mobile; en escritorio se ven las 3 columnas) ── */
-.lac-nav-mobile { display: none; }
+/* ── Barra de secciones (SOLO mobile; en escritorio se ven las 3 columnas) ───
+      Tarjeta flotante fija abajo, con una TARJETITA por pestaña adentro. La
+      activa se diferencia por su transparencia (casi opaca) además del color,
+      así se nota qué sección está abierta sin depender solo del tono.
+      Sin backdrop-filter ni box-shadow: el blur sobre las esquinas redondeadas
+      generaba halos de color. */
+.lac-tabbar { display: none; }
 
 @media (max-width: 899px) {
-  .lac-nav-mobile {
+  .lac-tabbar {
+    position: fixed;
+    z-index: 700;          /* sobre el contenido, bajo drawers (810)/modales */
+    left: 22px;
+    right: 22px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    max-width: 420px;
+    margin: 0 auto;
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.2rem;
-  }
-  .lac-nav-label { font-size: 0.85rem; font-weight: 700; color: var(--color-texto-muted); }
-
-  /* Menú propio (el <select> nativo no admite nuestros íconos dibujados) */
-  .lac-nav-menu { position: relative; flex: 1 1 auto; min-width: 0; }
-  .lac-nav-trigger {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.55rem 0.7rem;
+    padding: 0 2px;
     border: 1px solid var(--color-borde);
-    border-radius: var(--radio-borde);
+    border-radius: 20px;
     background: var(--color-superficie);
-    color: var(--color-texto);
-    font: inherit;
-    font-size: 0.95rem;
-    font-weight: 700;
-    text-align: left;
-    cursor: pointer;
+    background: color-mix(in srgb, var(--color-superficie) 80%, transparent);
   }
-  .lac-nav-actual { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
-  .lac-nav-actual span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lac-nav-chevron {
-    margin-left: auto;
-    display: inline-block;
-    color: var(--color-texto-muted);
-    font-size: 0.8rem;
-    transition: transform 0.15s;
-  }
-  .lac-nav-trigger[aria-expanded="true"] .lac-nav-chevron { transform: rotate(180deg); }
 
-  .lac-nav-lista {
-    position: absolute;
-    z-index: 950;          /* sobre drawers (810), bajo modales (1000) */
-    top: calc(100% + 6px);
-    left: 0;
-    right: 0;
-    margin: 0;
-    padding: 0.3rem;
-    list-style: none;
-    background: var(--color-superficie);
-    border: 1px solid var(--color-borde);
-    border-radius: var(--radio-borde);
-    box-shadow: var(--sombra-modal);
-  }
-  .lac-nav-lista[hidden] { display: none; }
-  .lac-nav-lista li { list-style: none; }
-  .lac-nav-opt {
-    width: 100%;
+  .lac-tab {
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.6rem 0.65rem;
-    border: 0;
+    gap: 0.1rem;
+    margin: 4px 2px;
+    padding: 0.34rem 0.1rem;
+    border: 1px solid var(--color-borde);
     border-radius: 10px;
-    background: transparent;
-    color: var(--color-texto);
-    font: inherit;
-    font-size: 0.95rem;
-    font-weight: 600;
-    text-align: left;
+    background: color-mix(in srgb, var(--color-superficie) 45%, transparent);
+    /* Un punto más oscuro que --color-texto-muted: sobre la ilustración de
+       fondo el muted de la paleta se lavaba (no se toca la variable global). */
+    color: #6B5145;
+    font-family: var(--fuente-principal);
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
     cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
-  .lac-nav-opt:hover { background: var(--color-fondo); }
-  .lac-nav-opt.is-activa {
-    background: var(--color-fondo);
-    font-weight: 800;
-    box-shadow: inset 3px 0 0 var(--color-acento);
+  .lac-tab .lac-ico { width: 16px; height: 16px; vertical-align: 0; }
+  .lac-tab:hover { border-color: var(--color-acento); }
+  .lac-tab:focus-visible { outline: none; box-shadow: var(--sombra-focus); }
+
+  .lac-tab.is-activa {
+    background: color-mix(in srgb, var(--color-acento) 14%, var(--color-superficie));
+    border-color: var(--color-acento);
+    color: var(--color-acento);
   }
+  .lac-tab.is-activa .lac-ico { stroke-width: 2.1; }
+
+  /* Que la barra no tape el final del contenido al scrollear hasta abajo */
+  .lac-wrap { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
 
   /* Columnas transparentes: los paneles fluyen directo en .lac-page y así
      mostramos SOLO la sección elegida (data-lac-sec en .lac-wrap). */
@@ -5831,12 +6287,226 @@ details[open] > .lac-panel-summary { border-bottom: 1px solid var(--color-borde)
   .lac-wrap[data-lac-sec="heladera"]     .lac-sec--heladera,
   .lac-wrap[data-lac-sec="resumen"]      .lac-sec--resumen,
   .lac-wrap[data-lac-sec="historial"]    .lac-sec--historial,
-  .lac-wrap[data-lac-sec="bebe"]         .lac-sec--bebe,
-  .lac-wrap[data-lac-sec="recordatorio"] .lac-sec--recordatorio { display: flex; }
+  .lac-wrap[data-lac-sec="config"]       .lac-sec--config { display: flex; }
 }
 
 
+
 /* ============================================================================
+
+
+/* ── Íconos cute propios (SVG inline). Heredan el color con currentColor;
+      el detalle secundario usa fill-opacity para el 2do tono. ────────────── */
+.lac-ico {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.19em;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lac-ico .relleno { fill: currentColor; stroke: none; opacity: 0.16; }
+
+/* Trazo "borrador": va del color del fondo de la tarjeta y se dibuja DEBAJO de
+   otro trazo para abrirle un hueco a los costados. Sirve cuando dos líneas se
+   cruzan y hay que dejar claro cuál pasa por encima (la barra de la gota
+   tachada en Desperdicio). Ojo: asume que el ícono está sobre --color-fondo. */
+.lac-ico .corte { fill: none; stroke: var(--color-fondo); stroke-width: 4.2; }
+
+/* Íconos de los títulos de panel: en el color del título */
+.lac-panel-title .lac-ico { color: var(--color-acento); }
+.lac-historial-summary .lac-ico { color: var(--color-acento); }
+
+/* Un toque más suave/tierno en superficies grandes del módulo */
+body.lac-body .lac-panel { border-radius: var(--radio-borde); }
+body.lac-body .lac-item { border-radius: 12px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+
+   Hoja "Configuraciones" — tiempos, bolsitas y preferencias de cada mamá
+   Adentro viven también los subpaneles Bebé y Recordatorio.
+   ═══════════════════════════════════════════════════════════════════════ */
+.lac-config { padding: 0 0.9rem 0.9rem; }
+
+.lac-config-intro {
+  margin: 0 0 0.9rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--color-texto-muted);
+}
+
+.lac-config-grupo {
+  margin-bottom: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px dashed var(--color-borde);
+}
+.lac-config-titulo {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-acento);
+}
+
+/* Una fila = etiqueta a la izquierda, número + unidad a la derecha. En pantalla
+   angosta el número no se achica: lo que se achica es la etiqueta. */
+.lac-config-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.lac-config-label { min-width: 0; }
+.lac-config-num {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+.lac-config-num input {
+  width: 4.2rem;
+  box-sizing: border-box;
+  padding: 0.32rem 0.45rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-family: var(--fuente-principal);
+  font-size: 0.86rem;
+  text-align: right;
+}
+.lac-config-num input:focus { outline: none; box-shadow: var(--sombra-focus); }
+
+/* Va ARRIBA de la tarjeta plegada, para que se lea sin tener que abrirla. */
+.lac-sug-intro {
+  margin: 0.9rem 0 0.3rem;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-acento);
+}
+
+.lac-sugerencias { padding: 0 0.9rem 0.9rem; }
+
+.lac-sug-texto,
+.lac-sug-email {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) 72%, transparent);
+  color: var(--color-texto);
+  font-family: var(--fuente-principal);
+  font-size: 0.86rem;
+}
+.lac-sug-texto { resize: vertical; min-height: 4.5rem; line-height: 1.4; }
+.lac-sug-email { font-size: 0.8rem; }
+
+.lac-sug-texto:focus,
+.lac-sug-email:focus {
+  outline: none;
+  border-color: var(--color-acento);
+  box-shadow: var(--sombra-focus);
+}
+
+/* Mismo motivo que en el form de alta: el autocompletado del navegador pinta
+   el campo con SU fondo y se come los colores y la transparencia de la app. */
+.lac-sugerencias input:-webkit-autofill,
+.lac-sugerencias input:-webkit-autofill:hover,
+.lac-sugerencias input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-texto);
+  transition: background-color 600000s 0s, color 600000s 0s;
+}
+
+.lac-sugerencias .lac-btn-block { margin-top: 0.55rem; }
+.lac-config-num em {
+  font-style: normal;
+  font-size: 0.76rem;
+  color: var(--color-texto-muted);
+  white-space: nowrap;
+}
+
+.lac-config-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.lac-config-check input { width: 17px; height: 17px; flex: 0 0 auto; margin-top: 1px; }
+
+.lac-config-hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--color-texto-muted);
+}
+
+/* Fila del número de capacidad: apagada mientras el tilde esté sin marcar */
+.lac-config-fila.is-inactiva { opacity: 0.45; pointer-events: none; }
+
+
+#lac-config-guardar { margin-top: 0.2rem; }
+
+/* ── Subpaneles (Bebé y Recordatorio dentro de Configuraciones) ─────────── */
+.lac-subpanel {
+  margin-top: 0.85rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  overflow: hidden;
+}
+.lac-subpanel-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.lac-subpanel-summary::-webkit-details-marker { display: none; }
+.lac-subpanel-summary::after {
+  content: "▾";
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--color-texto-muted);
+}
+.lac-subpanel[open] > .lac-subpanel-summary::after { content: "▴"; }
+.lac-subpanel .lac-ico { color: var(--color-acento); }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Pantallas de acceso (bienvenida / login / registro) — app Lactancia
+   ═══════════════════════════════════════════════════════════════════════ */
+.lac-auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:var(--color-fondo);}
+.lac-auth-card{width:100%;max-width:400px;text-align:center;padding:2rem 1.5rem;}
+.lac-auth-logo{border-radius:22px;margin:0 auto .75rem;display:block;box-shadow:0 4px 14px rgba(0,0,0,.12);}
+.lac-auth-titulo{font-size:1.5rem;margin:.25rem 0;color:var(--color-texto);}
+.lac-auth-sub{color:var(--color-texto-muted);font-size:.95rem;line-height:1.5;margin:0 0 1.25rem;}
+.lac-auth-form{margin:0;}
+.lac-auth-form .lac-campo{text-align:left;margin-bottom:.85rem;}
+.lac-auth-btn-principal{background:var(--color-acento);color:var(--color-texto-invertido);border:none;margin-top:.25rem;}
+.lac-auth-btn-secundario{display:block;background:var(--color-superficie);color:var(--color-acento);border:2px solid var(--color-acento);text-decoration:none;text-align:center;}
+.lac-auth-aviso{font-size:.82rem;color:var(--color-texto);background:var(--color-alerta-suave);border-radius:10px;padding:.6rem .75rem;margin:.75rem 0 0;line-height:1.45;text-align:left;}
+.lac-auth-sep{display:flex;align-items:center;text-align:center;color:var(--color-texto-muted);margin:1.25rem 0;font-size:.85rem;}
+.lac-auth-sep::before,.lac-auth-sep::after{content:"";flex:1;height:1px;background:var(--color-borde);}
+.lac-auth-sep span{padding:0 .75rem;}
+.lac-auth-login-link{font-size:.9rem;color:var(--color-texto-muted);margin:.85rem 0 0;}
+.lac-auth-login-link a{color:var(--color-acento);font-weight:600;text-decoration:none;}
+.lac-auth-error{background:var(--color-peligro-suave);color:var(--color-peligro);border-radius:10px;padding:.6rem .75rem;margin-bottom:1rem;font-size:.9rem;}
+.lac-auth-recordar{display:flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--color-texto-muted);margin:.25rem 0 1rem;text-align:left;cursor:pointer;}
    RUTINA — módulo rutina diaria de la familia (templates/rutina.html)
    Clases con prefijo rut-. Columna única mobile-first (max 480px centrada).
    El color identificador de cada persona lo fija --rut-color. Antes lo hacían
