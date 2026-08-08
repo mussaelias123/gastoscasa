@@ -2465,6 +2465,36 @@ def _rut_miembro_id(valor, campo='miembro_id'):
     return miembro_id
 
 
+def _rut_ids_lista(valor, campo, excluir=None, tope=8):
+    """'3,7' → [3, 7]: lista de ids de miembros activos, sin repetidos y sin
+    `excluir` (el dueño de la actividad, o el propio bebé). Vacío → []. Una
+    sola query para todos, a diferencia de _rut_miembro_id(), que valida uno.
+    Lo usan los participantes de una actividad compartida y la lista de quién
+    acompaña a un bebé en las tomas."""
+    crudo = str(valor or '').strip()
+    if not crudo:
+        return []
+    ids = {fila['id'] for fila in database.obtener_miembros_rutina()}
+    salida = []
+    for parte in crudo.split(','):
+        parte = parte.strip()
+        if not parte:
+            continue
+        try:
+            miembro_id = int(parte)
+        except ValueError:
+            raise ValueError(f"{campo} debe ser una lista de ids de miembros.")
+        if miembro_id not in ids:
+            raise ValueError(f"No existe un miembro activo con id {miembro_id}.")
+        if excluir is not None and miembro_id == int(excluir):
+            continue
+        if miembro_id not in salida:
+            salida.append(miembro_id)
+    if len(salida) > tope:
+        raise ValueError(f"Demasiados en {campo} (máximo {tope}).")
+    return salida
+
+
 def _rut_leer_form_tarea(form):
     """Valida el form de /api/rutina/tarea/crear. Lanza ValueError si falla."""
     etapa = (form.get('etapa') or '').strip()
@@ -2554,7 +2584,18 @@ def _rut_leer_form_miembro(form):
     if not 0 <= ancla_min <= 1439:
         raise ValueError(f"ancla_min fuera de rango (0..1439): {ancla_min}")
 
-    return nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min
+    # Quién lo acompaña en las tomas. Solo tiene sentido en un bebé: si se
+    # destilda "es bebé" se fuerza '' en vez de dejar el dato colgado, que
+    # volvería a aplicarse solo si algún día se vuelve a tildar.
+    propio = str(form.get('id') or '').strip()
+    acompanan = ''
+    if es_bebe:
+        ids = _rut_ids_lista(form.get('acompanan'), 'acompanan',
+                             excluir=propio if propio.isdigit() else None, tope=3)
+        acompanan = ','.join(str(i) for i in ids)
+
+    return (nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token,
+            ancla_min, acompanan)
 
 
 def _rut_bits(valor, regex, campo, defecto):
@@ -2602,8 +2643,13 @@ def _rut_leer_form_actividad(form):
 
     nota = (form.get('nota') or '').strip()[:200]
 
+    # Con quién se comparte. El dueño se descarta si viniera en la lista: la
+    # actividad ya sale en su línea de tiempo y se duplicaría.
+    participantes = _rut_ids_lista(form.get('participantes'), 'participantes',
+                                   excluir=miembro_id)
+
     return (miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses,
-            desde, hasta, anual, nota)
+            desde, hasta, anual, nota, participantes)
 
 
 def _rut_leer_rango_anual(form):
@@ -2651,6 +2697,7 @@ def _rut_leer_form_pausa(form):
 # GET  /api/rutina         → payload fresco; query desde/hasta (fechas del cliente)
 # POST /api/rutina/ajustar → upsert de un ajuste (fecha, etapa, item_id, inicio_min)
 # POST /api/rutina/reset   → borra los ajustes de fecha+etapa ("↺ Plan original")
+# POST /api/rutina/soltar  → borra el ajuste de UN ítem ("Soltar" del popover)
 #
 # Mismo contrato que Lactancia: mutaciones responden AJAX con
 # {'ok': True, **_rut_payload(desde, hasta)} (el cliente re-renderiza todo).
@@ -2735,6 +2782,36 @@ def api_rutina_reset():
         if etapa not in _RUT_ETAPAS:
             raise ValueError(f"Etapa inválida: {etapa}")
         database.borrar_ajustes_rutina(fecha, etapa)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/soltar', methods=['POST'])
+def api_rutina_soltar():
+    """Borra el ajuste de UN ítem: lo "suelta" y vuelve a acomodarse solo.
+    Es el complemento de /ajustar en la rutina generada de un bebé, donde la
+    fila de rutina_ajustes es lo que convierte al bloque en un pin. Sin esto,
+    la única forma de deshacer un bloque fijado era "↺ Plan original", que
+    borra los ajustes de TODO el día."""
+    try:
+        fecha = _rut_parsear_fecha(request.form.get('fecha'), 'fecha')
+        etapa = (request.form.get('etapa') or '').strip()
+        if etapa not in _RUT_ETAPAS:
+            raise ValueError(f"Etapa inválida: {etapa}")
+        item_id = (request.form.get('item_id') or '').strip()
+        if not _RUT_ITEM_RE.match(item_id):
+            raise ValueError(f"item_id inválido: {item_id}")
+        database.borrar_ajuste_rutina(fecha, etapa, item_id)
         if _es_ajax():
             desde, hasta = _rut_parsear_rango(request.form)
             return jsonify({'ok': True, **_rut_payload(desde, hasta)})
@@ -2849,7 +2926,8 @@ def api_rutina_restaurar():
 
 
 # --- Familia y preferencias de la hoja --------------------------------------
-# POST /api/rutina/miembro/crear  → alta (nombre, rol, es_bebe, fecha_nacimiento…)
+# POST /api/rutina/miembro/crear  → alta (nombre, rol, es_bebe, fecha_nacimiento,
+#                                    acompanan = quién lo acompaña en las tomas…)
 # POST /api/rutina/miembro/editar → edición completa (pide id)
 # POST /api/rutina/miembro/borrar → baja definitiva + limpieza de sus ítems
 # POST /api/rutina/ajustes        → hora de inicio de noche / amanecer / cumples
@@ -2878,11 +2956,11 @@ def api_rutina_miembro_crear():
 def api_rutina_miembro_editar():
     try:
         miembro_id = _rut_miembro_id(request.form.get('id'), 'id')
-        nombre, rol, es_bebe, fnac, dibujo, color, ancla = \
+        nombre, rol, es_bebe, fnac, dibujo, color, ancla, acompanan = \
             _rut_leer_form_miembro(request.form)
         activo = 0 if (request.form.get('activo') or '1').strip() == '0' else 1
         database.editar_miembro_rutina(miembro_id, nombre, rol, es_bebe, fnac,
-                                       dibujo, color, ancla, activo)
+                                       dibujo, color, ancla, acompanan, activo)
         if _es_ajax():
             desde, hasta = _rut_parsear_rango(request.form)
             return jsonify({'ok': True, **_rut_payload(desde, hasta)})
@@ -2919,7 +2997,8 @@ def api_rutina_miembro_borrar():
 
 
 # --- Actividades con frecuencia ---------------------------------------------
-# POST /api/rutina/actividad/crear  → alta (miembro, título, horario, días, meses…)
+# POST /api/rutina/actividad/crear  → alta (miembro, título, horario, días, meses,
+#                                     participantes = con quién se comparte…)
 # POST /api/rutina/actividad/editar → edición completa (pide id)
 # POST /api/rutina/actividad/borrar → baja definitiva + limpieza de su ítem 'a<id>'
 # POST /api/rutina/pausa/crear      → receso de una actividad (vacaciones)

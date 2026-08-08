@@ -7785,6 +7785,12 @@ span.rut-ahora-emoji { cursor: default; }
 /* Atado a León (link puro): borde punteado + 🔗 — no se arrastra, lo sigue */
 .rut-item--fijado { border-left-style: dashed; }
 
+/* Movido a mano: queda clavado a esa hora y el resto del día se acomoda
+   alrededor (los "pines" de rutina.js). El borde doble lo distingue del
+   punteado de arriba sin agregar un ícono más a una tarjeta que ya es chica;
+   el detalle en palabras y el botón "Soltar" están en el popover. */
+.rut-item.is-fijado { border-left-width: 5px; border-left-style: double; }
+
 .rut-item-candado {
   flex-shrink: 0;
   font-size: 0.68rem;
