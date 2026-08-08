@@ -63,7 +63,14 @@
 | POST   | `/api/rutina/miembro/crear` | `api_rutina_miembro_crear` | Alta de miembro. Form `nombre`, `rol`, `es_bebe`, `fecha_nacimiento`, `dibujo`, `color_token`, `ancla_min`. Valida con `_rut_leer_form_miembro`. |
 | POST   | `/api/rutina/miembro/editar` | `api_rutina_miembro_editar` | Edición completa (pide `id` + los campos de arriba + `activo`). |
 | POST   | `/api/rutina/miembro/borrar` | `api_rutina_miembro_borrar` | Baja definitiva (form `id`); se lleva sus actividades y todos los ajustes de sus ítems. |
+| POST   | `/api/rutina/actividad/crear` | `api_rutina_actividad_crear` | Alta de actividad con frecuencia. Form `miembro_id`, `titulo`, `dibujo`, `inicio_min` (0..1439), `dur_min` (5..720), `dias` (7 bits, LUNES primero), `meses` (12 bits), **`vig_desde`/`vig_hasta`**, `anual`, `nota`. Valida con `_rut_leer_form_actividad`. |
+| POST   | `/api/rutina/actividad/editar` | `api_rutina_actividad_editar` | Edición completa (pide `id` + los campos de arriba + `activo`). |
+| POST   | `/api/rutina/actividad/borrar` | `api_rutina_actividad_borrar` | Baja definitiva (form `id`); se lleva sus recesos, sus participantes y los ajustes de su ítem `a<id>`. |
+| POST   | `/api/rutina/pausa/crear` | `api_rutina_pausa_crear` | Receso de una actividad (vacaciones). Form `actividad_id`, `vig_desde`, `vig_hasta` (las dos obligatorias), `anual`, `motivo`. Van por ruta aparte porque un receso necesita el id de la actividad, que no existe hasta guardarla. |
+| POST   | `/api/rutina/pausa/borrar` | `api_rutina_pausa_borrar` | Saca un receso suelto (form `id`). No toca la actividad. |
 | POST   | `/api/rutina/ajustes`     | `api_rutina_ajustes`  | Preferencias de la hoja → `config.json`. Form `hora_noche`, `hora_amanecer` (`HH:MM`, noche > amanecer), `cumple_activo`. |
+
+> ⚠ **El rango de vigencia va como `vig_desde` / `vig_hasta`, NO como `desde` / `hasta`.** Esos dos nombres ya están tomados: `postAccion()` se los agrega a TODAS las mutaciones del módulo con la semana que se está mirando, y `_rut_parsear_rango()` la limita a 31 días. Con el nombre corto, una escuela del 1/3 al 15/12 se rechazaba con "Rango demasiado largo" — y como el rango se valida DESPUÉS de escribir, **la fila igual quedaba creada**. Por eso las cinco rutas nuevas llaman a `_rut_parsear_rango()` ANTES de tocar la base; las rutas viejas del módulo siguen con el orden anterior y comparten ese riesgo.
 
 > **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
@@ -154,6 +161,10 @@ tareas/ocultos = permanente (todos los días).
 - `_rut_leer_form_ajuste(form)` → `(fecha, etapa, item_id, inicio_min)`. `inicio_min` 0..2879 (las tomas nocturnas cruzan la medianoche). Ya NO hay ítems "derivados no editables": cada ítem tiene id propio y todos se ajustan igual.
 - `_rut_leer_form_tarea(form)` → `(etapa, usuario, titulo, emoji, inicio_min, dur, fecha)`. `usuario` pasó a ser el id del miembro (la columna sigue siendo TEXT). Título 1..60 chars, emoji ≤8 chars, inicio 0..1439, dur 5..720.
 - `_rut_leer_form_miembro(form)` → `(nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min)`. Nombre 1..40; `es_bebe` solo con `rol='hijo'`; fecha no futura y **obligatoria si es bebé** (sin edad no hay ventana de sueño); `ancla_min` 0..1439.
+- `_rut_bits(valor, regex, campo, defecto)` → valida un patrón de frecuencia contra `_RUT_DIAS_RE` (`^[01]{7}$`) o `_RUT_MESES_RE` (`^[01]{12}$`). **Rechaza el todo-ceros**: una actividad sin ningún día (o sin ningún mes) no aparecería nunca y no habría forma de darse cuenta mirando la pantalla.
+- `_rut_leer_rango_anual(form)` → `(desde, hasta, anual)` desde `vig_desde`/`vig_hasta`. Lo comparten actividades y recesos. ⚠ **Si `anual`, NO se comparan las fechas**: un rango anual puede cruzar el año nuevo (una temporada del 1/12 al 28/2 da `hasta < desde` y es válida); `dentroAnual()` en `rutina.js` ya contempla ese caso.
+- `_rut_leer_form_actividad(form)` → `(miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses, desde, hasta, anual, nota)`. Título 1..60, `inicio_min` 0..1439, `dur_min` 5..720, `nota` ≤200.
+- `_rut_leer_form_pausa(form)` → `(actividad_id, desde, hasta, anual, motivo)`. Las dos fechas son obligatorias (a diferencia de la vigencia de una actividad, donde `''` = sin límite); `motivo` ≤60.
 
 ## Schedulers en hilo
 - `iniciar_scheduler_backup()`: chequea cada hora; backup de `fondo.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.

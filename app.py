@@ -2297,6 +2297,12 @@ _RUT_COLORES = ('persona-leon', 'persona-mari', 'persona-elias',
 # y te olvidás de alguna, el síntoma cambia según cuál: el backend lo rechaza
 # con "Color inválido", el círculo no aparece, o aparece transparente.
 
+# Frecuencia de una actividad, tal como la guarda la base: 7 chars '0'/'1' con
+# LUNES primero (la grilla de la UI arranca en lunes, no en domingo) y 12 chars
+# con enero primero. Quién los interpreta es actividadAplica() en rutina.js.
+_RUT_DIAS_RE = _re.compile(r'^[01]{7}$')
+_RUT_MESES_RE = _re.compile(r'^[01]{12}$')
+
 
 def _rut_semana_servidor():
     """Domingo..sábado (ISO) de la semana que contiene a hoy. Solo fallback
@@ -2549,6 +2555,92 @@ def _rut_leer_form_miembro(form):
         raise ValueError(f"ancla_min fuera de rango (0..1439): {ancla_min}")
 
     return nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min
+
+
+def _rut_bits(valor, regex, campo, defecto):
+    """Valida un patrón de frecuencia ('1111100' / '111111111111').
+    Rechaza el todo-ceros: una actividad sin ningún día (o sin ningún mes) no
+    aparecería NUNCA y no habría forma de darse cuenta mirando la pantalla."""
+    bits = (valor or '').strip() or defecto
+    if not regex.match(bits):
+        raise ValueError(f"{campo} inválido: {bits}")
+    if '1' not in bits:
+        raise ValueError(f"Elegí al menos un {campo}.")
+    return bits
+
+
+def _rut_leer_form_actividad(form):
+    """Valida el form de alta/edición de una actividad con frecuencia."""
+    miembro_id = _rut_miembro_id(form.get('miembro_id'))
+
+    titulo = (form.get('titulo') or '').strip()
+    if not 1 <= len(titulo) <= 60:
+        raise ValueError("El título debe tener entre 1 y 60 caracteres.")
+
+    # La librería de dibujos vive en el front; acá solo se guarda la clave (o
+    # el emoji suelto). dibujoHtml() cae con gracia si no la reconoce.
+    dibujo = (form.get('dibujo') or '').strip()[:30]
+
+    try:
+        inicio_min = int(form.get('inicio_min', ''))
+    except ValueError:
+        raise ValueError("inicio_min debe ser un entero (minutos desde 00:00).")
+    if not 0 <= inicio_min <= 1439:
+        raise ValueError(f"inicio_min fuera de rango (0..1439): {inicio_min}")
+
+    try:
+        dur_min = int(form.get('dur_min', ''))
+    except ValueError:
+        raise ValueError("dur_min debe ser un entero (minutos).")
+    if not 5 <= dur_min <= 720:
+        raise ValueError(f"Duración fuera de rango (5..720): {dur_min}")
+
+    dias = _rut_bits(form.get('dias'), _RUT_DIAS_RE, 'día de la semana', '1111111')
+    meses = _rut_bits(form.get('meses'), _RUT_MESES_RE, 'mes', '111111111111')
+
+    desde, hasta, anual = _rut_leer_rango_anual(form)
+
+    nota = (form.get('nota') or '').strip()[:200]
+
+    return (miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses,
+            desde, hasta, anual, nota)
+
+
+def _rut_leer_rango_anual(form):
+    """Rango de vigencia + repetición anual. Lo comparten las actividades y los
+    recesos, con la MISMA regla en los dos lados.
+
+    ⚠ Los campos se llaman `vig_desde` / `vig_hasta` y NO `desde` / `hasta`:
+    esos dos ya están tomados por el rango de la SEMANA QUE SE ESTÁ MIRANDO, que
+    postAccion() le agrega a todas las mutaciones del módulo y que
+    _rut_parsear_rango() limita a 31 días. Con el nombre corto, una escuela del
+    1/3 al 15/12 se rechazaba con "Rango demasiado largo"."""
+    desde = _rut_parsear_fecha_opcional(form.get('vig_desde'), 'desde')
+    hasta = _rut_parsear_fecha_opcional(form.get('vig_hasta'), 'hasta')
+    anual = 1 if (form.get('anual') or '').strip() in ('1', 'true', 'on') else 0
+    # ⚠ Si es anual NO se comparan: un rango anual puede cruzar el año nuevo
+    # (una temporada de verano del 1/12 al 28/2 es válida y da hasta < desde).
+    # dentroAnual() en rutina.js ya contempla ese caso.
+    if not anual and desde and hasta and hasta < desde:
+        raise ValueError("La fecha de fin no puede ser anterior a la de inicio.")
+    return desde, hasta, anual
+
+
+def _rut_leer_form_pausa(form):
+    """Valida el form de alta de un receso (las vacaciones de la escuela)."""
+    try:
+        actividad_id = int(str(form.get('actividad_id') or '').strip())
+    except ValueError:
+        raise ValueError("actividad_id debe ser el id de una actividad.")
+    if not database.actividad_rutina_existe(actividad_id):
+        raise ValueError(f"No existe una actividad con id {actividad_id}.")
+
+    desde, hasta, anual = _rut_leer_rango_anual(form)
+    if not desde or not hasta:
+        raise ValueError("Un receso necesita fecha de inicio y de fin.")
+
+    motivo = (form.get('motivo') or '').strip()[:60]
+    return actividad_id, desde, hasta, anual, motivo
 
 
 # =============================================================================
@@ -2815,6 +2907,131 @@ def api_rutina_miembro_borrar():
         if _es_ajax():
             desde, hasta = _rut_parsear_rango(request.form)
             return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+# --- Actividades con frecuencia ---------------------------------------------
+# POST /api/rutina/actividad/crear  → alta (miembro, título, horario, días, meses…)
+# POST /api/rutina/actividad/editar → edición completa (pide id)
+# POST /api/rutina/actividad/borrar → baja definitiva + limpieza de su ítem 'a<id>'
+# POST /api/rutina/pausa/crear      → receso de una actividad (vacaciones)
+# POST /api/rutina/pausa/borrar     → saca un receso suelto (pide id)
+# Mismo contrato AJAX que el resto del módulo. Los recesos van por rutas aparte
+# porque necesitan el id de la actividad, que no existe hasta guardarla.
+
+@app.route('/api/rutina/actividad/crear', methods=['POST'])
+def api_rutina_actividad_crear():
+    try:
+        # ⚠ El rango de la VISTA se valida ANTES de escribir. Las rutas viejas
+        # del módulo lo hacen después, y eso significa que un rango inválido
+        # devuelve 400 con el alta YA hecha: el usuario ve un error y la fila
+        # igual quedó. Pasó de verdad mientras se armaba este editor.
+        rango = _rut_parsear_rango(request.form)
+        datos = _rut_leer_form_actividad(request.form)
+        database.crear_actividad_rutina(*datos)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/actividad/editar', methods=['POST'])
+def api_rutina_actividad_editar():
+    try:
+        try:
+            actividad_id = int(str(request.form.get('id') or '').strip())
+        except ValueError:
+            raise ValueError("id debe ser el id de una actividad.")
+        if not database.actividad_rutina_existe(actividad_id):
+            raise ValueError(f"No existe una actividad con id {actividad_id}.")
+        rango = _rut_parsear_rango(request.form)   # antes de escribir, ver /crear
+        datos = _rut_leer_form_actividad(request.form)
+        activo = 0 if (request.form.get('activo') or '1').strip() == '0' else 1
+        database.editar_actividad_rutina(actividad_id, *datos, activo)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/actividad/borrar', methods=['POST'])
+def api_rutina_actividad_borrar():
+    """Baja definitiva. Se lleva sus recesos y los ajustes de horario de su
+    ítem (ver borrar_actividad_rutina en database.py)."""
+    try:
+        try:
+            actividad_id = int(str(request.form.get('id') or '').strip())
+        except ValueError:
+            raise ValueError("id debe ser el id de una actividad.")
+        if not database.actividad_rutina_existe(actividad_id):
+            raise ValueError(f"No existe una actividad con id {actividad_id}.")
+        rango = _rut_parsear_rango(request.form)   # antes de escribir, ver /crear
+        database.borrar_actividad_rutina(actividad_id)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/pausa/crear', methods=['POST'])
+def api_rutina_pausa_crear():
+    try:
+        rango = _rut_parsear_rango(request.form)   # antes de escribir, ver /crear
+        datos = _rut_leer_form_pausa(request.form)
+        database.crear_pausa_rutina(*datos)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/pausa/borrar', methods=['POST'])
+def api_rutina_pausa_borrar():
+    try:
+        try:
+            pausa_id = int(str(request.form.get('id') or '').strip())
+        except ValueError:
+            raise ValueError("id debe ser el id de un receso.")
+        rango = _rut_parsear_rango(request.form)   # antes de escribir, ver /crear
+        database.borrar_pausa_rutina(pausa_id)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
         return redirect(url_for('rutina'))
     except ValueError as e:
         if _es_ajax():

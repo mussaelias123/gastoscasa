@@ -147,6 +147,12 @@ cualquiera la mueve en todas. El dueño NO se repite acá.
 actividad NO va: las vacaciones de invierno dentro del ciclo lectivo. Para
 faltar UN día suelto (un feriado) se usa `rutina_ocultos` con fecha.
 
+`obtener_actividades_rutina()` devuelve cada receso **con su `id`** — es lo que
+le permite al editor borrar uno suelto sin tocar los demás de la misma
+actividad. En la UI los recesos se cargan por rutas aparte (`/api/rutina/pausa/*`)
+y solo al EDITAR: una pausa necesita el `actividad_id`, que no existe hasta que
+la actividad está guardada.
+
 ### Tabla `rutina_ajustes` (módulo Rutina — ajustes de horario)
 | Columna       | Tipo    | Notas                                                        |
 |---------------|---------|--------------------------------------------------------------|
@@ -252,7 +258,13 @@ Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 | `crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min)` | id nuevo | Se ubica al final (`orden` = máx + 1) |
 | `editar_miembro_rutina(id, nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min, activo)` | None | Pisa todos los campos editables |
 | `borrar_miembro_rutina(id)`      | None                               | Baja definitiva + cascada manual: sus actividades, sus participaciones, y los ajustes/duraciones/ocultos de `b<id>-*` y `a<actividad>` |
-| `obtener_actividades_rutina()`   | `list[dict]`                       | Actividades activas con `participantes` y `pausas` anidados (por eso dicts y no Rows) |
+| `obtener_actividades_rutina()`   | `list[dict]`                       | Actividades activas con `participantes` y `pausas` anidados (por eso dicts y no Rows). Cada pausa trae su `id` |
+| `crear_actividad_rutina(miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses, desde, hasta, anual, nota)` | id nuevo | **Devuelve el id**: el editor lo necesita para colgarle recesos sin recargar |
+| `editar_actividad_rutina(id, …los mismos…, activo)` | None            | Pisa todos los campos editables |
+| `borrar_actividad_rutina(id)`    | None                               | Baja definitiva + cascada manual: sus recesos, sus participantes y los ajustes/duraciones/ocultos de `a<id>` |
+| `actividad_rutina_existe(id)`    | `bool`                             | Valida el id antes de escribir (activa o no). Lo usan las rutas |
+| `crear_pausa_rutina(actividad_id, desde, hasta, anual, motivo)` | id nuevo | Receso de una actividad |
+| `borrar_pausa_rutina(id)`        | None                               | Saca un receso suelto; no toca la actividad |
 
 ## `calcular_saldos()` — 8 claves del dict
 - `elias_ars`, `elias_usd`, `mari_ars`, `mari_usd` → saldos en moneda nativa.

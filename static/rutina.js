@@ -109,6 +109,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var quitando = null;                   // item_id con el "¿solo hoy o siempre?" abierto
     var formAdd = null;                    // estado del form "＋ Añadir tarea" (null = cerrado)
     var formMiembro = null;                // estado del form de familia (null = cerrado)
+    var formActividad = null;              // estado del form de actividades (null = cerrado)
     var drag = null;                       // drag en curso (mover/estirar, estilo Teams)
     var seArrastro = false;                // suprime el click fantasma tras un drag
     var ahoraHora = null;                  // item_id con el editor "empezó a las…" abierto
@@ -1838,6 +1839,438 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         postAccion(f.id ? '/api/rutina/miembro/editar' : '/api/rutina/miembro/crear', campos);
     }
 
+    // ── Panel Actividades ────────────────────────────────────────────────────
+    // Lo que se repite: la escuela, el trabajo, la gimnasia. Con FRECUENCIA, que
+    // es lo que las distingue de las tareas sueltas del "✎ Editar" del lienzo.
+    //
+    // La regla de frecuencia ya existía entera en actividadAplica(): esto es la
+    // pantalla que faltaba para poder escribirla. Cuatro capas que se combinan:
+    //   1. días de la semana  → los 7 circulitos, SIEMPRE a la vista
+    //   2. meses del año      → los 12 circulitos, en "Más opciones"
+    //   3. rango desde/hasta  → con `anual` para que la escuela reviva sola
+    //   4. recesos            → las vacaciones de invierno, sub-rangos donde NO va
+    // La 1 alcanza para el 90% de los casos ("gimnasia los martes" son 2 clics);
+    // por eso el resto va plegado y no compitiendo por la atención.
+
+    // ⚠ LUNES PRIMERO, no domingo: actividadAplica() indexa con
+    // (getDay() + 6) % 7 y el string de la base sigue ese orden.
+    var DIAS_CORTOS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    var DIAS_LARGOS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes',
+                       'sábado', 'domingo'];
+    var MESES_CORTOS = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+    var MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre',
+                        'diciembre'];
+
+    var DIAS_TODOS = '1111111';
+    var MESES_TODOS = '111111111111';
+
+    // Atajos de días: cubren los tres casos que se repiten en una familia.
+    var DIAS_PRESETS = [
+        { t: 'Todos', v: DIAS_TODOS },
+        { t: 'L a V', v: '1111100' },
+        { t: 'Finde', v: '0000011' }
+    ];
+
+    /** Da vuelta el bit `i` de un patrón de frecuencia. */
+    function toggleBit(cadena, i) {
+        return cadena.substring(0, i) +
+               (cadena.charAt(i) === '1' ? '0' : '1') +
+               cadena.substring(i + 1);
+    }
+
+    function todosCeros(cadena) { return String(cadena).indexOf('1') < 0; }
+
+    function formActividadNueva() {
+        var u = usuariosSel()[0] || usuarios()[0] || '';
+        return {
+            id: null, miembro_id: u, titulo: '', dibujo: '',
+            inicio_min: 540, dur_min: 60,
+            dias: DIAS_TODOS, meses: MESES_TODOS,
+            desde: '', hasta: '', anual: false, nota: '',
+            pausas: [], mas: false, error: '',
+            pausa: { desde: '', hasta: '', anual: false, motivo: '' }
+        };
+    }
+
+    function formActividadDe(a) {
+        return {
+            id: a.id, miembro_id: String(a.miembro_id), titulo: a.titulo,
+            dibujo: a.dibujo || '',
+            inicio_min: a.inicio_min, dur_min: a.dur_min,
+            dias: a.dias || DIAS_TODOS, meses: a.meses || MESES_TODOS,
+            desde: a.desde || '', hasta: a.hasta || '', anual: !!a.anual,
+            nota: a.nota || '', pausas: a.pausas || [],
+            // Si ya tiene algo cargado en las opciones de abajo, se abren solas:
+            // si no, quedaría escondido y parecería que se perdió.
+            mas: !!(a.desde || a.hasta || a.anual || (a.pausas || []).length ||
+                    (a.meses && a.meses !== MESES_TODOS)),
+            error: '',
+            pausa: { desde: '', hasta: '', anual: false, motivo: '' }
+        };
+    }
+
+    // Lee lo tipeado antes de un re-render. Sin esto el tick de 30 s borra lo
+    // que estabas escribiendo — mismo motivo que capturarFormMiembro().
+    function capturarFormActividad() {
+        if (!formActividad) return;
+        var f = formActividad;
+        var t = $('rut-fa-titulo'), n = $('rut-fa-nota');
+        var d = $('rut-fa-desde'), h = $('rut-fa-hasta');
+        var hora = $('rut-fa-hora'), min = $('rut-fa-min'), dur = $('rut-fa-dur');
+        if (t) f.titulo = t.value;
+        if (n) f.nota = n.value;
+        if (d) f.desde = d.value;
+        if (h) f.hasta = h.value;
+        if (hora && min) f.inicio_min = Number(hora.value) * 60 + Number(min.value);
+        if (dur) f.dur_min = Number(dur.value);
+        // El <details> también: si no, "Más opciones" se cierra sola cada 30 s.
+        var det = $('rut-fa-mas');
+        if (det) f.mas = det.open;
+        var pd = $('rut-fa-pd'), ph = $('rut-fa-ph'), pm = $('rut-fa-pm');
+        if (pd) f.pausa.desde = pd.value;
+        if (ph) f.pausa.hasta = ph.value;
+        if (pm) f.pausa.motivo = pm.value;
+    }
+
+    /** Los circulitos que se pintan al tocarlos. */
+    function circulosHtml(cadena, cortos, largos, attr) {
+        return cadena.split('').map(function (bit, i) {
+            var on = bit === '1';
+            return '<button type="button" class="rut-circ' + (on ? ' activo' : '') +
+                '" ' + attr + '="' + i + '" aria-pressed="' + on + '" ' +
+                'title="' + largos[i] + '">' +
+                '<span aria-hidden="true">' + cortos[i] + '</span>' +
+                '<span class="rut-sr">' + largos[i] + '</span></button>';
+        }).join('');
+    }
+
+    /** Frecuencia en castellano, para que la ficha se entienda sin abrirla. */
+    function resumenFrecuencia(a) {
+        var partes = [];
+        var dias = a.dias || DIAS_TODOS;
+
+        if (dias === DIAS_TODOS) partes.push('todos los días');
+        else if (dias === '1111100') partes.push('de lunes a viernes');
+        else if (dias === '0000011') partes.push('sábados y domingos');
+        else {
+            var nombres = [];
+            dias.split('').forEach(function (bit, i) {
+                if (bit === '1') nombres.push(DIAS_CORTOS[i]);
+            });
+            partes.push(nombres.join(', '));
+        }
+
+        var meses = a.meses || MESES_TODOS;
+        if (meses !== MESES_TODOS) {
+            var mn = [];
+            meses.split('').forEach(function (bit, i) {
+                if (bit === '1') mn.push(MESES_CORTOS[i]);
+            });
+            partes.push('solo ' + mn.join(''));
+        }
+
+        if (a.desde || a.hasta) {
+            var r = 'del ' + (a.desde ? fechaCorta(a.desde) : '…') +
+                    ' al ' + (a.hasta ? fechaCorta(a.hasta) : '…');
+            if (a.anual) r += ', cada año';
+            partes.push(r);
+        }
+
+        var np = (a.pausas || []).length;
+        if (np) partes.push(np === 1 ? '1 receso' : np + ' recesos');
+
+        return partes.join(' · ');
+    }
+
+    /** 'YYYY-MM-DD' → 'D/M' (el año no aporta y ocupa lugar en el celular). */
+    function fechaCorta(iso) {
+        var p = String(iso || '').split('-');
+        if (p.length !== 3) return iso || '';
+        return Number(p[2]) + '/' + Number(p[1]);
+    }
+
+    function renderActividades() {
+        var cont = $('rut-actividades');
+        if (!cont) return;
+
+        var lista = ACTIVIDADES.map(function (a) {
+            var duenio = miembroDe(String(a.miembro_id));
+            var quien = duenio ? duenio.nombre : 'alguien que ya no está';
+            return '<div class="rut-miembro rut--persona"' + styleColor(a.miembro_id) + '>' +
+                '<span class="rut-act-dib">' + dibujoHtml(a.dibujo, '📌') + '</span>' +
+                '<div class="rut-miembro-texto">' +
+                    '<div class="rut-miembro-nombre">' + escapeHtml(a.titulo) + '</div>' +
+                    '<div class="rut-miembro-sub">' +
+                        escapeHtml(quien) + ' · ' + fmt(a.inicio_min) + '–' +
+                        fmt(a.inicio_min + a.dur_min) + ' · ' +
+                        escapeHtml(resumenFrecuencia(a)) +
+                    '</div>' +
+                '</div>' +
+                '<button type="button" class="rut-btn-icono" data-fa-editar="' + a.id + '" ' +
+                    'aria-label="Editar ' + escapeHtml(a.titulo) + '">✎</button>' +
+                '<button type="button" class="rut-btn-icono" data-fa-borrar="' + a.id + '" ' +
+                    'aria-label="Borrar ' + escapeHtml(a.titulo) + '">🗑</button>' +
+            '</div>';
+        }).join('');
+
+        var vacio = ACTIVIDADES.length ? '' :
+            '<p class="rut-panel-vacio">Todavía no hay actividades. Acá va lo que se ' +
+            'repite —la escuela, el trabajo, la gimnasia—: elegís de quién es, a qué ' +
+            'hora y qué días, y aparece sola en la rutina cuando corresponde.</p>';
+
+        var boton = formActividad ? '' :
+            '<button type="button" class="rut-add-btn" data-fa-nuevo="1">＋ Agregar actividad</button>';
+
+        cont.innerHTML = vacio + lista + (formActividad ? formActividadHtml() : boton);
+        pintarIconos(cont);
+    }
+
+    function formActividadHtml() {
+        var f = formActividad;
+
+        var pillsDuenio = usuarios().map(function (u) {
+            return '<button type="button" class="rut-add-pill rut--persona' +
+                (String(f.miembro_id) === u ? ' activo' : '') +
+                '" data-fa-duenio="' + u + '"' + styleColor(u) + '>' +
+                escapeHtml(nombreDe(u)) + '</button>';
+        }).join('');
+
+        var lib = window.RutinaDibujos;
+        var dibujos = (lib ? lib.claves : []).map(function (c) {
+            return '<button type="button" class="rut-fa-dib' +
+                (f.dibujo === c ? ' activo' : '') + '" data-fa-dib="' + c + '" ' +
+                'title="' + c + '" aria-label="Dibujo ' + c + '">' +
+                lib.html(c) + '</button>';
+        }).join('');
+
+        var horas = '', minutos = '', durs = '';
+        var fh = Math.floor(f.inicio_min / 60), fm = f.inicio_min % 60;
+        for (var h = 0; h < 24; h++) {
+            horas += '<option value="' + h + '"' + (fh === h ? ' selected' : '') + '>' +
+                String(h).padStart(2, '0') + '</option>';
+        }
+        [0, 15, 30, 45].forEach(function (m) {
+            minutos += '<option value="' + m + '"' + (fm === m ? ' selected' : '') + '>' +
+                String(m).padStart(2, '0') + '</option>';
+        });
+        [15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480].forEach(function (d) {
+            durs += '<option value="' + d + '"' + (f.dur_min === d ? ' selected' : '') + '>' +
+                fmtDur(d) + '</option>';
+        });
+        // Una duración cargada a mano (o de otra época) no se puede perder solo
+        // porque no está en la lista de siempre.
+        if ([15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480].indexOf(f.dur_min) < 0) {
+            durs = '<option value="' + f.dur_min + '" selected>' + fmtDur(f.dur_min) +
+                   '</option>' + durs;
+        }
+
+        var presets = DIAS_PRESETS.map(function (p) {
+            return '<button type="button" class="rut-fa-preset' +
+                (f.dias === p.v ? ' activo' : '') + '" data-fa-dias-preset="' + p.v + '">' +
+                p.t + '</button>';
+        }).join('');
+
+        var pausas = (f.pausas || []).map(function (p) {
+            return '<li class="rut-fa-pausa">' +
+                '<span>' + fechaCorta(p.desde) + ' al ' + fechaCorta(p.hasta) +
+                    (p.anual ? ' · cada año' : '') +
+                    (p.motivo ? ' · ' + escapeHtml(p.motivo) : '') + '</span>' +
+                '<button type="button" class="rut-btn-icono" data-fa-pausa-borrar="' + p.id + '" ' +
+                    'aria-label="Sacar este receso">✕</button>' +
+            '</li>';
+        }).join('');
+
+        // Un receso necesita el id de la actividad, que no existe hasta guardarla.
+        var bloquePausas = f.id
+            ? '<ul class="rut-fa-pausas">' + pausas + '</ul>' +
+              '<div class="rut-fm-linea">' +
+                  '<input type="date" class="rut-add-input rut-fm-fecha" id="rut-fa-pd" ' +
+                      'value="' + escapeHtml(f.pausa.desde) + '" aria-label="Receso desde">' +
+                  '<span class="rut-add-label">al</span>' +
+                  '<input type="date" class="rut-add-input rut-fm-fecha" id="rut-fa-ph" ' +
+                      'value="' + escapeHtml(f.pausa.hasta) + '" aria-label="Receso hasta">' +
+              '</div>' +
+              '<div class="rut-fm-linea">' +
+                  '<input type="text" class="rut-add-input" id="rut-fa-pm" maxlength="60" ' +
+                      'placeholder="Motivo (vacaciones de invierno)" value="' +
+                      escapeHtml(f.pausa.motivo) + '">' +
+              '</div>' +
+              '<div class="rut-fm-linea">' +
+                  '<label class="rut-fm-check">' +
+                      '<input type="checkbox" data-fa-pausa-anual="1"' +
+                          (f.pausa.anual ? ' checked' : '') + '>' +
+                      '<span>Se repite todos los años</span>' +
+                  '</label>' +
+                  '<span class="rut-add-espacio"></span>' +
+                  '<button type="button" class="rut-editor-btn" data-fa-pausa-nueva="1">Sumar receso</button>' +
+              '</div>'
+            : '<p class="rut-fm-nota">Guardá la actividad y después agregale los recesos.</p>';
+
+        return '<div class="rut-fm">' +
+            (f.error ? '<div class="rut-fm-error">⚠ ' + escapeHtml(f.error) + '</div>' : '') +
+            '<div class="rut-fm-linea rut-fm-pills">' + pillsDuenio + '</div>' +
+            '<div class="rut-fm-linea">' +
+                '<input type="text" class="rut-add-input" id="rut-fa-titulo" maxlength="60" ' +
+                    'placeholder="Nombre de la actividad" value="' + escapeHtml(f.titulo) + '">' +
+            '</div>' +
+            '<div class="rut-fa-dibujos">' + dibujos + '</div>' +
+            '<div class="rut-fm-linea">' +
+                '<span class="rut-add-label">Empieza</span>' +
+                '<select class="rut-add-select" id="rut-fa-hora">' + horas + '</select>' +
+                '<span class="rut-add-label">:</span>' +
+                '<select class="rut-add-select" id="rut-fa-min">' + minutos + '</select>' +
+                '<span class="rut-add-label">· dura</span>' +
+                '<select class="rut-add-select" id="rut-fa-dur">' + durs + '</select>' +
+            '</div>' +
+
+            '<div class="rut-fa-bloque">' +
+                '<span class="rut-add-label">Qué días</span>' +
+                '<div class="rut-fa-presets">' + presets + '</div>' +
+                '<div class="rut-circs rut--persona"' + styleColor(f.miembro_id) + '>' +
+                    circulosHtml(f.dias, DIAS_CORTOS, DIAS_LARGOS, 'data-fa-dia') +
+                '</div>' +
+            '</div>' +
+
+            '<details class="rut-frec-mas" id="rut-fa-mas"' + (f.mas ? ' open' : '') + '>' +
+                '<summary>Más opciones</summary>' +
+
+                '<div class="rut-fa-bloque">' +
+                    '<span class="rut-add-label">En qué meses</span>' +
+                    '<div class="rut-circs rut--persona"' + styleColor(f.miembro_id) + '>' +
+                        circulosHtml(f.meses, MESES_CORTOS, MESES_LARGOS, 'data-fa-mes') +
+                    '</div>' +
+                    '<p class="rut-fm-nota">Apagá los meses de vacaciones y la actividad ' +
+                    'deja de aparecer sola.</p>' +
+                '</div>' +
+
+                '<div class="rut-fa-bloque">' +
+                    '<span class="rut-add-label">Entre qué fechas</span>' +
+                    '<div class="rut-fm-linea">' +
+                        '<input type="date" class="rut-add-input rut-fm-fecha" id="rut-fa-desde" ' +
+                            'value="' + escapeHtml(f.desde) + '" aria-label="Desde">' +
+                        '<span class="rut-add-label">al</span>' +
+                        '<input type="date" class="rut-add-input rut-fm-fecha" id="rut-fa-hasta" ' +
+                            'value="' + escapeHtml(f.hasta) + '" aria-label="Hasta">' +
+                    '</div>' +
+                    '<label class="rut-fm-check">' +
+                        '<input type="checkbox" data-fa-anual="1"' + (f.anual ? ' checked' : '') + '>' +
+                        '<span>Se repite todos los años</span>' +
+                    '</label>' +
+                    '<p class="rut-fm-nota">Con esto tildado se comparan solo el día y el ' +
+                    'mes: "del 1/3 al 15/12" revive solo cada año.</p>' +
+                '</div>' +
+
+                '<div class="rut-fa-bloque">' +
+                    '<span class="rut-add-label">Recesos</span>' +
+                    bloquePausas +
+                '</div>' +
+
+                '<div class="rut-fa-bloque">' +
+                    '<span class="rut-add-label">Nota</span>' +
+                    '<textarea class="rut-add-input rut-fa-nota" id="rut-fa-nota" rows="2" ' +
+                        'maxlength="200" placeholder="Lo que quieras acordarte">' +
+                        escapeHtml(f.nota) + '</textarea>' +
+                '</div>' +
+            '</details>' +
+
+            '<div class="rut-fm-linea">' +
+                '<span class="rut-add-espacio"></span>' +
+                '<button type="button" class="rut-editor-ahora" data-fa-guardar="1">Guardar</button>' +
+                '<button type="button" class="rut-editor-ok" data-fa-cancelar="1">Cancelar</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    function guardarActividad() {
+        capturarFormActividad();
+        var f = formActividad;
+        if (!f) return;
+        if (!f.titulo.trim()) {
+            f.error = 'Poné un nombre para la actividad.';
+            return renderTodo();
+        }
+        if (todosCeros(f.dias)) {
+            f.error = 'Elegí al menos un día de la semana, si no la actividad no aparece nunca.';
+            return renderTodo();
+        }
+        if (todosCeros(f.meses)) {
+            f.error = 'Elegí al menos un mes.';
+            f.mas = true;
+            return renderTodo();
+        }
+        if (!f.anual && f.desde && f.hasta && f.hasta < f.desde) {
+            f.error = 'La fecha de fin no puede ser anterior a la de inicio.';
+            f.mas = true;
+            return renderTodo();
+        }
+        var campos = {
+            miembro_id: f.miembro_id,
+            titulo: f.titulo.trim(),
+            dibujo: f.dibujo || '',
+            inicio_min: f.inicio_min,
+            dur_min: f.dur_min,
+            dias: f.dias,
+            meses: f.meses,
+            // ⚠ vig_* y no desde/hasta: postAccion() ya manda `desde`/`hasta`
+            // con la semana que se está mirando, y el backend la limita a 31
+            // días. Ver _rut_leer_rango_anual() en app.py.
+            vig_desde: f.desde || '',
+            vig_hasta: f.hasta || '',
+            anual: f.anual ? '1' : '0',
+            nota: f.nota.trim()
+        };
+        if (f.id) {
+            campos.id = f.id;
+            campos.activo = '1';
+        }
+        formActividad = null;
+        postAccion(f.id ? '/api/rutina/actividad/editar' : '/api/rutina/actividad/crear', campos);
+    }
+
+    function guardarPausa() {
+        capturarFormActividad();
+        var f = formActividad;
+        if (!f || !f.id) return;
+        if (!f.pausa.desde || !f.pausa.hasta) {
+            f.error = 'Un receso necesita las dos fechas.';
+            f.mas = true;
+            return renderTodo();
+        }
+        if (!f.pausa.anual && f.pausa.hasta < f.pausa.desde) {
+            f.error = 'El receso termina antes de empezar.';
+            f.mas = true;
+            return renderTodo();
+        }
+        // El form queda abierto: se vuelve a armar con las pausas frescas del
+        // payload, y así se pueden cargar varias seguidas.
+        var campos = {
+            actividad_id: f.id,
+            vig_desde: f.pausa.desde, vig_hasta: f.pausa.hasta,
+            anual: f.pausa.anual ? '1' : '0',
+            motivo: f.pausa.motivo.trim()
+        };
+        f.pausa = { desde: '', hasta: '', anual: false, motivo: '' };
+        f.error = '';
+        // ⚠ Vaciar también los inputs del DOM, no alcanza con el estado: el
+        // renderTodo() que dispara postAccion() llama antes a
+        // capturarFormActividad(), que relee estos campos y pisaría el reset.
+        // Si quedan cargados, tocar "Sumar receso" de nuevo crea un duplicado.
+        ['rut-fa-pd', 'rut-fa-ph', 'rut-fa-pm'].forEach(function (id) {
+            var el = $(id);
+            if (el) el.value = '';
+        });
+        postAccion('/api/rutina/pausa/crear', campos);
+    }
+
+    /** Tras un POST de receso hay que reenganchar las pausas frescas al form. */
+    function refrescarPausasDelForm() {
+        if (!formActividad || !formActividad.id) return;
+        ACTIVIDADES.forEach(function (a) {
+            if (a.id === formActividad.id) formActividad.pausas = a.pausas || [];
+        });
+    }
+
     // ── Panel Ajustes ────────────────────────────────────────────────────────
     function renderAjustes() {
         var noche = $('rut-cfg-noche');
@@ -1929,8 +2362,10 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
     function renderTodo() {
         ajustarSticky();   // remedir siempre: el alto del topbar global puede variar
-        capturarFormAdd();     // preservar lo tipeado en el form de añadir
-        capturarFormMiembro(); // ídem en el form de familia
+        capturarFormAdd();       // preservar lo tipeado en el form de añadir
+        capturarFormMiembro();   // ídem en el form de familia
+        capturarFormActividad(); // ídem en el de actividades
+        refrescarPausasDelForm();
         normalizarSeleccion();
         var calc = calcular();
         var hoyIdx = new Date().getDay();
@@ -1962,6 +2397,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         renderTimeline(calc, esHoy, now, nocheActiva, enCurso);
         renderTips(calc.bebe);
         renderFamilia();
+        renderActividades();
         renderAjustes();
         actualizarFondo();   // el cielo sigue la hora que se está mirando
 
@@ -2122,6 +2558,96 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     formMiembro.es_bebe = ev.target.checked;
                     renderTodo();
                 }
+            });
+        }
+
+        // Panel Actividades: alta / edición / baja + los circulitos de frecuencia.
+        // Los toggles NO van al servidor: se guarda al tocar "Guardar", igual
+        // que en Familia.
+        var panelAct = $('rut-actividades');
+        if (panelAct) {
+            panelAct.addEventListener('click', function (ev) {
+                var el;
+                if (ev.target.closest('[data-fa-nuevo]')) {
+                    formActividad = formActividadNueva();
+                    renderTodo();
+                    var inp = $('rut-fa-titulo');
+                    if (inp) inp.focus();
+                    return;
+                }
+                if ((el = ev.target.closest('[data-fa-editar]'))) {
+                    var id = Number(el.dataset.faEditar);
+                    ACTIVIDADES.forEach(function (a) {
+                        if (a.id === id) formActividad = formActividadDe(a);
+                    });
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fa-borrar]'))) {
+                    var bid = Number(el.dataset.faBorrar);
+                    var act = null;
+                    ACTIVIDADES.forEach(function (a) { if (a.id === bid) act = a; });
+                    if (!act) return;
+                    // Se lleva sus recesos y los horarios ajustados: se pregunta,
+                    // igual que al borrar un miembro.
+                    if (!window.confirm('¿Borrar "' + act.titulo + '"? Se van también ' +
+                        'sus recesos y los horarios que hayas ajustado.')) return;
+                    formActividad = null;
+                    return postAccion('/api/rutina/actividad/borrar', { id: bid });
+                }
+                if (!formActividad) return;
+                if ((el = ev.target.closest('[data-fa-duenio]'))) {
+                    capturarFormActividad();
+                    formActividad.miembro_id = el.dataset.faDuenio;
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fa-dib]'))) {
+                    capturarFormActividad();
+                    var clave = el.dataset.faDib;
+                    // Volver a tocar el mismo dibujo lo saca (queda el 📌 por defecto).
+                    formActividad.dibujo = (formActividad.dibujo === clave) ? '' : clave;
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fa-dias-preset]'))) {
+                    capturarFormActividad();
+                    formActividad.dias = el.dataset.faDiasPreset;
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fa-dia]'))) {
+                    capturarFormActividad();
+                    formActividad.dias = toggleBit(formActividad.dias, Number(el.dataset.faDia));
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fa-mes]'))) {
+                    capturarFormActividad();
+                    formActividad.meses = toggleBit(formActividad.meses, Number(el.dataset.faMes));
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fa-pausa-borrar]'))) {
+                    capturarFormActividad();
+                    return postAccion('/api/rutina/pausa/borrar', { id: Number(el.dataset.faPausaBorrar) });
+                }
+                if (ev.target.closest('[data-fa-pausa-nueva]')) return guardarPausa();
+                if (ev.target.closest('[data-fa-guardar]')) return guardarActividad();
+                if (ev.target.closest('[data-fa-cancelar]')) {
+                    formActividad = null;
+                    return renderTodo();
+                }
+            });
+
+            panelAct.addEventListener('change', function (ev) {
+                if (!formActividad) return;
+                if (ev.target.closest('[data-fa-anual]')) {
+                    capturarFormActividad();
+                    formActividad.anual = ev.target.checked;
+                    return renderTodo();
+                }
+                if (ev.target.closest('[data-fa-pausa-anual]')) {
+                    capturarFormActividad();
+                    formActividad.pausa.anual = ev.target.checked;
+                    return renderTodo();
+                }
+                // Los selects de hora y duración se leen en capturarFormActividad;
+                // no hace falta re-renderizar al cambiarlos.
             });
         }
 
@@ -2575,11 +3101,19 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         window.addEventListener('load', ajustarSticky);
 
         // Reloj vivo + sync entre teléfonos (30 s); sync extra al volver a la app.
-        // El tick se saltea en modo edición, con un popover abierto (editando)
-        // o durante un drag: el re-render pisaría lo que se está haciendo.
-        setInterval(function () { if (!modoEdicion && !editando && !drag && !ahoraHora) syncAjustes(); }, 30000);
+        // El tick se saltea en modo edición, con un popover abierto (editando),
+        // durante un drag o con el editor de actividades abierto: el re-render
+        // pisaría lo que se está haciendo. `formActividad` está en la lista y
+        // `formMiembro` no a propósito — el de actividades es un form largo (días,
+        // meses, fechas, recesos), así que es mucho más probable que el tick
+        // caiga en medio, y aunque capturarFormActividad() conserva lo tipeado,
+        // reconstruir el innerHTML igual te saca el foco del campo.
+        function puedeSync() {
+            return !modoEdicion && !editando && !drag && !ahoraHora && !formActividad;
+        }
+        setInterval(function () { if (puedeSync()) syncAjustes(); }, 30000);
         document.addEventListener('visibilitychange', function () {
-            if (!document.hidden && !modoEdicion && !editando && !drag && !ahoraHora) syncAjustes();
+            if (!document.hidden && puedeSync()) syncAjustes();
         });
     }
 

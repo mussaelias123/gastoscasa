@@ -1559,11 +1559,11 @@ def borrar_miembro_rutina(miembro_id):
 # FUNCIONES: Actividades con frecuencia (módulo Rutina)
 # =============================================================================
 #
-# Solo LECTURA por ahora: el alta/edición desde la UI llega con el editor de
-# actividades. Las filas las siembra TempScripts/migrar_rutina_familia.py.
 # Qué días cae cada actividad NO se resuelve acá: la regla (días de la semana →
 # meses → rango/anual → recesos) vive en actividadAplica() de static/rutina.js,
-# porque el que sabe qué día está mirando el usuario es el cliente.
+# porque el que sabe qué día está mirando el usuario es el cliente. Acá se
+# guardan los datos crudos: `dias` son 7 chars '0'/'1' con LUNES primero y
+# `meses` son 12 con enero primero.
 
 def obtener_actividades_rutina():
     """Actividades activas con sus participantes extra y sus recesos.
@@ -1585,9 +1585,12 @@ def obtener_actividades_rutina():
 
     pausas = {}
     for fila in conn.execute(
-        'SELECT actividad_id, desde, hasta, anual, motivo FROM rutina_pausas'
+        'SELECT id, actividad_id, desde, hasta, anual, motivo FROM rutina_pausas'
     ).fetchall():
+        # El `id` va sí o sí: es lo que le permite al editor borrar UN receso
+        # suelto sin tocar los demás de la misma actividad.
         pausas.setdefault(fila['actividad_id'], []).append({
+            'id': fila['id'],
             'desde': fila['desde'], 'hasta': fila['hasta'],
             'anual': bool(fila['anual']), 'motivo': fila['motivo'],
         })
@@ -1602,3 +1605,92 @@ def obtener_actividades_rutina():
         salida.append(act)
     conn.close()
     return salida
+
+
+def crear_actividad_rutina(miembro_id, titulo, dibujo, inicio_min, dur_min,
+                           dias, meses, desde, hasta, anual, nota):
+    """Alta de actividad. Devuelve el id: el editor lo necesita para poder
+    colgarle recesos sin recargar la página."""
+    conn = conectar()
+    ahora = _ahora_iso()
+    cur = conn.execute('''
+        INSERT INTO rutina_actividades
+            (miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses,
+             desde, hasta, anual, nota, activo, creado, actualizado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ''', (miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses,
+          desde, hasta, anual, nota, ahora, ahora))
+    actividad_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return actividad_id
+
+
+def editar_actividad_rutina(actividad_id, miembro_id, titulo, dibujo,
+                            inicio_min, dur_min, dias, meses, desde, hasta,
+                            anual, nota, activo):
+    """Pisa todos los campos editables de una actividad."""
+    conn = conectar()
+    conn.execute('''
+        UPDATE rutina_actividades
+        SET miembro_id = ?, titulo = ?, dibujo = ?, inicio_min = ?, dur_min = ?,
+            dias = ?, meses = ?, desde = ?, hasta = ?, anual = ?, nota = ?,
+            activo = ?, actualizado = ?
+        WHERE id = ?
+    ''', (miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses,
+          desde, hasta, anual, nota, activo, _ahora_iso(), actividad_id))
+    conn.commit()
+    conn.close()
+
+
+def borrar_actividad_rutina(actividad_id):
+    """Baja definitiva de una actividad: sus recesos, sus participantes y los
+    ajustes/duraciones/ocultos de su ítem ('a<id>'). La cascada es a mano
+    porque este esquema no declara foreign keys — mismo criterio que
+    borrar_miembro_rutina()."""
+    conn = conectar()
+    item_id = f'a{int(actividad_id)}'
+    conn.execute('DELETE FROM rutina_ajustes WHERE item_id = ?', (item_id,))
+    conn.execute('DELETE FROM rutina_dur     WHERE item_id = ?', (item_id,))
+    conn.execute('DELETE FROM rutina_ocultos WHERE item_id = ?', (item_id,))
+    conn.execute('DELETE FROM rutina_pausas WHERE actividad_id = ?', (actividad_id,))
+    conn.execute(
+        'DELETE FROM rutina_actividad_miembros WHERE actividad_id = ?',
+        (actividad_id,)
+    )
+    conn.execute('DELETE FROM rutina_actividades WHERE id = ?', (actividad_id,))
+    conn.commit()
+    conn.close()
+
+
+def actividad_rutina_existe(actividad_id):
+    """True si la actividad existe (activa o no). Lo usan las rutas para
+    validar el id antes de escribir un receso."""
+    conn = conectar()
+    fila = conn.execute(
+        'SELECT 1 FROM rutina_actividades WHERE id = ?', (actividad_id,)
+    ).fetchone()
+    conn.close()
+    return fila is not None
+
+
+def crear_pausa_rutina(actividad_id, desde, hasta, anual, motivo):
+    """Receso de una actividad (las vacaciones de invierno de la escuela).
+    Para faltar UN día suelto está rutina_ocultos con fecha, que es otra cosa."""
+    conn = conectar()
+    cur = conn.execute('''
+        INSERT INTO rutina_pausas (actividad_id, desde, hasta, anual, motivo)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (actividad_id, desde, hasta, anual, motivo))
+    pausa_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return pausa_id
+
+
+def borrar_pausa_rutina(pausa_id):
+    """Saca un receso suelto. No toca la actividad."""
+    conn = conectar()
+    conn.execute('DELETE FROM rutina_pausas WHERE id = ?', (pausa_id,))
+    conn.commit()
+    conn.close()
