@@ -106,14 +106,27 @@ Por qué `tipo` importa para los KPIs: la producción total cuenta SOLO las `fre
 | `dibujo`           | TEXT    | Clave de la librería de dibujos; `''` → emoji por rol   |
 | `color_token`      | TEXT    | Var CSS sin el prefijo `--color-`: `persona-leon\|mari\|elias`, `rut-p4`..`rut-p8` (validado contra `_RUT_COLORES` en `app.py`) |
 | `ancla_min`        | INTEGER | SOLO bebés: minutos de la primera toma del día (0..1439). 390 = 06:30 |
+| `acompanan`        | TEXT    | SOLO bebés: ids separados por coma de quienes lo acompañan en las tomas (`'2'`, `'2,3'`); `''` = nadie. Se fuerza `''` si `es_bebe=0`. Máximo 3 |
 | `orden`            | INTEGER | Orden de la familia en chips y columnas                 |
 | `activo`           | INTEGER | 0 = archivado (no se muestra)                           |
 | `creado` / `actualizado` | TEXT | Timestamps ISO                                       |
 
 Reemplaza a los tres strings fijos (`leon`/`mama`/`papa`) que estaban
 hardcodeados en `app.py` y `static/rutina.js`. Borrar un miembro limpia a mano
-sus actividades y todos los ajustes/duraciones/ocultos de sus ítems: no hay
-foreign keys declaradas en este esquema.
+sus actividades, todos los ajustes/duraciones/ocultos de sus ítems y su id
+dentro del `acompanan` de los demás: no hay foreign keys declaradas en este
+esquema.
+
+**Por qué `acompanan` es una columna y no una tabla puente**: es un atributo del
+bebé (cardinalidad 0-3, siempre se lee junto al resto de la fila, nunca se
+consulta sola), viaja gratis en `_rut_payload` sin query extra y tiene
+precedente en el mismo esquema (`dias`/`meses` ya son strings empaquetados).
+`rutina_actividad_miembros` **no sirve acá**: esa tabla es para actividades
+CARGADAS, y las tomas son ítems GENERADOS (`b<id>-toma2`) que no tienen fila en
+ninguna tabla. Agregada con `ALTER TABLE` (08/08/2026) para reemplazar la regla
+"las tomas de León le ocupan la agenda a mamá", que estaba escrita a mano en
+`static/rutina.js`; los datos existentes los sembró
+`TempScripts/migrar_rutina_acompanan.py`.
 
 ### Tabla `rutina_actividades` (módulo Rutina — actividades con frecuencia)
 | Columna      | Tipo    | Notas                                                        |
@@ -146,6 +159,12 @@ cualquiera la mueve en todas. El dueño NO se repite acá.
 `id`, `actividad_id`, `desde`, `hasta`, `anual`, `motivo`. Sub-rangos donde la
 actividad NO va: las vacaciones de invierno dentro del ciclo lectivo. Para
 faltar UN día suelto (un feriado) se usa `rutina_ocultos` con fecha.
+
+`obtener_actividades_rutina()` devuelve cada receso **con su `id`** — es lo que
+le permite al editor borrar uno suelto sin tocar los demás de la misma
+actividad. En la UI los recesos se cargan por rutas aparte (`/api/rutina/pausa/*`)
+y solo al EDITAR: una pausa necesita el `actividad_id`, que no existe hasta que
+la actividad está guardada.
 
 ### Tabla `rutina_ajustes` (módulo Rutina — ajustes de horario)
 | Columna       | Tipo    | Notas                                                        |
@@ -240,6 +259,7 @@ Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 | `obtener_ajustes_rutina(desde, hasta)` | `list[Row]`                  | Ajustes con `fecha` en `[desde, hasta]` (strings ISO) |
 | `guardar_ajuste_rutina(fecha, etapa, item_id, inicio_min)` | None       | Upsert (`ON CONFLICT ... DO UPDATE`), refresca `actualizado` |
 | `borrar_ajustes_rutina(fecha, etapa)` | None                           | DELETE de ajustes de inicio Y duraciones de esa fecha+etapa ("↺ Plan original") |
+| `borrar_ajuste_rutina(fecha, etapa, item_id)` | None                    | DELETE del ajuste de UN ítem ("Soltar" del popover). NO toca `rutina_dur` |
 | `obtener_duraciones_rutina(desde, hasta)` | `list[Row]`                | Duraciones estiradas con `fecha` en rango |
 | `guardar_duracion_rutina(fecha, etapa, item_id, dur_min)` | None        | Upsert (última gana) |
 | `obtener_tareas_rutina(desde, hasta)` | `list[Row]`                    | Tareas añadidas: permanentes (`fecha=''`) + fechadas en rango |
@@ -249,10 +269,16 @@ Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 | `ocultar_item_rutina(etapa, item_id, fecha)` | None                     | Insert idempotente (`DO NOTHING`) |
 | `restaurar_item_rutina(etapa, item_id)` | None                          | Borra TODOS los ocultos del ítem (permanente y fechados) |
 | `obtener_miembros_rutina(incluir_inactivos=False)` | `list[Row]`        | La familia ordenada por `orden`, `id` |
-| `crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min)` | id nuevo | Se ubica al final (`orden` = máx + 1) |
-| `editar_miembro_rutina(id, nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min, activo)` | None | Pisa todos los campos editables |
-| `borrar_miembro_rutina(id)`      | None                               | Baja definitiva + cascada manual: sus actividades, sus participaciones, y los ajustes/duraciones/ocultos de `b<id>-*` y `a<actividad>` |
-| `obtener_actividades_rutina()`   | `list[dict]`                       | Actividades activas con `participantes` y `pausas` anidados (por eso dicts y no Rows) |
+| `crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min, acompanan='')` | id nuevo | Se ubica al final (`orden` = máx + 1) |
+| `editar_miembro_rutina(id, nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min, acompanan, activo)` | None | Pisa todos los campos editables |
+| `borrar_miembro_rutina(id)`      | None                               | Baja definitiva + cascada manual: sus actividades, sus participaciones, los ajustes/duraciones/ocultos de `b<id>-*` y `a<actividad>`, **y su id dentro del `acompanan` de los demás** |
+| `obtener_actividades_rutina()`   | `list[dict]`                       | Actividades activas con `participantes` y `pausas` anidados (por eso dicts y no Rows). Cada pausa trae su `id` |
+| `crear_actividad_rutina(miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses, desde, hasta, anual, nota, participantes=())` | id nuevo | **Devuelve el id**: el editor lo necesita para colgarle recesos sin recargar |
+| `editar_actividad_rutina(id, …los mismos…, participantes, activo)` | None | Pisa todos los campos editables. `participantes` reescribe la tabla puente (DELETE + INSERT) en la misma conexión |
+| `borrar_actividad_rutina(id)`    | None                               | Baja definitiva + cascada manual: sus recesos, sus participantes y los ajustes/duraciones/ocultos de `a<id>` |
+| `actividad_rutina_existe(id)`    | `bool`                             | Valida el id antes de escribir (activa o no). Lo usan las rutas |
+| `crear_pausa_rutina(actividad_id, desde, hasta, anual, motivo)` | id nuevo | Receso de una actividad |
+| `borrar_pausa_rutina(id)`        | None                               | Saca un receso suelto; no toca la actividad |
 
 ## `calcular_saldos()` — 8 claves del dict
 - `elias_ars`, `elias_usd`, `mari_ars`, `mari_usd` → saldos en moneda nativa.

@@ -21,8 +21,9 @@ Zonas (de arriba a abajo):
      tarjetas "Ahora" por miembro, línea de tiempo del día completo con editor
      inline y botón "↺ Plan original", y card de ventanas de sueño.
   4. Sección "Familia": alta/edición/baja de miembros.
-  5. Sección "Actividades": las actividades cargadas (el editor completo —días
-     de la semana, meses, rangos y participantes— llega en el PR siguiente).
+  5. Sección "Actividades": alta/edición/baja de lo que se repite, con su
+     frecuencia (días de la semana, meses, rango de fechas con repetición
+     anual y recesos).
   6. Sección "Ajustes": hora de inicio de noche y de amanecer + cumpleaños.
 
 Los contenedores con id rut-* los llena static/rutina.js. window.RUT_DATOS
@@ -171,9 +172,11 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
         <div class="rut-filas" id="rut-filas"></div>
         <p class="rut-leyenda">Arrastrá una actividad para moverla, o estirala desde
           su borde inferior para cambiar su duración (en el teléfono: toque sostenido
-          para mover). Tocá una actividad para ver el detalle. Con ✎ Editar podés
-          añadir o quitar tareas. Las tomas van a demanda: los horarios son
-          orientativos.</p>
+          para mover). Lo que movés a mano queda fijo a esa hora y el resto del día
+          se acomoda alrededor —puede quedar un hueco antes—; para devolverlo a su
+          lugar, tocalo y elegí <strong>Soltar</strong>. Tocá una actividad para ver
+          el detalle. Con ✎ Editar podés añadir o quitar tareas. Las tomas van a
+          demanda: los horarios son orientativos.</p>
 
         <!-- Card de ventanas de sueño del bebé -->
         <div class="rut-tips" id="rut-tips"></div>
@@ -201,11 +204,13 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
     <section class="rut-sec rut-sec--actividades">
       <div class="rut-panel">
         <div class="rut-panel-titulo"><span class="rut-ico" data-dib="lista" aria-hidden="true"></span> Actividades</div>
-        <p class="rut-panel-ayuda">Acá va a vivir el editor de actividades: los
-          días de la semana en circulitos, los meses, las fechas de inicio y fin
-          (con la opción de repetir todos los años), los recesos y los miembros
-          que participan. Por ahora, para sumar algo suelto usá
-          <strong>✎ Editar</strong> en la línea de tiempo de Hoy.</p>
+        <p class="rut-panel-ayuda">Lo que se <strong>repite</strong>: la escuela, el
+          trabajo, la gimnasia. Elegís de quién es, a qué hora y pintás los días de
+          la semana; en <strong>Más opciones</strong> están los meses (para los que
+          no hay clases), las fechas de inicio y fin, y los recesos de las
+          vacaciones. Para algo de <strong>una sola vez</strong> no uses esto: usá
+          <strong>✎ Editar</strong> en la línea de tiempo de Hoy, que agrega una
+          tarea suelta.</p>
         <div id="rut-actividades"></div>
       </div>
     </section>

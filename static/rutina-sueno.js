@@ -52,7 +52,11 @@ IMPORTANTE — LOS NÚMEROS SON ORIENTATIVOS
     var TABLA = [
         {
             hasta: 30, etiqueta: 'recién nacido',
-            ventana: [45, 60], siestas: [5, 6], siestaDur: [45, 90],
+            // 30-60 min, no 45-60: Cleveland Clinic, Huckleberry y Taking Cara
+            // Babies coinciden en que un recién nacido aguanta despierto desde
+            // los 30. El generador usa el MEDIO del rango, así que la ventana
+            // efectiva baja de 55 a 45 min. Solo afecta a bebés de ≤30 días.
+            ventana: [30, 60], siestas: [5, 6], siestaDur: [45, 90],
             suenoDia: [14, 17], nocturnas: [3, 4], tomaCada: 150
         },
         {
