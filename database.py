@@ -404,6 +404,25 @@ def inicializar_db():
     #          rutina_ajustes/rutina_dur, que referencian ids de ítems
     #          derivados del miembro ('b<id>-siesta1').
 
+    # Columna agregada después: quién acompaña a un bebé en sus tomas.
+    # Antes era una regla escrita a mano en static/rutina.js ("las tomas de
+    # León le ocupan la agenda a mamá"), que valía solo para esta familia y
+    # solo mientras mamá no trabajara. Ahora es un dato de la ficha del bebé.
+    # Es una columna y no una tabla puente porque es un atributo del miembro:
+    # cardinalidad 0-3, siempre se lee junto al resto de la fila y nunca se
+    # consulta sola. rutina_actividad_miembros no sirve acá: esa tabla es para
+    # actividades CARGADAS, y las tomas son ítems GENERADOS ('b<id>-toma2')
+    # que no tienen fila en ninguna tabla.
+    for columna, definicion in [
+        ('acompanan', "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        try:
+            cursor.execute(f'ALTER TABLE rutina_miembros ADD COLUMN {columna} {definicion}')
+        except Exception:
+            pass  # La columna ya existe, ignorar el error
+    # acompanan: ids de miembros separados por coma ('2' o '2,3'). '' = nadie.
+    #          Solo tiene sentido con es_bebe = 1; en el resto se fuerza ''.
+
     # -------------------------------------------------------------------
     # Tabla rutina_actividades: actividades cargadas por el usuario, con su
     # frecuencia. Reemplaza rutina_tareas (que queda sin uso tras la
@@ -1343,6 +1362,21 @@ def borrar_ajustes_rutina(fecha, etapa):
     conn.close()
 
 
+def borrar_ajuste_rutina(fecha, etapa, item_id):
+    """Borra el ajuste de inicio de UN ítem ("Soltar" del popover). En la
+    rutina generada de un bebé la fila de rutina_ajustes es lo que clava el
+    bloque donde lo soltaron; sin ella vuelve a encadenarse solo. La duración
+    (rutina_dur) NO se toca: estirar un bloque y fijarlo son dos cosas
+    distintas."""
+    conn = conectar()
+    conn.execute(
+        'DELETE FROM rutina_ajustes WHERE fecha = ? AND etapa = ? AND item_id = ?',
+        (fecha, etapa, item_id)
+    )
+    conn.commit()
+    conn.close()
+
+
 def obtener_duraciones_rutina(desde, hasta):
     """Duraciones ajustadas con fecha en [desde, hasta] (strings YYYY-MM-DD)."""
     conn = conectar()
@@ -1467,7 +1501,7 @@ def obtener_miembros_rutina(incluir_inactivos=False):
     conn = conectar()
     sql = '''
         SELECT id, nombre, rol, es_bebe, fecha_nacimiento, dibujo,
-               color_token, ancla_min, orden, activo
+               color_token, ancla_min, acompanan, orden, activo
         FROM rutina_miembros
     '''
     if not incluir_inactivos:
@@ -1479,7 +1513,7 @@ def obtener_miembros_rutina(incluir_inactivos=False):
 
 
 def crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo,
-                         color_token, ancla_min):
+                         color_token, ancla_min, acompanan=''):
     """Alta de miembro. Se ubica al final (orden = máximo + 1). Devuelve el id."""
     conn = conectar()
     fila = conn.execute(
@@ -1489,10 +1523,10 @@ def crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo,
     cur = conn.execute('''
         INSERT INTO rutina_miembros
             (nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token,
-             ancla_min, orden, activo, creado, actualizado)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+             ancla_min, acompanan, orden, activo, creado, actualizado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     ''', (nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token,
-          ancla_min, fila['sig'], ahora, ahora))
+          ancla_min, acompanan, fila['sig'], ahora, ahora))
     miembro_id = cur.lastrowid
     conn.commit()
     conn.close()
@@ -1500,17 +1534,17 @@ def crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo,
 
 
 def editar_miembro_rutina(miembro_id, nombre, rol, es_bebe, fecha_nacimiento,
-                          dibujo, color_token, ancla_min, activo):
+                          dibujo, color_token, ancla_min, acompanan, activo):
     """Pisa todos los campos editables de un miembro."""
     conn = conectar()
     conn.execute('''
         UPDATE rutina_miembros
         SET nombre = ?, rol = ?, es_bebe = ?, fecha_nacimiento = ?,
-            dibujo = ?, color_token = ?, ancla_min = ?, activo = ?,
-            actualizado = ?
+            dibujo = ?, color_token = ?, ancla_min = ?, acompanan = ?,
+            activo = ?, actualizado = ?
         WHERE id = ?
     ''', (nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token,
-          ancla_min, activo, _ahora_iso(), miembro_id))
+          ancla_min, acompanan, activo, _ahora_iso(), miembro_id))
     conn.commit()
     conn.close()
 
@@ -1549,6 +1583,18 @@ def borrar_miembro_rutina(miembro_id):
     prefijo = f'b{int(miembro_id)}-%'
     for tabla in ('rutina_ajustes', 'rutina_dur', 'rutina_ocultos'):
         conn.execute(f'DELETE FROM {tabla} WHERE item_id LIKE ?', (prefijo,))
+
+    # Si acompañaba a algún bebé en las tomas, sacarlo de esa lista. Es una
+    # columna de ids empaquetados, así que la limpieza es a mano — misma
+    # razón que el resto de las cascadas de esta función.
+    for fila in conn.execute(
+        "SELECT id, acompanan FROM rutina_miembros WHERE acompanan != ''"
+    ).fetchall():
+        ids = [x for x in fila['acompanan'].split(',') if x.strip()]
+        quedan = [x for x in ids if x.strip() != str(miembro_id)]
+        if len(quedan) != len(ids):
+            conn.execute('UPDATE rutina_miembros SET acompanan = ? WHERE id = ?',
+                         (','.join(quedan), fila['id']))
 
     conn.execute('DELETE FROM rutina_miembros WHERE id = ?', (miembro_id,))
     conn.commit()
@@ -1607,8 +1653,22 @@ def obtener_actividades_rutina():
     return salida
 
 
+def _escribir_participantes(conn, actividad_id, participantes):
+    """Reescribe la tabla puente de una actividad EN LA MISMA CONEXIÓN (borra
+    lo que había y vuelve a insertar). El dueño no va acá: si viniera en la
+    lista, la actividad saldría dos veces en su propia línea de tiempo."""
+    conn.execute('DELETE FROM rutina_actividad_miembros WHERE actividad_id = ?',
+                 (actividad_id,))
+    for miembro_id in participantes or ():
+        conn.execute('''
+            INSERT INTO rutina_actividad_miembros (actividad_id, miembro_id)
+            VALUES (?, ?) ON CONFLICT (actividad_id, miembro_id) DO NOTHING
+        ''', (actividad_id, miembro_id))
+
+
 def crear_actividad_rutina(miembro_id, titulo, dibujo, inicio_min, dur_min,
-                           dias, meses, desde, hasta, anual, nota):
+                           dias, meses, desde, hasta, anual, nota,
+                           participantes=()):
     """Alta de actividad. Devuelve el id: el editor lo necesita para poder
     colgarle recesos sin recargar la página."""
     conn = conectar()
@@ -1621,6 +1681,7 @@ def crear_actividad_rutina(miembro_id, titulo, dibujo, inicio_min, dur_min,
     ''', (miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses,
           desde, hasta, anual, nota, ahora, ahora))
     actividad_id = cur.lastrowid
+    _escribir_participantes(conn, actividad_id, participantes)
     conn.commit()
     conn.close()
     return actividad_id
@@ -1628,8 +1689,9 @@ def crear_actividad_rutina(miembro_id, titulo, dibujo, inicio_min, dur_min,
 
 def editar_actividad_rutina(actividad_id, miembro_id, titulo, dibujo,
                             inicio_min, dur_min, dias, meses, desde, hasta,
-                            anual, nota, activo):
-    """Pisa todos los campos editables de una actividad."""
+                            anual, nota, participantes, activo):
+    """Pisa todos los campos editables de una actividad, incluida la lista de
+    con quién se comparte."""
     conn = conectar()
     conn.execute('''
         UPDATE rutina_actividades
@@ -1639,6 +1701,7 @@ def editar_actividad_rutina(actividad_id, miembro_id, titulo, dibujo,
         WHERE id = ?
     ''', (miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses,
           desde, hasta, anual, nota, activo, _ahora_iso(), actividad_id))
+    _escribir_participantes(conn, actividad_id, participantes)
     conn.commit()
     conn.close()
 
