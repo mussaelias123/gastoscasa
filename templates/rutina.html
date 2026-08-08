@@ -15,7 +15,8 @@ ventanas de sueño. Al crecer el bebé, la rutina se rearma sola.
 Zonas (de arriba a abajo):
   1. Topbar sticky: header (⏰ Rutina + fecha / bebé + edad) y chips
      multi-select de miembros.
-  2. Menú de secciones (mobile): Hoy / Familia / Actividades / Ajustes.
+  2. Barra de secciones (mobile, fija abajo): Hoy / Familia / Actividades /
+     Ajustes.
   3. Sección "Hoy": selector de día, tarjeta de cumpleaños, aviso contextual,
      tarjetas "Ahora" por miembro, línea de tiempo del día completo con editor
      inline y botón "↺ Plan original", y card de ventanas de sueño.
@@ -132,27 +133,19 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
   </div>
 
   {# ══ 2. Selector de sección — SOLO mobile (en escritorio se ve todo).
-     Menú PROPIO (no <select> nativo): el nativo solo admite texto y las
-     opciones llevan ícono. El JS cambia data-rut-sec de .rut-wrap y el CSS
-     muestra solo la sección elegida. Mismo patrón que Lactancia. #}
-  <div class="rut-nav-mobile">
-    <span class="rut-nav-label">Ver</span>
-    <div class="rut-nav-menu">
-      <button type="button" class="rut-nav-trigger" id="rut-nav-trigger"
-              aria-haspopup="listbox" aria-expanded="false">
-        <span class="rut-nav-actual"></span>
-        <span class="rut-nav-chevron" aria-hidden="true">▾</span>
-      </button>
-      <ul class="rut-nav-lista" id="rut-nav-lista" role="listbox" hidden>
-        {# Los íconos los rellena `pintarIconos()` con la librería de dibujos:
-           `data-dib` en vez del SVG entero repetido ocho veces. #}
-        <li><button type="button" class="rut-nav-opt" data-sec="hoy" role="option"><span class="rut-nav-ico" data-dib="reloj" aria-hidden="true"></span><span>Hoy</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="familia" role="option"><span class="rut-nav-ico" data-dib="familia" aria-hidden="true"></span><span>Familia</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="actividades" role="option"><span class="rut-nav-ico" data-dib="lista" aria-hidden="true"></span><span>Actividades</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="ajustes" role="option"><span class="rut-nav-ico" data-dib="ajustes" aria-hidden="true"></span><span>Ajustes</span></button></li>
-      </ul>
-    </div>
-  </div>
+     Barra FIJA abajo de la pantalla (estilo app), como tarjeta flotante: la
+     barra es la tarjeta grande y cada pestaña una tarjetita adentro. Reemplazó
+     al menú desplegable .rut-nav-* — mismo patrón que la .lac-tabbar de
+     Lactancia. El JS cambia data-rut-sec de .rut-wrap y el CSS muestra solo la
+     sección elegida; la activa se marca con .is-activa.
+     Los íconos los rellena `pintarIconos()` con la librería de dibujos:
+     `data-dib` en vez del SVG entero repetido cuatro veces. #}
+  <nav class="rut-tabbar" id="rut-tabbar" aria-label="Ver">
+    <button type="button" class="rut-tab" data-sec="hoy"><span class="rut-tab-ico" data-dib="reloj" aria-hidden="true"></span><span>Hoy</span></button>
+    <button type="button" class="rut-tab" data-sec="familia"><span class="rut-tab-ico" data-dib="familia" aria-hidden="true"></span><span>Familia</span></button>
+    <button type="button" class="rut-tab" data-sec="actividades"><span class="rut-tab-ico" data-dib="lista" aria-hidden="true"></span><span>Actividades</span></button>
+    <button type="button" class="rut-tab" data-sec="ajustes"><span class="rut-tab-ico" data-dib="ajustes" aria-hidden="true"></span><span>Ajustes</span></button>
+  </nav>
 
     <!-- ══ 3. Sección HOY ═════════════════════════════════════════════════ -->
     <section class="rut-sec rut-sec--hoy">

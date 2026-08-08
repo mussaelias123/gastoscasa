@@ -1864,14 +1864,12 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
     }
 
-    // ── Menú de secciones (mismo patrón que Lactancia) ───────────────────────
-    // No es un <select> nativo porque las opciones llevan ícono. El wrapper
-    // recibe data-rut-sec y el CSS muestra solo la sección activa en mobile.
-    // Íconos FIJOS del template (menú de secciones, títulos de panel, título
+    // ── Barra de secciones (mismo patrón que Lactancia) ──────────────────────
+    // Íconos FIJOS del template (barra de secciones, títulos de panel, título
     // del módulo). Van con `data-dib="clave"` y los rellena esto, en vez de
-    // pegar el SVG entero ocho veces en el HTML. Se pinta ANTES de
-    // initNavMenu(): ese copia el innerHTML del ítem activo al trigger, así que
-    // si el dibujo todavía no está, el trigger se queda sin ícono.
+    // pegar el SVG entero cuatro veces en el HTML. Se pinta ANTES de
+    // initNavTabs() por prolijidad: así la pestaña ya arranca con su dibujo y
+    // no se ve el salto del primer render.
     function pintarIconos(raiz) {
         var lib = window.RutinaDibujos;
         if (!lib) return;
@@ -1881,50 +1879,32 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
     }
 
-    function initNavMenu() {
+    // Barra fija abajo de la pantalla (estilo app), no un desplegable: no hay
+    // nada que abrir ni cerrar, así que se van los listeners de click-afuera y
+    // Escape que tenía el menú viejo. Cambia data-rut-sec en .rut-wrap (el CSS
+    // muestra solo esa sección) y marca la pestaña con .is-activa.
+    // A diferencia de Lactancia, acá la sección SE PERSISTE en localStorage:
+    // recargar no te devuelve a "Hoy".
+    function initNavTabs() {
         var wrap = document.querySelector('.rut-wrap');
-        var trigger = $('rut-nav-trigger');
-        var lista = $('rut-nav-lista');
-        if (!wrap || !trigger || !lista) return;
+        var barra = $('rut-tabbar');
+        if (!wrap || !barra) return;
 
         function aplicar(sec) {
             UI.sec = sec;
             wrap.setAttribute('data-rut-sec', sec);
-            var activa = null;
-            lista.querySelectorAll('[data-sec]').forEach(function (btn) {
+            barra.querySelectorAll('[data-sec]').forEach(function (btn) {
                 var on = btn.dataset.sec === sec;
                 btn.classList.toggle('is-activa', on);
-                if (on) activa = btn;
+                if (on) btn.setAttribute('aria-current', 'page');
+                else btn.removeAttribute('aria-current');
             });
-            if (activa) trigger.innerHTML = activa.innerHTML;
-            lista.hidden = true;
-            trigger.setAttribute('aria-expanded', 'false');
             persistirUI();
         }
 
-        trigger.addEventListener('click', function () {
-            var abierto = !lista.hidden;
-            lista.hidden = abierto;
-            trigger.setAttribute('aria-expanded', abierto ? 'false' : 'true');
-        });
-
-        lista.addEventListener('click', function (ev) {
+        barra.addEventListener('click', function (ev) {
             var btn = ev.target.closest('[data-sec]');
             if (btn) aplicar(btn.dataset.sec);
-        });
-
-        document.addEventListener('click', function (ev) {
-            if (!lista.hidden && !ev.target.closest('.rut-nav-menu')) {
-                lista.hidden = true;
-                trigger.setAttribute('aria-expanded', 'false');
-            }
-        });
-
-        document.addEventListener('keydown', function (ev) {
-            if (ev.key === 'Escape' && !lista.hidden) {
-                lista.hidden = true;
-                trigger.setAttribute('aria-expanded', 'false');
-            }
         });
 
         aplicar(UI.sec || 'hoy');
@@ -2062,8 +2042,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // scroll interno en el timeline). En mobile la clase no tiene efecto.
         document.body.classList.add('rut-body');
 
-        pintarIconos();      // ANTES de initNavMenu: ver el comentario de arriba
-        initNavMenu();
+        pintarIconos();      // ANTES de initNavTabs: ver el comentario de arriba
+        initNavTabs();
 
         // ── Fondo día/noche ────────────────────────────────────────────────
         // Mirando otro día, el cielo sigue el scroll de la línea de tiempo.
