@@ -6774,6 +6774,24 @@ body.lac-body .lac-item { border-radius: 12px; }
   box-shadow: 0 0 0 2px var(--color-texto);
 }
 
+/* La ficha que se está editando y su editor quedan pegados y se leen como una
+   sola pieza: la ficha pierde el redondeo de abajo y el .rut-fm el de arriba.
+   Sin esto, con el editor abierto en medio de la lista no se distingue a qué
+   actividad pertenece. */
+.rut-miembro.is-editando {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+  margin-bottom: 0;
+}
+
+.rut-miembro.is-editando + .rut-fm {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+
 /* ── Editor de actividades: frecuencia ───────────────────────────────────────
    Los circulitos que se pintan al tocarlos. Cada uno es un bit del string que
    guarda la base: 7 para los días (LUNES primero) y 12 para los meses. */

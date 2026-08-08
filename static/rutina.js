@@ -110,6 +110,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var formAdd = null;                    // estado del form "＋ Añadir tarea" (null = cerrado)
     var formMiembro = null;                // estado del form de familia (null = cerrado)
     var formActividad = null;              // estado del form de actividades (null = cerrado)
+    var enfocarFormAct = false;            // traer el editor a la vista en el PRÓXIMO render
     var drag = null;                       // drag en curso (mover/estirar, estilo Teams)
     var seArrastro = false;                // suprime el click fantasma tras un drag
     var ahoraHora = null;                  // item_id con el editor "empezó a las…" abierto
@@ -1994,10 +1995,19 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         var cont = $('rut-actividades');
         if (!cont) return;
 
+        // El editor de una actividad EXISTENTE se abre pegado a ella, no al pie
+        // de la lista: con 21 cargadas había que scrollear hasta abajo para
+        // encontrarlo y después volver a subir para ver cuál se estaba tocando
+        // (pedido de Mari 2026-08-08). El alta nueva sí va al final, que es
+        // donde estaba el botón que la abrió.
+        var editandoId = formActividad ? formActividad.id : null;
+
         var lista = ACTIVIDADES.map(function (a) {
             var duenio = miembroDe(String(a.miembro_id));
             var quien = duenio ? duenio.nombre : 'alguien que ya no está';
-            return '<div class="rut-miembro rut--persona"' + styleColor(a.miembro_id) + '>' +
+            var abierta = editandoId === a.id;
+            var ficha = '<div class="rut-miembro rut--persona' +
+                    (abierta ? ' is-editando' : '') + '"' + styleColor(a.miembro_id) + '>' +
                 '<span class="rut-act-dib">' + dibujoHtml(a.dibujo, '📌') + '</span>' +
                 '<div class="rut-miembro-texto">' +
                     '<div class="rut-miembro-nombre">' + escapeHtml(a.titulo) + '</div>' +
@@ -2012,6 +2022,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 '<button type="button" class="rut-btn-icono" data-fa-borrar="' + a.id + '" ' +
                     'aria-label="Borrar ' + escapeHtml(a.titulo) + '">🗑</button>' +
             '</div>';
+            return abierta ? ficha + formActividadHtml() : ficha;
         }).join('');
 
         var vacio = ACTIVIDADES.length ? '' :
@@ -2019,11 +2030,25 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             'repite —la escuela, el trabajo, la gimnasia—: elegís de quién es, a qué ' +
             'hora y qué días, y aparece sola en la rutina cuando corresponde.</p>';
 
-        var boton = formActividad ? '' :
-            '<button type="button" class="rut-add-btn" data-fa-nuevo="1">＋ Agregar actividad</button>';
+        // Al pie queda el botón, o el form si es un alta nueva. Si se está
+        // editando una existente, el form ya salió arriba con su ficha.
+        var pie = formActividad
+            ? (formActividad.id ? '' : formActividadHtml())
+            : '<button type="button" class="rut-add-btn" data-fa-nuevo="1">＋ Agregar actividad</button>';
 
-        cont.innerHTML = vacio + lista + (formActividad ? formActividadHtml() : boton);
+        cont.innerHTML = vacio + lista + pie;
         pintarIconos(cont);
+
+        // Traer el editor a la vista, pero SOLO al abrirlo: renderActividades()
+        // corre en cada toque de circulito y en cada tick, y scrollear siempre
+        // haría saltar la pantalla mientras se está cargando algo.
+        if (enfocarFormAct) {
+            enfocarFormAct = false;
+            var abierto = cont.querySelector('.rut-fm');
+            if (abierto && abierto.scrollIntoView) {
+                abierto.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
     }
 
     function formActividadHtml() {
@@ -2570,6 +2595,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 var el;
                 if (ev.target.closest('[data-fa-nuevo]')) {
                     formActividad = formActividadNueva();
+                    enfocarFormAct = true;
                     renderTodo();
                     var inp = $('rut-fa-titulo');
                     if (inp) inp.focus();
@@ -2580,6 +2606,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     ACTIVIDADES.forEach(function (a) {
                         if (a.id === id) formActividad = formActividadDe(a);
                     });
+                    enfocarFormAct = true;
                     return renderTodo();
                 }
                 if ((el = ev.target.closest('[data-fa-borrar]'))) {
