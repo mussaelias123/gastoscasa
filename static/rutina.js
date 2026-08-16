@@ -212,10 +212,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
     }
 
-    function bebes() {
-        return MIEMBROS.filter(function (m) { return m.es_bebe; });
-    }
-
     // Hora de inicio de la noche (config): tope del día para el motor de sueño.
     function nocheMin() {
         return typeof CFG.noche_min === 'number' ? CFG.noche_min : 1200;
@@ -1015,29 +1011,13 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     }
 
     // ── Render ───────────────────────────────────────────────────────────────
-    // El encabezado muestra la fecha y, si hay un bebé cargado, su nombre y su
-    // edad (que es lo que manda en toda su rutina). Sin bebé, muestra cuántos
-    // son en la familia.
+    // El encabezado es la fecha y nada más. El nombre y la edad del bebé
+    // ("León · 3 meses y 1 día") salieron de acá el 2026-08-15 a pedido de
+    // Mari: es info que no hace falta ver en cada pantalla, ya está en Familia
+    // y la edad manda igual en la rutina generada y en la tarjeta de tips.
     function renderHeader() {
         $('rut-fecha').textContent = new Date().toLocaleDateString('es-AR',
             { weekday: 'long', day: 'numeric', month: 'long' });
-        var nombre = $('rut-header-nombre');
-        var edad = $('rut-edad');
-        if (!nombre || !edad) return;
-
-        var b = bebes()[0];
-        if (b) {
-            nombre.textContent = b.nombre;
-            edad.textContent = b.edad_texto || '';
-        } else if (MIEMBROS.length) {
-            // innerHTML y no textContent: lleva dibujo. El texto es fijo.
-            nombre.innerHTML = dibujoHtml('familia') + ' Familia';
-            edad.textContent = MIEMBROS.length +
-                (MIEMBROS.length === 1 ? ' integrante' : ' integrantes');
-        } else {
-            nombre.innerHTML = dibujoHtml('familia') + ' Familia';
-            edad.textContent = 'sin cargar';
-        }
     }
 
     function renderChips() {

@@ -7006,9 +7006,6 @@ body.lac-body .lac-item { border-radius: 12px; }
 }
 
 .rut-header-fecha { margin: 0; opacity: 0.8; font-size: 0.7rem; }
-.rut-header-leon  { text-align: right; }
-.rut-header-nombre { font-size: 0.82rem; font-weight: 600; }
-.rut-header-edad   { font-size: 0.7rem; opacity: 0.8; }
 
 .rut-chips-nav {
   background: var(--color-deco-2);
