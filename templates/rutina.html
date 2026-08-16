@@ -19,8 +19,11 @@ Zonas (de arriba a abajo):
   2. Barra de secciones (mobile, fija abajo): Hoy / Familia / Actividades /
      Ajustes.
   3. Sección "Hoy": selector de día, tarjeta de cumpleaños, aviso contextual,
-     tarjetas "Ahora" por miembro, línea de tiempo del día completo con editor
-     inline y botón "↺ Plan original", y card de ventanas de sueño.
+     tarjetas "Ahora" por miembro, línea de tiempo del día completo (tocar una
+     actividad abre su detalle, con el editor de hora, "Soltar" y "Quitar") y
+     card de ventanas de sueño. Los botones "✎ Editar" y "↺ Plan original"
+     salieron el 2026-08-15: lo que se repite se maneja en Actividades y lo
+     de un día suelto, desde la propia tarjeta.
   4. Sección "Familia": alta/edición/baja de miembros.
   5. Sección "Actividades": alta/edición/baja de lo que se repite, con su
      frecuencia (días de la semana, meses, rango de fechas con repetición
@@ -161,10 +164,6 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
       <div class="rut-dia-completo">
         <div class="rut-tl-head">
           <span class="rut-tl-titulo"><span class="rut-ico" data-dib="lista" aria-hidden="true"></span> El día completo</span>
-          <span class="rut-tl-botones">
-            <button type="button" class="rut-btn-fantasma" id="rut-editar">✎ Editar</button>
-            <button type="button" class="rut-btn-fantasma" id="rut-reset">↺ Plan original</button>
-          </span>
         </div>
         <div class="rut-filas" id="rut-filas"></div>
         <p class="rut-leyenda">Arrastrá una actividad para moverla, o estirala desde
@@ -172,8 +171,8 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
           para mover). Lo que movés a mano queda fijo a esa hora y el resto del día
           se acomoda alrededor —puede quedar un hueco antes—; para devolverlo a su
           lugar, tocalo y elegí <strong>Soltar</strong>. Tocá una actividad para ver
-          el detalle. Con ✎ Editar podés añadir o quitar tareas. Las tomas van a
-          demanda: los horarios son orientativos.</p>
+          el detalle y, si hace falta, sacarla con <strong>Quitar</strong>. Las tomas
+          van a demanda: los horarios son orientativos.</p>
 
         <!-- Card de ventanas de sueño del bebé -->
         <div class="rut-tips" id="rut-tips"></div>

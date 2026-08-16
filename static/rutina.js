@@ -41,18 +41,22 @@ Ajustes. El wrapper lleva data-rut-sec y en mobile el CSS muestra solo la
 sección activa. Desde Familia se cargan los miembros (con su fecha de
 nacimiento y, si es bebé, la hora de su primera toma).
 
-MODO EDICIÓN ("✎ Editar" en el header del timeline): cada fila muestra ✕
-(quitar, preguntando "¿solo hoy o siempre?"), aparece "＋ Añadir tarea" (form
-inline: persona, emoji, título, hora, duración, alcance) y al pie la lista de
-tareas quitadas con ↩ Restaurar. Mutaciones no-optimistas (payload fresco).
+QUITAR (2026-08-15, antes era el "MODO EDICIÓN" del botón "✎ Editar"): el
+detalle de cada actividad —el popover del tap— tiene "Quitar", que abre la
+pregunta de siempre "¿solo hoy o siempre?"; al pie del lienzo va la lista de
+quitadas con ↩ Restaurar, ahora SIEMPRE visible (antes solo en modo edición).
+Mutaciones no-optimistas (payload fresco). Se fueron con el modo edición los
+botones "✎ Editar" y "↺ Plan original" y el "＋ Añadir tarea" del lienzo: lo
+que se repite se carga en Actividades, y el form de tarea suelta (formAddHtml)
+quedó solo para la tarjeta "Hoy por calendario".
 
 REGLA DE CASCADA Y PINES (solo la cadena generada del bebé): los ítems sin
 ajuste propio se encadenan en el orden que generó el motor (inicio = fin del
 anterior). Un ítem que SÍ tiene ajuste es un PIN: arranca exactamente donde lo
 soltaron, sale de la cadena, y los demás se acomodan alrededor vía sinSolapes()
 — por eso una toma puede pasar delante de una siesta y la toma ancla puede irse
-más temprano que su hora. Se suelta con el botón del popover (borra ese ajuste)
-o con "↺ Plan original" (borra los del día entero y devuelve lo generado).
+más temprano que su hora. Se suelta con el botón "Soltar" del popover, que
+borra ese ajuste.
 
 MUTACIONES — optimistic con debounce: cada tap de −15/+15 escribe local y
 re-renderiza al instante; el POST /api/rutina/ajustar sale debounced (400 ms
@@ -108,7 +112,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var timers = {};                       // item_id → timeout del POST debounced
     var enVuelo = 0;                       // POSTs en curso
     var sinSync = false;                   // último POST/GET falló (offline)
-    var modoEdicion = false;               // "✎ Editar": muestra ✕ / añadir / restaurar
     var quitando = null;                   // item_id con el "¿solo hoy o siempre?" abierto
     var formAdd = null;                    // estado del form "＋ Añadir tarea" (null = cerrado)
     var formMiembro = null;                // estado del form de familia (null = cerrado)
@@ -900,18 +903,12 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
     }
 
-    function resetDia() {
-        var fecha = isoLocal(fechaVista());
-        if (AJUSTES[fecha]) delete AJUSTES[fecha][ETAPA];
-        if (DURACIONES[fecha]) delete DURACIONES[fecha][ETAPA];
-        editando = null;
-        ahoraHora = null;
-        renderTodo();
-        postAccion('/api/rutina/reset', { fecha: fecha, etapa: ETAPA });
-    }
-
-    // ── Mutaciones del modo edición (no-optimistas: mandan y esperan el
+    // ── Mutaciones de quitar/restaurar (no-optimistas: mandan y esperan el
     //    payload fresco; son acciones poco frecuentes) ─────────────────────────
+    // El "↺ Plan original" (POST /api/rutina/reset, borraba los ajustes del día
+    // entero) se fue el 2026-08-15 junto con su botón: cada bloque movido se
+    // devuelve a su lugar con "Soltar" desde su propio detalle. La ruta sigue
+    // viva en app.py por si vuelve.
     function ocultarItem(itemId, fecha) {
         quitando = null;
         postAccion('/api/rutina/ocultar', { etapa: ETAPA, item_id: itemId, fecha: fecha });
@@ -1290,7 +1287,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             return 1440;
         }
 
-        var html = modoEdicion ? renderZonaAdd() : '';
+        var html = '';
 
         if (!usuarios.length) {
             $('rut-filas').innerHTML = html +
@@ -1298,7 +1295,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     ? 'Elegí arriba de quién querés ver la rutina 👆'
                     : 'Todavía no cargaste a nadie. Entrá a <strong>Familia</strong> en el menú de arriba y sumá a mamá, papá o un hijo.') +
                 '</div>' +
-                (modoEdicion ? renderZonaQuitados(calc.quitados) : '');
+                renderZonaQuitados(calc.quitados);
             return;
         }
 
@@ -1317,7 +1314,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             $('rut-filas').innerHTML = html + renderNoche(nocturnas, enCurso) +
                 '<div class="rut-canvas-vacio">Sin actividades para este día. ' +
                 'Cargalas desde <strong>Actividades</strong> en el menú de arriba.</div>' +
-                (modoEdicion ? renderZonaQuitados(calc.quitados) : '');
+                renderZonaQuitados(calc.quitados);
             return;
         }
         var ejeIni = Math.floor(min / 60) * 60;
@@ -1398,11 +1395,10 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 // Movido a mano hoy: se queda quieto mientras el resto se
                 // acomoda, así que conviene que se note de un vistazo.
                 if (it.pin) clases += ' is-fijado';
-                var tapAttr = modoEdicion ? '' : ' data-tap="' + it.id + '"';
-                // Drag estilo Teams: mover (cuerpo) y estirar (manija inferior),
-                // solo ítems editables fuera del modo edición
-                var dragAttr = (it.editable && !modoEdicion) ? ' data-drag="' + it.id + '"' : '';
-                var grip = (it.editable && it.dur && !modoEdicion)
+                var tapAttr = ' data-tap="' + it.id + '"';
+                // Drag estilo Teams: mover (cuerpo) y estirar (manija inferior)
+                var dragAttr = it.editable ? ' data-drag="' + it.id + '"' : '';
+                var grip = (it.editable && it.dur)
                     ? '<span class="rut-item-grip" data-grip="' + it.id + '"></span>' : '';
                 // Bloques altos: vuelve el texto descriptivo, recortado a las
                 // líneas que realmente entran (el completo vive en el popover)
@@ -1428,10 +1424,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     '</span>' +
                     subHtml +
                     grip +
-                    (modoEdicion
-                        ? '<button type="button" class="rut-item-quitar" data-quitar="' + it.id + '" ' +
-                              'aria-label="Quitar ' + escapeHtml(it.t) + '">✕</button>'
-                        : '') +
                 '</div>';
             }).join('') + '</div>';
         }).join('');
@@ -1454,7 +1446,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             renderPopover(porUser, usuarios, y, altoCanvas) +
         '</div>';
 
-        if (modoEdicion) html += renderZonaQuitados(calc.quitados);
+        html += renderZonaQuitados(calc.quitados);
         $('rut-filas').innerHTML = html;
     }
 
@@ -1462,7 +1454,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // o "¿Quitar solo hoy o siempre?" (✕ del modo edición). Anclado a la
     // altura del ítem, ancho completo menos gutter, clampeado al lienzo.
     function renderPopover(porUser, usuarios, y, altoCanvas) {
-        var id = modoEdicion ? quitando : editando;
+        var id = quitando || editando;
         if (!id) return '';
         var it = null;
         usuarios.forEach(function (u) {
@@ -1471,7 +1463,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         if (!it) return '';
         var top = Math.max(4, Math.min(y(it.start) + 6, altoCanvas - 150));
 
-        if (modoEdicion) {
+        if (quitando === id) {
             // Tarea añadida permanente: "Siempre" la borra de raíz. Tocar el
             // popover fuera de los botones también cancela (data-q-cancelar
             // en el contenedor; Solo hoy/Siempre se chequean antes).
@@ -1510,10 +1502,14 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     : '<span class="rut-popover-nota">' +
                         (it.link ? 'Sigue el horario de León' : 'Horario fijo') + '</span>') +
                 // Movido a mano = clavado ahí. "Soltar" borra ESE ajuste y lo
-                // devuelve a su lugar, sin tener que resetear el día entero.
+                // devuelve a su lugar.
                 (it.pin
                     ? '<button type="button" class="rut-editor-ok" data-soltar="' + it.id + '">Soltar</button>'
                     : '') +
+                // "Quitar" vive acá desde el 2026-08-15: reemplaza al ✕ del
+                // modo edición, que se fue con el botón "✎ Editar". Abre la
+                // misma pregunta de siempre (¿solo hoy o siempre?).
+                '<button type="button" class="rut-editor-btn rut-q-btn rut-q-siempre" data-quitar="' + it.id + '">Quitar</button>' +
                 '<span class="rut-popover-cerrar">tocá para cerrar</span>' +
             '</div>' +
             (it.pin ? '<div class="rut-popover-sub">📌 Lo moviste vos: queda a esta hora y el ' +
@@ -1549,7 +1545,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             nocturnas.map(function (it) {
                 var activa = enCurso(it);
                 var clases = 'rut-fila rut--persona rut-fila--noct' + (activa ? ' is-ahora' : '');
-                var tapAttr = modoEdicion ? '' : ' data-tap="' + it.id + '"';
+                var tapAttr = ' data-tap="' + it.id + '"';
                 var fila = '<div class="' + clases + '"' + styleColor(it.user) +
                     ' data-item="' + it.id + '">' +
                     '<div class="rut-fila-tap"' + tapAttr + '>' +
@@ -1562,21 +1558,19 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                             '</div>' +
                             (it.sub ? '<div class="rut-fila-sub">' + escapeHtml(it.sub) + '</div>' : '') +
                         '</div>' +
-                        (modoEdicion
-                            ? '<button type="button" class="rut-btn-quitar" data-quitar="' + it.id + '" ' +
-                                  'aria-label="Quitar ' + escapeHtml(it.t) + '">✕</button>'
-                            : '<span class="rut-fila-dur">' + fmtDur(it.dur) + '</span>') +
+                        '<span class="rut-fila-dur">' + fmtDur(it.dur) + '</span>' +
                     '</div>';
-                if (editando === it.id && !modoEdicion) {
+                if (editando === it.id && quitando !== it.id) {
                     fila += '<div class="rut-editor">' +
                         '<button type="button" class="rut-editor-btn" data-menos="' + it.id + '">−15</button>' +
                         inputsHora(it) +
                         '<button type="button" class="rut-editor-btn" data-mas="' + it.id + '">+15</button>' +
                         '<button type="button" class="rut-editor-ahora" data-poner-ahora="' + it.id + '">Ahora</button>' +
+                        '<button type="button" class="rut-editor-btn rut-q-btn rut-q-siempre" data-quitar="' + it.id + '">Quitar</button>' +
                         '<button type="button" class="rut-editor-ok" data-cerrar="1">OK</button>' +
                     '</div>';
                 }
-                if (modoEdicion && quitando === it.id) {
+                if (quitando === it.id) {
                     fila += '<div class="rut-editor rut-quitar-bar">' +
                         '<span class="rut-quitar-txt">Quitar:</span>' +
                         '<button type="button" class="rut-editor-btn rut-q-btn" data-q-hoy="' + it.id + '">Solo hoy</button>' +
@@ -1589,18 +1583,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         '</div>';
     }
 
-    // Botón/form "＋ Añadir tarea" (solo en modo edición, arriba del timeline)
-    function renderZonaAdd() {
-        // El form puede estar abierto acá ('filas') o en la tarjeta de
-        // calendario ('cal'): si no es de acá, mostrar el botón.
-        if (!formAdd || formAdd.en !== 'filas') {
-            return '<div class="rut-add-row">' +
-                '<button type="button" class="rut-add-btn" data-add="1">＋ Añadir tarea</button>' +
-            '</div>';
-        }
-        return formAddHtml();
-    }
-
+    // Form de tarea suelta. Desde el 2026-08-15 su ÚNICA puerta de entrada es
+    // la tarjeta "Hoy por calendario" (`formAdd.en === 'cal'`): el botón
+    // "＋ Añadir tarea" se fue con el modo edición.
     function formAddHtml() {
         var horas = '', minutos = '', durs = '';
         for (var h = 0; h < 24; h++) {
@@ -2578,12 +2563,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         renderActividades();
         renderAjustes();
         actualizarFondo();   // el cielo sigue la hora que se está mirando
-
-        var btnEditar = $('rut-editar');
-        if (btnEditar) {
-            btnEditar.textContent = modoEdicion ? '✓ Listo' : '✎ Editar';
-            btnEditar.classList.toggle('activo', modoEdicion);
-        }
     }
 
     // ── API pública para la tarjeta Rutina del Inicio (window.Rutina) ───────
@@ -2890,14 +2869,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             if ((el = t.closest('[data-mas]'))) return ajustarDesdeFila(el.dataset.mas, +15);
             if ((el = t.closest('[data-poner-ahora]'))) return ajustar(el.dataset.ponerAhora, ahoraMin());
             if ((el = t.closest('[data-soltar]'))) return soltar(el.dataset.soltar);
-            if (t.closest('.rut-hora-in')) return;   // tipeando la hora: no cerrar
-            if (t.closest('[data-cerrar]')) { editando = null; return renderTodo(); }
 
-            // ── Tarjeta "Hoy por calendario" ──
-            if ((el = t.closest('[data-cal-x]'))) return descartarCal(Number(el.dataset.calX));
-            if ((el = t.closest('[data-cal-add]'))) return abrirFormCal(Number(el.dataset.calAdd));
-
-            // ── Modo edición ──
+            // ── Quitar ──
+            // ⚠ VA ANTES del [data-cerrar] de abajo: el contenedor del popover
+            // lleva data-cerrar, así que si esto quedara después, el `closest`
+            // encontraría el contenedor y "Quitar" solo cerraría el detalle.
             if ((el = t.closest('[data-quitar]'))) return abrirQuitar(el.dataset.quitar);
             if ((el = t.closest('[data-q-hoy]'))) return ocultarItem(el.dataset.qHoy, isoLocal(fechaVista()));
             if ((el = t.closest('[data-q-siempre]'))) {
@@ -2907,15 +2883,14 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             }
             if (t.closest('[data-q-cancelar]')) { quitando = null; return renderTodo(); }
             if ((el = t.closest('[data-restaurar]'))) return restaurarItem(el.dataset.restaurar);
-            if (t.closest('[data-add]')) {
-                var pri = usuariosSel()[0] || usuarios()[0];
-                if (!pri) return;   // familia vacía: nada a lo que añadirle
-                formAdd = { en: 'filas', user: pri, emoji: '', titulo: '', hora: 9, min: 0, dur: 30, alcance: 'siempre' };
-                renderTodo();
-                var inp = $('rut-add-titulo');
-                if (inp) inp.focus();
-                return;
-            }
+
+            if (t.closest('.rut-hora-in')) return;   // tipeando la hora: no cerrar
+            if (t.closest('[data-cerrar]')) { editando = null; return renderTodo(); }
+
+            // ── Tarjeta "Hoy por calendario" ──
+            if ((el = t.closest('[data-cal-x]'))) return descartarCal(Number(el.dataset.calX));
+            if ((el = t.closest('[data-cal-add]'))) return abrirFormCal(Number(el.dataset.calAdd));
+
             if ((el = t.closest('[data-add-user]'))) {
                 capturarFormAdd(); formAdd.user = el.dataset.addUser; return renderTodo();
             }
@@ -3166,7 +3141,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         }
 
         $('rut-filas').addEventListener('mousedown', function (ev) {
-            if (ev.button !== 0 || modoEdicion || drag) return;
+            if (ev.button !== 0 || drag) return;
             var g = ev.target.closest('[data-grip]');
             var m = !g && ev.target.closest('[data-drag]');
             if (!g && !m) return;
@@ -3183,7 +3158,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
 
         $('rut-filas').addEventListener('touchstart', function (ev) {
-            if (modoEdicion || drag || ev.touches.length !== 1) return;
+            if (drag || ev.touches.length !== 1) return;
             var t0 = ev.touches[0];
             var g = ev.target.closest('[data-grip]');
             var m = !g && ev.target.closest('[data-drag]');
@@ -3245,18 +3220,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             }, 1800);
         }
 
-        $('rut-reset').addEventListener('click', resetDia);
-
-        $('rut-editar').addEventListener('click', function () {
-            modoEdicion = !modoEdicion;
-            editando = null;
-            quitando = null;
-            formAdd = null;
-            renderTodo();
-        });
-
-        // ✕ en una fila: tarea añadida "solo hoy" se borra directo (solo existe
-        // hoy); el resto abre el "¿Solo hoy o siempre?"
+        // "Quitar" del detalle: tarea añadida "solo hoy" se borra directo (solo
+        // existe hoy); el resto abre el "¿Solo hoy o siempre?"
         function abrirQuitar(itemId) {
             var calc = calcular();
             var todos = todosLosItems(calc);
@@ -3320,7 +3285,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         // caiga en medio, y aunque capturarFormActividad() conserva lo tipeado,
         // reconstruir el innerHTML igual te saca el foco del campo.
         function puedeSync() {
-            return !modoEdicion && !editando && !drag && !ahoraHora && !formActividad;
+            return !editando && !quitando && !drag && !ahoraHora && !formActividad;
         }
         setInterval(function () { if (puedeSync()) syncAjustes(); }, 30000);
         document.addEventListener('visibilitychange', function () {
