@@ -404,7 +404,8 @@ def inicializar_db():
     #          rutina_ajustes/rutina_dur, que referencian ids de ítems
     #          derivados del miembro ('b<id>-siesta1').
 
-    # Columna agregada después: quién acompaña a un bebé en sus tomas.
+    # Columnas agregadas después: quién acompaña a un bebé en sus tomas, y
+    # cuántas tomas de madrugada mostrarle.
     # Antes era una regla escrita a mano en static/rutina.js ("las tomas de
     # León le ocupan la agenda a mamá"), que valía solo para esta familia y
     # solo mientras mamá no trabajara. Ahora es un dato de la ficha del bebé.
@@ -415,6 +416,7 @@ def inicializar_db():
     # que no tienen fila en ninguna tabla.
     for columna, definicion in [
         ('acompanan', "TEXT NOT NULL DEFAULT ''"),
+        ('noct_n', 'INTEGER NOT NULL DEFAULT -1'),
     ]:
         try:
             cursor.execute(f'ALTER TABLE rutina_miembros ADD COLUMN {columna} {definicion}')
@@ -422,6 +424,11 @@ def inicializar_db():
             pass  # La columna ya existe, ignorar el error
     # acompanan: ids de miembros separados por coma ('2' o '2,3'). '' = nadie.
     #          Solo tiene sentido con es_bebe = 1; en el resto se fuerza ''.
+    # noct_n:  cuántas tomas de madrugada mostrarle a ESTE bebé. -1 = las que
+    #          sugiere la tabla de ventanas de sueño para su edad (el default).
+    #          Existe porque lo esperable es un RANGO, no un número: a los 3
+    #          meses la tabla dice 1-2 y hay bebés que piden tres. Se toca con
+    #          el "− 2 +" de la franja Madrugada. Solo aplica con es_bebe = 1.
 
     # -------------------------------------------------------------------
     # Tabla rutina_actividades: actividades cargadas por el usuario, con su
@@ -1501,7 +1508,7 @@ def obtener_miembros_rutina(incluir_inactivos=False):
     conn = conectar()
     sql = '''
         SELECT id, nombre, rol, es_bebe, fecha_nacimiento, dibujo,
-               color_token, ancla_min, acompanan, orden, activo
+               color_token, ancla_min, acompanan, noct_n, orden, activo
         FROM rutina_miembros
     '''
     if not incluir_inactivos:
@@ -1545,6 +1552,20 @@ def editar_miembro_rutina(miembro_id, nombre, rol, es_bebe, fecha_nacimiento,
         WHERE id = ?
     ''', (nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token,
           ancla_min, acompanan, activo, _ahora_iso(), miembro_id))
+    conn.commit()
+    conn.close()
+
+
+def fijar_nocturnas_rutina(miembro_id, noct_n):
+    """Cuántas tomas de madrugada mostrarle a un bebé. -1 = las que sugiere su
+    edad. Va por su propia función y NO adentro de editar_miembro_rutina porque
+    se toca desde otro lado (el "− 2 +" de la franja Madrugada, no el form de
+    Familia): así el form no la pisa ni tiene que arrastrarla escondida."""
+    conn = conectar()
+    conn.execute(
+        'UPDATE rutina_miembros SET noct_n = ?, actualizado = ? WHERE id = ?',
+        (noct_n, _ahora_iso(), miembro_id)
+    )
     conn.commit()
     conn.close()
 

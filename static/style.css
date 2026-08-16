@@ -7006,9 +7006,6 @@ body.lac-body .lac-item { border-radius: 12px; }
 }
 
 .rut-header-fecha { margin: 0; opacity: 0.8; font-size: 0.7rem; }
-.rut-header-leon  { text-align: right; }
-.rut-header-nombre { font-size: 0.82rem; font-weight: 600; }
-.rut-header-edad   { font-size: 0.7rem; opacity: 0.8; }
 
 .rut-chips-nav {
   background: var(--color-deco-2);
@@ -7341,17 +7338,6 @@ span.rut-ahora-emoji { cursor: default; }
 
 .rut-tl-titulo { font-weight: 700; font-size: 0.95rem; }
 
-.rut-btn-fantasma {
-  padding: 0.2rem 0.6rem;
-  border: 1px solid var(--color-borde);
-  border-radius: 20px;
-  background: transparent;
-  color: var(--color-texto-muted);
-  font-size: 0.72rem;
-  font-family: var(--fuente-principal);
-  cursor: pointer;
-}
-
 .rut-filas {
   background: var(--color-superficie);
   border-radius: var(--radio-borde);
@@ -7602,8 +7588,10 @@ span.rut-ahora-emoji { cursor: default; }
 }
 
 /* ── Lienzo de columnas: una línea de tiempo por persona ──────────────────
-      Eje de tiempo real (1.2 px/min, lo calcula rutina.js e inyecta top/
-      height inline). Gutter de 34 px con etiquetas de hora; una .rut-col por
+      Eje de tiempo real (1,6 px/min en escritorio y 2,1 en el teléfono, lo
+      calcula rutina.js e inyecta top/height inline; el alto de cada bloque
+      tiene un piso —20 px / 34 px— para que el nombre entre siempre).
+      Gutter de 34 px con etiquetas de hora; una .rut-col por
       persona activa; ítems absolutos con borde en color persona y tinte por
       tipo; línea "ahora" cruzando todo; popover superpuesto para detalle/
       editor. Las nocturnas van aparte en la franja .rut-noche (filas
@@ -7685,7 +7673,8 @@ span.rut-ahora-emoji { cursor: default; }
   border-left: 1px dashed color-mix(in srgb, var(--color-borde) 70%, transparent);
 }
 
-/* Ítem del lienzo: tarjetita absoluta, alto = duración. Línea principal
+/* Ítem del lienzo: tarjetita absoluta, alto = duración (con el piso de
+   ALTO_MIN; en el teléfono el nombre va abajo de la hora). Línea principal
    "07:00 🧸 Título · 1 h 15′" en tipografía estándar de la app; en bloques
    altos (≥64 px) vuelve el texto descriptivo debajo (clampeado por JS). */
 .rut-item {
@@ -7755,13 +7744,43 @@ span.rut-ahora-emoji { cursor: default; }
 .rut-item--mini { padding-top: 0.05rem; padding-bottom: 0.05rem; justify-content: center; }
 .rut-item--mini .rut-item-titulo { font-size: 0.85rem; }
 
-/* Columnas angostas (mobile): priorizar hora + título */
+/* Columnas angostas (mobile): el NOMBRE baja a su propio renglón.
+   Cada columna mide ~90 px: compartiendo la línea con la hora y el dibujo al
+   título le quedaban 30 px y salía "D…". Abajo de la hora tiene todo el ancho
+   de la tarjeta y hasta 3 renglones (los que entren: los cuenta rutina.js y
+   los pasa en --rut-tl). El HTML no cambia — la fila envuelve y el título va
+   último con `order`, así el 🔗 no se cae a un tercer renglón. */
 @media (max-width: 767px) {
-  .rut-item { padding-left: 0.35rem; padding-right: 0.35rem; }
+  .rut-item { padding: 0.15rem 0.35rem; }
   .rut-item-dur { display: none; }
   .rut-item-sub { display: none; }
-  .rut-item-titulo { font-size: 0.78rem; }
-  .rut-item-hora { font-size: 0.62rem; }
+  .rut-item-hora { font-size: 0.62rem; line-height: 1; }
+  .rut-item-emoji { font-size: 0.72rem; }
+
+  .rut-item-linea { flex-wrap: wrap; row-gap: 0; column-gap: 0.3rem; }
+
+  .rut-item-titulo,
+  .rut-item--mini .rut-item-titulo {
+    order: 1;
+    flex: 1 0 100%;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--rut-tl, 2);
+  }
+
+  /* Tarjetas cortas: rutina.js les da igual el alto mínimo que necesita el
+     nombre, así que ocupan más de lo que duran y la de abajo les tapa el
+     borde inferior. Por eso el contenido va pegado ARRIBA (lo tapado es
+     fondo, no texto) y sin dibujo, que es lo primero que sobra. */
+  .rut-item--mini {
+    justify-content: flex-start;
+    padding-top: 0.05rem;
+    padding-bottom: 0.05rem;
+  }
+  .rut-item--mini .rut-item-emoji { display: none; }
 }
 
 /* Tintes por tipo (mismos color-mix que las filas). Escriben `--rut-item-bg`,
@@ -7935,24 +7954,6 @@ span.rut-ahora-emoji { cursor: default; }
   opacity: 0.8;
 }
 
-/* ✕ chiquita de los ítems del lienzo (modo edición) */
-.rut-item-quitar {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--color-peligro);
-  border-radius: 50%;
-  background: var(--color-superficie);
-  color: var(--color-peligro);
-  font-size: 0.65rem;
-  line-height: 1;
-  cursor: pointer;
-  font-family: var(--fuente-principal);
-  z-index: 1;
-}
-
 /* Franja de tomas nocturnas */
 /* Arriba del lienzo (el día arranca con las tomas de madrugada) */
 .rut-noche { border-bottom: 1px solid var(--color-borde); }
@@ -7973,6 +7974,35 @@ span.rut-ahora-emoji { cursor: default; }
   margin-left: 0.3rem;
 }
 
+/* "Tomas de madrugada − 2 +" al pie de la franja. Discreto a propósito: es un
+   ajuste que se toca una vez cada varias semanas, no un botón de todos los
+   días. El número va en el color de la persona (--rut-color). */
+.rut-noct-cfg {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0.8rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--color-texto-muted);
+}
+
+.rut-noct-txt { flex: 1; min-width: 0; }
+
+.rut-noct-paso { width: 34px; height: 28px; font-size: 0.9rem; }
+.rut-noct-paso[disabled] { opacity: 0.4; cursor: default; }
+
+.rut-noct-n {
+  min-width: 1.4rem;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--rut-color, var(--color-acento));
+}
+
+.rut-noct-auto { font-style: italic; opacity: 0.8; }
+.rut-noct-volver { width: auto; padding: 0 0.6rem; height: 28px; font-size: 0.7rem; }
+
 .rut-canvas-vacio {
   padding: 1.2rem 0.8rem;
   text-align: center;
@@ -7980,29 +8010,11 @@ span.rut-ahora-emoji { cursor: default; }
   color: var(--color-texto-muted);
 }
 
-/* ── Modo edición (✎ Editar: quitar / añadir / restaurar) ─────────────────── */
-.rut-tl-botones { display: flex; gap: 0.4rem; }
-
-.rut-btn-fantasma.activo {
-  border-color: var(--color-acento);
-  color: var(--color-acento);
-  font-weight: 600;
-}
-
-.rut-btn-quitar {
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  border: 1px solid var(--color-peligro);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-peligro);
-  font-size: 0.85rem;
-  line-height: 1;
-  cursor: pointer;
-  font-family: var(--fuente-principal);
-}
-
+/* ── Quitar y restaurar ───────────────────────────────────────────────────── */
+/* El "Quitar" vive en el detalle de la actividad (y en el editor de las tomas
+   de madrugada) como un botón .rut-editor-btn.rut-q-btn.rut-q-siempre; abre
+   esta barra con la pregunta. Hasta el 2026-08-15 era una ✕ que solo aparecía
+   con el modo edición prendido. */
 .rut-quitar-bar { flex-wrap: wrap; }
 
 .rut-quitar-txt {
@@ -8021,9 +8033,8 @@ span.rut-ahora-emoji { cursor: default; }
 /* Tinte de las tareas añadidas por el usuario (kind 'custom') */
 .rut-fila--custom { background: color-mix(in srgb, var(--color-exito) 8%, var(--color-superficie)); }
 
-/* Form "＋ Añadir tarea" */
-.rut-add-row { padding: 0.5rem 0.8rem; border-bottom: 1px solid var(--color-borde); }
-
+/* Form de tarea suelta (hoy solo lo abre la tarjeta "Hoy por calendario") y
+   botones "＋ Agregar" de Familia y Actividades */
 .rut-add-btn {
   width: 100%;
   padding: 0.5rem;
