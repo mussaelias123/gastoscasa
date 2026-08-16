@@ -18,8 +18,9 @@ COMPORTAMIENTO:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fondo - Iniciar sesión</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+  <title>Núcleo - Iniciar sesión</title>
+  {# Mismo favicon que base.html: la "N" de la marca. Ver nota ahí. #}
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%234f46e5'/><text x='50' y='72' font-size='70' font-family='Segoe UI,Arial,sans-serif' font-weight='700' fill='%23ffffff' text-anchor='middle'>N</text></svg>">
   <style>
     /* ── Reset y base ──────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -44,11 +45,6 @@ COMPORTAMIENTO:
       max-width: 400px;
       width: 100%;
       text-align: center;
-    }
-
-    .login-icon {
-      font-size: 3rem;
-      margin-bottom: 0.5rem;
     }
 
     .login-title {
@@ -158,9 +154,8 @@ COMPORTAMIENTO:
 <body>
   <div class="login-card">
 
-    <div class="login-icon">💰</div>
-    <h1 class="login-title">Fondo</h1>
-    <p class="login-subtitle">El fondo familiar más lindo</p>
+    <h1 class="login-title">Núcleo</h1>
+    <p class="login-subtitle">Nuestra familia</p>
 
     {% if error == 'no_permitido' %}
     <div class="login-error">
