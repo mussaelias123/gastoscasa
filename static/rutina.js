@@ -494,6 +494,30 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             it.end = s + it.dur;
             cursor = it.end;
         });
+
+        // Los ítems de dur 0 ("Sueño nocturno") cierran el día y se dibujan
+        // hasta las 00:00. Como no ocupan lugar, el reacomodo de arriba los
+        // ignoraba: bastaba mover una toma a mano para que el baño y la última
+        // toma terminaran DESPUÉS del inicio de la noche y quedaran dibujados
+        // encima de ese bloque, tapándolo (2026-08-15). Ahora la noche arranca
+        // cuando termina lo último del día.
+        // Las tomas de madrugada NO cuentan acá: cuelgan de esta misma hora y
+        // viven en la franja "Madrugada", no en la columna; si contaran, la
+        // noche se iría a después de la última toma de la madrugada. Ojo que
+        // sus horas se calcularon con el inicio viejo (rutinaBebe corre antes),
+        // así que un corrimiento grande no las arrastra: son a demanda y
+        // orientativas, no vale recalcular todo por eso.
+        var finDelDia = -Infinity;
+        arr.forEach(function (i) {
+            if (i.kind !== 'noct' && i.end > finDelDia) finDelDia = i.end;
+        });
+        if (finDelDia > -Infinity) {
+            items.forEach(function (i) {
+                if (i.dur || i.start >= finDelDia) return;
+                i.start = finDelDia;
+                i.end = finDelDia;
+            });
+        }
         return items;
     }
 
@@ -701,6 +725,12 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     sub: act.nota || conQuien(act, u),
                     start: start, end: start + dur, dur: dur,
                     user: u, kind: 'act', compartida: compartida, editable: true,
+                    // Movida a mano = se queda en la hora donde la soltaste y
+                    // el resto se acomoda alrededor (`ancla`), igual que un pin
+                    // de la cadena del bebé. Antes solo la cadena lo hacía y
+                    // sinSolapes te corría la actividad que acababas de mover
+                    // (pedido de Mari, 2026-08-15).
+                    ancla: aj[aid] !== undefined,
                     pin: aj[aid] !== undefined
                 });
             });
@@ -726,6 +756,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     emoji: emoji, t: t.titulo, sub: t.fecha === '' ? '' : 'solo hoy',
                     start: start, end: start + durT, dur: durT,
                     user: u, kind: 'custom', editable: true,
+                    ancla: aj[cid] !== undefined,   // ídem actividadesDe()
                     pin: aj[cid] !== undefined
                 });
             });
@@ -1359,18 +1390,28 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 cluster.forEach(function (i) { i._lanes = n; });
                 cluster = []; lanesEnd = [];
             }
+            // Los dur 0 ("Sueño nocturno") también compiten por carril, con el
+            // fin que se DIBUJA (hasta las 00:00). Antes iban siempre a ancho
+            // completo y cualquier cosa que se les encimara los tapaba. Es la
+            // red de seguridad de la regla "nada queda por encima de nada":
+            // sinSolapes() ya corre la noche detrás de lo último del día, y si
+            // igual quedara un choque (dos bloques inamovibles), acá se
+            // reparten el ancho en vez de pisarse.
+            function finVisual(i) {
+                return i.dur ? i.end : Math.min(finAbierto(i), ejeFin);
+            }
             its.forEach(function (i) {
-                if (!i.dur) { i._lane = 0; i._lanes = 1; return; }
+                var fin = finVisual(i);
                 if (cluster.length && i.start >= finCluster - 0.5) cerrarCluster();
                 var lane = -1;
                 for (var li = 0; li < lanesEnd.length; li++) {
                     if (lanesEnd[li] <= i.start + 0.5) { lane = li; break; }
                 }
-                if (lane === -1) { lane = lanesEnd.length; lanesEnd.push(i.end); }
-                else lanesEnd[lane] = i.end;
+                if (lane === -1) { lane = lanesEnd.length; lanesEnd.push(fin); }
+                else lanesEnd[lane] = fin;
                 i._lane = lane;
                 cluster.push(i);
-                if (i.end > finCluster) finCluster = i.end;
+                if (fin > finCluster) finCluster = fin;
             });
             cerrarCluster();
             return '<div class="rut-col">' + its.map(function (it) {
