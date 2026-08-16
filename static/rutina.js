@@ -1261,11 +1261,32 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // vacío). El texto `sub` no se muestra en el lienzo: vive en el popover
     // de tap (junto al editor −15/+15/Ahora si es editable).
     var ESCALA = 1.6;        // px por minuto (da aire para tipografía estándar)
+    var ALTO_MIN = 20;       // piso del alto de un ítem, en px
     var COL_MAX = 380;       // ancho máximo de cada columna: el lienzo se ciñe
                              // a la información en pantallas anchas (el ancho
                              // sobrante queda como margen, no como ítems XXL)
 
+    // En el teléfono las columnas miden ~90 px: el nombre de la actividad no
+    // entra al lado de la hora y baja a su propio renglón (ver el bloque
+    // mobile de .rut-item en style.css). Eso pide más alto, así que el eje se
+    // estira y el piso sube a 34 px —hora + una línea de nombre—; con esa
+    // escala hasta un baño de 15' llega al piso casi sin pisar al siguiente.
+    // Se recalcula en CADA render: es la misma ESCALA que usan el arrastre y
+    // el data-escala del canvas (de ahí saca el fondo qué hora estás mirando),
+    // y así queda al día si girás el teléfono.
+    function ejeAngosto() {
+        return !!(window.matchMedia && window.matchMedia('(max-width: 767px)').matches);
+    }
+
+    var EJE_MODO = null;     // con qué pantalla se dibujó el último lienzo
+    function medirEje() {
+        EJE_MODO = ejeAngosto();
+        ESCALA   = EJE_MODO ? 2.1 : 1.6;
+        ALTO_MIN = EJE_MODO ? 34  : 20;
+    }
+
     function renderTimeline(calc, esHoy, now, nocheActiva, enCurso) {
+        medirEje();
         var usuarios = usuariosSel();
         // Las tomas nocturnas de TODOS los bebés visibles se sacan de las
         // columnas y van juntas a la franja "🌙 Madrugada".
@@ -1376,9 +1397,15 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             });
             cerrarCluster();
             return '<div class="rut-col">' + its.map(function (it) {
-                var h = it.dur
-                    ? Math.max(20, Math.round(it.dur * ESCALA))
-                    : Math.max(24, Math.round((Math.min(finAbierto(it), ejeFin) - it.start) * ESCALA));
+                // Dos altos: el REAL (lo que dura) y el dibujado (con el piso
+                // de ALTO_MIN, para que el nombre entre siempre). Lo que se
+                // muestra adentro se decide con el real: una tarjeta corta
+                // estirada no tiene lugar para adornos aunque el rectángulo
+                // mida más, y la de abajo le tapa el borde inferior.
+                var hReal = it.dur
+                    ? Math.round(it.dur * ESCALA)
+                    : Math.round((Math.min(finAbierto(it), ejeFin) - it.start) * ESCALA);
+                var h = Math.max(ALTO_MIN, hReal);
                 var n = it._lanes || 1;
                 var izq = 'calc(' + ((it._lane || 0) / n * 100) + '% + 2px)';
                 var ancho = 'calc(' + (100 / n) + '% - 4px)';
@@ -1400,20 +1427,24 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 // Bloques altos: vuelve el texto descriptivo, recortado a las
                 // líneas que realmente entran (el completo vive en el popover)
                 var subHtml = '';
-                if (it.sub && h >= 68) {
+                if (it.sub && hReal >= 68) {
                     var lineas = Math.max(1, Math.min(4, Math.floor((h - 42) / 18)));
                     subHtml = '<span class="rut-item-sub" style="-webkit-line-clamp:' + lineas + '">' +
                         escapeHtml(it.sub) + '</span>';
                 }
+                // Renglones que le entran al nombre. En el teléfono el nombre
+                // va abajo de la hora y el CSS lo recorta con --rut-tl; en
+                // escritorio sigue en una sola línea y la variable no se usa.
+                var lineasT = Math.max(1, Math.min(3, Math.floor((h - 20) / 15)));
                 return '<div class="' + clases + '"' + tapAttr + dragAttr + ' data-item="' + it.id + '"' +
                     ' style="--rut-color: var(--color-' + colorTokenDe(it.user) + ');top:' +
                     y(it.start) + 'px;height:' + h + 'px;left:' + izq + ';width:' + ancho + '">' +
                     '<span class="rut-item-linea">' +
                         '<span class="rut-item-hora">' + fmt(it.start) + '</span>' +
                         '<span class="rut-item-emoji">' + itemEmoji(it) + '</span>' +
-                        '<span class="rut-item-titulo">' + escapeHtml(it.t) + '</span>' +
-                        (it.compartida && h >= 24 ? '<span class="rut-item-candado" title="Compartida con otro miembro">' + dibujoHtml('link') + '</span>' : '') +
-                        (it.dur && h >= 38 ? '<span class="rut-item-dur">' + fmtDur(it.dur) + '</span>' : '') +
+                        '<span class="rut-item-titulo" style="--rut-tl:' + lineasT + '">' + escapeHtml(it.t) + '</span>' +
+                        (it.compartida && hReal >= 24 ? '<span class="rut-item-candado" title="Compartida con otro miembro">' + dibujoHtml('link') + '</span>' : '') +
+                        (it.dur && hReal >= 38 ? '<span class="rut-item-dur">' + fmtDur(it.dur) + '</span>' : '') +
                     '</span>' +
                     subHtml +
                     grip +
@@ -3130,7 +3161,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 if (hEl) hEl.textContent = fmt(drag.nuevoStart);
             } else {
                 drag.nuevaDur = Math.max(5, Math.min(720, drag.durOrig + minutos));
-                drag.el.style.height = Math.max(20, Math.round(drag.nuevaDur * ESCALA)) + 'px';
+                drag.el.style.height = Math.max(ALTO_MIN, Math.round(drag.nuevaDur * ESCALA)) + 'px';
                 var dEl = drag.el.querySelector('.rut-item-dur');
                 if (dEl) dEl.textContent = fmtDur(drag.nuevaDur);
             }
@@ -3285,7 +3316,16 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             if (it) ajustar(itemId, it.start + delta);
         }
 
-        window.addEventListener('resize', ajustarSticky);
+        window.addEventListener('resize', function () {
+            ajustarSticky();
+            // Al girar el teléfono se cruza el corte de 767 px y el lienzo
+            // cambia de escala (y el nombre pasa a su propio renglón). Sin
+            // esto queda dibujado con la escala de la otra pantalla hasta la
+            // próxima interacción. Se respeta puedeSync(): un re-render con
+            // un editor abierto o un arrastre a medio hacer pisaría lo que
+            // estás haciendo.
+            if (EJE_MODO !== null && ejeAngosto() !== EJE_MODO && puedeSync()) renderTodo();
+        });
         renderTodo();
         // Remedir cuando terminan de cargar fuentes/estáticos (el alto del
         // topbar global puede cambiar entre DOMContentLoaded y load).
