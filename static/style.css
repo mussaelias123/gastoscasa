@@ -8284,7 +8284,7 @@ span.rut-ahora-emoji { cursor: default; }
 }
 
 /* En ~375px el cluster derecho choca con el slogan: se oculta (el h1
-   "💰 Fondo" solo entra cómodo). Gap más chico para dar aire al título. */
+   "Núcleo" solo entra cómodo). Gap más chico para dar aire al título. */
 @media (max-width: 480px) {
   .site-header .subtitulo { display: none; }
   .header-acciones { gap: 0.35rem; }
