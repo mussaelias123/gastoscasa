@@ -107,6 +107,7 @@ Por qué `tipo` importa para los KPIs: la producción total cuenta SOLO las `fre
 | `color_token`      | TEXT    | Var CSS sin el prefijo `--color-`: `persona-leon\|mari\|elias`, `rut-p4`..`rut-p8` (validado contra `_RUT_COLORES` en `app.py`) |
 | `ancla_min`        | INTEGER | SOLO bebés: minutos de la primera toma del día (0..1439). 390 = 06:30 |
 | `acompanan`        | TEXT    | SOLO bebés: ids separados por coma de quienes lo acompañan en las tomas (`'2'`, `'2,3'`); `''` = nadie. Se fuerza `''` si `es_bebe=0`. Máximo 3 |
+| `noct_n`           | INTEGER | SOLO bebés: cuántas tomas de madrugada mostrarle. `-1` (default) = las que sugiere la tabla de ventanas de sueño para su edad; `0..6` = las que fijó el usuario con el "− 2 +" de la franja Madrugada. Existe porque lo esperable a cada edad es un RANGO (a los 3 meses, 1-2) y hay bebés que piden una más. Se escribe por su propia función (`fijar_nocturnas_rutina`), NO desde el form de Familia |
 | `orden`            | INTEGER | Orden de la familia en chips y columnas                 |
 | `activo`           | INTEGER | 0 = archivado (no se muestra)                           |
 | `creado` / `actualizado` | TEXT | Timestamps ISO                                       |
@@ -271,6 +272,7 @@ Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 | `obtener_miembros_rutina(incluir_inactivos=False)` | `list[Row]`        | La familia ordenada por `orden`, `id` |
 | `crear_miembro_rutina(nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min, acompanan='')` | id nuevo | Se ubica al final (`orden` = máx + 1) |
 | `editar_miembro_rutina(id, nombre, rol, es_bebe, fecha_nacimiento, dibujo, color_token, ancla_min, acompanan, activo)` | None | Pisa todos los campos editables |
+| `fijar_nocturnas_rutina(id, noct_n)` | None                           | Cuántas tomas de madrugada mostrarle a un bebé (`-1` = las que sugiere su edad). Aparte de `editar_miembro_rutina` a propósito: se toca desde la franja Madrugada, no desde el form de Familia, así el form no la pisa |
 | `borrar_miembro_rutina(id)`      | None                               | Baja definitiva + cascada manual: sus actividades, sus participaciones, los ajustes/duraciones/ocultos de `b<id>-*` y `a<actividad>`, **y su id dentro del `acompanan` de los demás** |
 | `obtener_actividades_rutina()`   | `list[dict]`                       | Actividades activas con `participantes` y `pausas` anidados (por eso dicts y no Rows). Cada pausa trae su `id` |
 | `crear_actividad_rutina(miembro_id, titulo, dibujo, inicio_min, dur_min, dias, meses, desde, hasta, anual, nota, participantes=())` | id nuevo | **Devuelve el id**: el editor lo necesita para colgarle recesos sin recargar |
