@@ -2929,6 +2929,8 @@ def api_rutina_restaurar():
 # POST /api/rutina/miembro/crear  → alta (nombre, rol, es_bebe, fecha_nacimiento,
 #                                    acompanan = quién lo acompaña en las tomas…)
 # POST /api/rutina/miembro/editar → edición completa (pide id)
+# POST /api/rutina/miembro/nocturnas → cuántas tomas de madrugada (id, n;
+#                                    n = -1 → las que sugiere la edad)
 # POST /api/rutina/miembro/borrar → baja definitiva + limpieza de sus ítems
 # POST /api/rutina/ajustes        → hora de inicio de noche / amanecer / cumples
 # Mismo contrato AJAX que el resto del módulo.
@@ -2961,6 +2963,35 @@ def api_rutina_miembro_editar():
         activo = 0 if (request.form.get('activo') or '1').strip() == '0' else 1
         database.editar_miembro_rutina(miembro_id, nombre, rol, es_bebe, fnac,
                                        dibujo, color, ancla, acompanan, activo)
+        if _es_ajax():
+            desde, hasta = _rut_parsear_rango(request.form)
+            return jsonify({'ok': True, **_rut_payload(desde, hasta)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/miembro/nocturnas', methods=['POST'])
+def api_rutina_miembro_nocturnas():
+    """Cuántas tomas de madrugada mostrarle a un bebé ("− 2 +" de la franja
+    Madrugada). `n` = -1 → las que sugiere su edad; 0..6 → las que diga el
+    usuario. El tope es sanidad, no medicina: seis despertares con toma ya es
+    más de lo que la tabla espera del recién nacido (3-4)."""
+    try:
+        miembro_id = _rut_miembro_id(request.form.get('id'), 'id')
+        try:
+            n = int(str(request.form.get('n') or '').strip())
+        except ValueError:
+            raise ValueError('n debe ser un entero (-1 = automático).')
+        if n < -1 or n > 6:
+            raise ValueError(f'n fuera de rango (-1..6): {n}')
+        database.fijar_nocturnas_rutina(miembro_id, n)
         if _es_ajax():
             desde, hasta = _rut_parsear_rango(request.form)
             return jsonify({'ok': True, **_rut_payload(desde, hasta)})
