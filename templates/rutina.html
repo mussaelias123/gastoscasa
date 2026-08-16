@@ -13,15 +13,21 @@ toma del día (el ancla) y la hora de inicio de la noche—, usando la tabla de
 ventanas de sueño. Al crecer el bebé, la rutina se rearma sola.
 
 Zonas (de arriba a abajo):
-  1. Topbar sticky: header (⏰ Rutina + fecha / bebé + edad) y chips
-     multi-select de miembros.
-  2. Menú de secciones (mobile): Hoy / Familia / Actividades / Ajustes.
+  1. Topbar sticky: header (⏰ Rutina + fecha) y chips multi-select de
+     miembros. El nombre y la edad del bebé salieron de acá el 2026-08-15
+     (pedido de Mari): esa info vive en Familia y en la card de tips.
+  2. Barra de secciones (mobile, fija abajo): Hoy / Familia / Actividades /
+     Ajustes.
   3. Sección "Hoy": selector de día, tarjeta de cumpleaños, aviso contextual,
-     tarjetas "Ahora" por miembro, línea de tiempo del día completo con editor
-     inline y botón "↺ Plan original", y card de ventanas de sueño.
+     tarjetas "Ahora" por miembro, línea de tiempo del día completo (tocar una
+     actividad abre su detalle, con el editor de hora, "Soltar" y "Quitar") y
+     card de ventanas de sueño. Los botones "✎ Editar" y "↺ Plan original"
+     salieron el 2026-08-15: lo que se repite se maneja en Actividades y lo
+     de un día suelto, desde la propia tarjeta.
   4. Sección "Familia": alta/edición/baja de miembros.
-  5. Sección "Actividades": las actividades cargadas (el editor completo —días
-     de la semana, meses, rangos y participantes— llega en el PR siguiente).
+  5. Sección "Actividades": alta/edición/baja de lo que se repite, con su
+     frecuencia (días de la semana, meses, rango de fechas con repetición
+     anual y recesos).
   6. Sección "Ajustes": hora de inicio de noche y de amanecer + cumpleaños.
 
 Los contenedores con id rut-* los llena static/rutina.js. window.RUT_DATOS
@@ -120,10 +126,6 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
         <h1 class="rut-header-titulo"><span class="rut-ico" data-dib="reloj" aria-hidden="true"></span> Rutina</h1>
         <p class="rut-header-fecha" id="rut-fecha"></p>
       </div>
-      <div class="rut-header-leon">
-        <div class="rut-header-nombre" id="rut-header-nombre"></div>
-        <div class="rut-header-edad" id="rut-edad"></div>
-      </div>
     </header>
     <nav class="rut-chips-nav">
       <div class="rut-chips" id="rut-chips"></div>
@@ -132,27 +134,19 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
   </div>
 
   {# ══ 2. Selector de sección — SOLO mobile (en escritorio se ve todo).
-     Menú PROPIO (no <select> nativo): el nativo solo admite texto y las
-     opciones llevan ícono. El JS cambia data-rut-sec de .rut-wrap y el CSS
-     muestra solo la sección elegida. Mismo patrón que Lactancia. #}
-  <div class="rut-nav-mobile">
-    <span class="rut-nav-label">Ver</span>
-    <div class="rut-nav-menu">
-      <button type="button" class="rut-nav-trigger" id="rut-nav-trigger"
-              aria-haspopup="listbox" aria-expanded="false">
-        <span class="rut-nav-actual"></span>
-        <span class="rut-nav-chevron" aria-hidden="true">▾</span>
-      </button>
-      <ul class="rut-nav-lista" id="rut-nav-lista" role="listbox" hidden>
-        {# Los íconos los rellena `pintarIconos()` con la librería de dibujos:
-           `data-dib` en vez del SVG entero repetido ocho veces. #}
-        <li><button type="button" class="rut-nav-opt" data-sec="hoy" role="option"><span class="rut-nav-ico" data-dib="reloj" aria-hidden="true"></span><span>Hoy</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="familia" role="option"><span class="rut-nav-ico" data-dib="familia" aria-hidden="true"></span><span>Familia</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="actividades" role="option"><span class="rut-nav-ico" data-dib="lista" aria-hidden="true"></span><span>Actividades</span></button></li>
-        <li><button type="button" class="rut-nav-opt" data-sec="ajustes" role="option"><span class="rut-nav-ico" data-dib="ajustes" aria-hidden="true"></span><span>Ajustes</span></button></li>
-      </ul>
-    </div>
-  </div>
+     Barra FIJA abajo de la pantalla (estilo app), como tarjeta flotante: la
+     barra es la tarjeta grande y cada pestaña una tarjetita adentro. Reemplazó
+     al menú desplegable .rut-nav-* — mismo patrón que la .lac-tabbar de
+     Lactancia. El JS cambia data-rut-sec de .rut-wrap y el CSS muestra solo la
+     sección elegida; la activa se marca con .is-activa.
+     Los íconos los rellena `pintarIconos()` con la librería de dibujos:
+     `data-dib` en vez del SVG entero repetido cuatro veces. #}
+  <nav class="rut-tabbar" id="rut-tabbar" aria-label="Ver">
+    <button type="button" class="rut-tab" data-sec="hoy"><span class="rut-tab-ico" data-dib="reloj" aria-hidden="true"></span><span>Hoy</span></button>
+    <button type="button" class="rut-tab" data-sec="familia"><span class="rut-tab-ico" data-dib="familia" aria-hidden="true"></span><span>Familia</span></button>
+    <button type="button" class="rut-tab" data-sec="actividades"><span class="rut-tab-ico" data-dib="lista" aria-hidden="true"></span><span>Actividades</span></button>
+    <button type="button" class="rut-tab" data-sec="ajustes"><span class="rut-tab-ico" data-dib="ajustes" aria-hidden="true"></span><span>Ajustes</span></button>
+  </nav>
 
     <!-- ══ 3. Sección HOY ═════════════════════════════════════════════════ -->
     <section class="rut-sec rut-sec--hoy">
@@ -170,17 +164,15 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
       <div class="rut-dia-completo">
         <div class="rut-tl-head">
           <span class="rut-tl-titulo"><span class="rut-ico" data-dib="lista" aria-hidden="true"></span> El día completo</span>
-          <span class="rut-tl-botones">
-            <button type="button" class="rut-btn-fantasma" id="rut-editar">✎ Editar</button>
-            <button type="button" class="rut-btn-fantasma" id="rut-reset">↺ Plan original</button>
-          </span>
         </div>
         <div class="rut-filas" id="rut-filas"></div>
         <p class="rut-leyenda">Arrastrá una actividad para moverla, o estirala desde
           su borde inferior para cambiar su duración (en el teléfono: toque sostenido
-          para mover). Tocá una actividad para ver el detalle. Con ✎ Editar podés
-          añadir o quitar tareas. Las tomas van a demanda: los horarios son
-          orientativos.</p>
+          para mover). Lo que movés a mano queda fijo a esa hora y el resto del día
+          se acomoda alrededor —puede quedar un hueco antes—; para devolverlo a su
+          lugar, tocalo y elegí <strong>Soltar</strong>. Tocá una actividad para ver
+          el detalle y, si hace falta, sacarla con <strong>Quitar</strong>. Las tomas
+          van a demanda: los horarios son orientativos.</p>
 
         <!-- Card de ventanas de sueño del bebé -->
         <div class="rut-tips" id="rut-tips"></div>
@@ -208,11 +200,13 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
     <section class="rut-sec rut-sec--actividades">
       <div class="rut-panel">
         <div class="rut-panel-titulo"><span class="rut-ico" data-dib="lista" aria-hidden="true"></span> Actividades</div>
-        <p class="rut-panel-ayuda">Acá va a vivir el editor de actividades: los
-          días de la semana en circulitos, los meses, las fechas de inicio y fin
-          (con la opción de repetir todos los años), los recesos y los miembros
-          que participan. Por ahora, para sumar algo suelto usá
-          <strong>✎ Editar</strong> en la línea de tiempo de Hoy.</p>
+        <p class="rut-panel-ayuda">Lo que se <strong>repite</strong>: la escuela, el
+          trabajo, la gimnasia. Elegís de quién es, a qué hora y pintás los días de
+          la semana; en <strong>Más opciones</strong> están los meses (para los que
+          no hay clases), las fechas de inicio y fin, y los recesos de las
+          vacaciones. Para algo de <strong>una sola vez</strong> no uses esto: usá
+          <strong>✎ Editar</strong> en la línea de tiempo de Hoy, que agrega una
+          tarea suelta.</p>
         <div id="rut-actividades"></div>
       </div>
     </section>
