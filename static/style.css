@@ -129,6 +129,10 @@ body.has-dev-banner {
 
   /* ── No-color: tipografía, espaciado, sombras ──────────────────────────── */
   --fuente-principal: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  /* Opacidad del vidrio del header: cuánto de --color-superficie tapa el fondo
+     de la hoja. Perilla única — bajarlo deja ver más la ilustración, subirlo
+     prioriza la legibilidad de la marca al scrollear. */
+  --header-vidrio:    62%;
   --radio-borde:       8px;
   --espaciado-base:    1rem;
   --sombra-card:       0 2px 8px rgba(31, 41, 55, 0.10);
@@ -216,7 +220,9 @@ body {
   position: sticky;
   top: 0;
   z-index: 805;            /* Sobre el backdrop (800): header clickeable con un drawer abierto. Bajo drawers (810), modal (1000) y dev-banner (9999) */
-  box-shadow: var(--sombra-card);
+  /* Sin box-shadow a propósito (2026-08-16): el header dejó de ser una franja
+     sólida y ahora es vidrio sobre el fondo de la hoja. Una sombra flotando
+     delataría el borde de la barra que justamente se quiso hacer desaparecer. */
 }
 /* En modo DEV, el banner fijo ocupa los 24px superiores: la topbar se pega debajo. */
 body.has-dev-banner .site-topbar {
@@ -229,10 +235,26 @@ body.has-dev-banner .site-topbar {
    ============================================================================ */
 /* Grilla de 3 columnas (1fr auto 1fr): ☰ a la izq, marca centrada real, y el
    cluster de acciones a la der — así el sol/acciones NUNCA se superponen al
-   título (bug mobile). Las columnas laterales 1fr equilibran = marca centrada. */
+   título (bug mobile). Las columnas laterales 1fr equilibran = marca centrada.
+
+   VIDRIO, no franja sólida (2026-08-16, pedido de Mari): antes era un bloque
+   `--color-deco-1` que en Lactancia se pintaba marrón y cortaba en seco la
+   ilustración de fondo. Ahora deja ver el fondo de la hoja a través, con el
+   mismo recurso que ya usaba `.rut-header` (color-mix + backdrop-filter): lo
+   que scrollea por debajo queda difuminado y la marca se sigue leyendo.
+   El fallback sólido va PRIMERO, para navegadores sin color-mix.
+
+   ⚠ Al pasar de fondo oscuro a vidrio claro hubo que dar vuelta TODO lo que
+   estaba pensado para fondo oscuro (los `white` y `rgba(255,255,255,…)` de
+   este bloque) o quedaba texto blanco sobre blanco — mismo tropiezo que
+   documenta `.rut-header` más abajo. De paso se saldaron esos hardcodes. */
 .site-header {
-  background-color: var(--color-deco-1);
-  color: white;
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-superficie) var(--header-vidrio), transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--color-borde);
+  color: var(--color-texto);
   padding: 0.2rem 1rem;
   position: relative;
   display: grid;
@@ -245,45 +267,38 @@ body.has-dev-banner .site-topbar {
 .header-content h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .site-header h1 {
-  color: white;
   margin: 0;
   font-size: 1.1rem;
 }
 
 .site-header .subtitulo {
   margin: 0;
-  opacity: 0.85;
+  color: var(--color-texto-muted);
   font-size: 0.72rem;
 }
 
-/* ── Usuario logueado (header) — avatar + Salir viven en .header-acciones ── */
+/* ── Usuario logueado (header) — el avatar ES el botón de salir ─────────────
+   La foto llena el círculo de 32px de `.header-icon-btn`; el aro que la rodea
+   es el borde del botón, no un borde propio. Sin foto de Google (caso real:
+   el bypass DEV nunca setea user_photo) el botón cae al dibujo de persona. */
+.header-user-btn {
+  padding: 0;
+  overflow: hidden;
+}
+
 .header-user-photo {
-  width: 28px;
-  height: 28px;
+  width: 100%;
+  height: 100%;
+  display: block;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.4);
+  object-fit: cover;
+  border: 0;
 }
 
-.header-logout-btn {
-  color: rgba(255, 255, 255, 0.7);
-  text-decoration: none;
-  font-size: 0.75rem;
-  padding: 0.2rem 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-  transition: all 0.15s ease;
-}
-
-.header-logout-btn:hover {
-  color: white;
-  border-color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.1);
-}
-
-/* ── Botón-icono circular del header (☰, tema, 🔔) ──────────────────────────
+/* ── Botón-icono circular del header (☰, tema, avatar, campana) ─────────────
    Botón-icono reutilizable: mismo look que el toggle de tema previo, SIN
-   position absolute (ahora viven en flex — ☰ suelto a la izq, tema/campana
-   en `.header-acciones`).
+   position absolute (ahora viven en flex — ☰ suelto a la izq, y los TRES
+   círculos —tema, avatar, campana— en `.header-acciones`).
    `position: relative` = ancla del `.notif-badge`. El layout está al final del
    archivo (sección HEADER ACCIONES). */
 .header-icon-btn {
@@ -295,19 +310,24 @@ body.has-dev-banner .site-topbar {
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: var(--color-texto-invertido);   /* glifo blanco sobre el deco oscuro del header */
+  color: var(--color-texto);   /* el header ahora es vidrio claro, no deco oscuro */
   border: 1px solid var(--color-borde);
   border-radius: 50%;
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
   padding: 0;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  /* Solo el fondo transiciona. `border-color` NO (2026-08-16): como sale de
+     var(--color-borde), al cambiar de tema el navegador deja el aro pintado con
+     el color del tema anterior hasta la próxima navegación — un halo claro
+     alrededor de los círculos en modo noche. Se nota desde que el header es
+     vidrio. El fade del borde en hover no se extraña; el del fondo queda. */
+  transition: background-color 0.15s ease;
 }
 
 .header-icon-btn:hover {
-  background: var(--color-deco-3);
-  border-color: var(--color-superficie);
+  background: var(--color-superficie);
+  border-color: var(--color-acento);
 }
 
 .header-icon-btn:focus {
@@ -315,10 +335,40 @@ body.has-dev-banner .site-topbar {
   box-shadow: var(--sombra-focus);
 }
 
-.theme-icon {
-  display: inline-block;
-  line-height: 1;
+
+/* ── Íconos propios del header (SVG inline en base.html) ────────────────────
+   Mismo contrato de dibujo que `.lac-ico` y `.rut-dib`: viewBox 24,
+   `fill:none`, `stroke:currentColor`, trazo 1.7 y `.relleno` como segundo
+   tono. Clase propia porque el header es global y aquellas dos son de sus
+   módulos (y `rutina-dibujos.js` ni siquiera se carga fuera de /rutina y /). */
+.app-ico {
+  display: block;
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
 }
+
+.app-ico .relleno { fill: currentColor; stroke: none; opacity: 0.18; }
+
+/* El sol del header es redondo y centrado en 12,12; `.an-rayos` trae el
+   transform-origin del medio-sol de Rutina (12px 14px) y hay que corregirlo
+   o los rayos laten descentrados. */
+.app-ico .an-rayos { transform-origin: 12px 12px; }
+
+/* Toggle de tema POR CSS, no por JS (2026-08-16): los dos SVG viven en el
+   botón y acá se muestra uno. Así el ícono sigue solo al `data-theme`, incluso
+   cuando `rutina.js` lo cambia por hora (`seguirTema`) — antes el emoji lo
+   pintaba el JS una sola vez y quedaba desincronizado en la hoja Rutina.
+   Se mantiene la convención vieja: el ícono muestra el DESTINO, no el estado
+   (en oscuro se ve el sol = "tocá para aclarar"). */
+.app-ico--sol { display: none; }
+html[data-theme="dark"] .app-ico--sol  { display: block; }
+html[data-theme="dark"] .app-ico--luna { display: none; }
 
 
 /* La navegación por pestañas fue reemplazada por la sidebar desplegable + la
@@ -493,6 +543,48 @@ body.has-dev-banner .site-topbar {
 #modal-confirmacion.visible {
   display: flex;
 }
+
+/* ── Modal genérico con clases (2026-08-16) ─────────────────────────────────
+   El de arriba (`#modal-confirmacion`) trae los estilos inline en base.html y
+   está cableado al flujo de borrado (`formPendiente.submit()` en app.js). Este
+   es el reemplazo limpio, con variables de paleta: lo estrena `#modal-salir`.
+   Abre/cierra con el atributo `hidden`, no con una clase. */
+.modal-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-modal);
+}
+
+.modal-fondo[hidden] { display: none; }
+
+.modal-caja {
+  max-width: 360px;
+  width: 88%;
+  padding: 1.8rem;
+  text-align: center;
+  box-shadow: var(--sombra-modal);
+}
+
+.modal-caja h3 { margin: 0; }
+
+.modal-texto {
+  margin: 0.6rem 0 1.4rem;
+  color: var(--color-texto-muted);
+}
+
+.modal-botones {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+/* El "Sí, salir" es un <a> (logout es un GET), pero tiene que verse igual que
+   los <button> que lo acompañan. */
+.modal-botones a { text-decoration: none; display: inline-block; }
 
 .tarjeta {
   background-color: var(--color-superficie);
@@ -8236,8 +8328,9 @@ span.rut-ahora-emoji { cursor: default; }
 
 
 /* ============================================================================
-   HEADER ACCIONES — botón de menú (☰) + cluster derecho (tema · Salir ·
-   avatar · 🔔). Son celdas de la grilla del `.site-header` (1fr auto 1fr): ☰ a
+   HEADER ACCIONES — botón de menú (☰) + cluster derecho de TRES círculos
+   (tema · avatar · campana). Son celdas de la grilla del `.site-header`
+   (1fr auto 1fr): ☰ a
    la izquierda de su columna, el cluster a la derecha de la suya, la marca
    centrada en el medio. Antes eran `position:absolute` y el cluster se
    superponía al título en mobile.
@@ -9939,13 +10032,17 @@ body.rut-body .rut-hora-label {
 @keyframes rutLlama { 0%,100% { transform: scale(1) rotate(-2deg); opacity: 1; }
                       50%     { transform: scale(1.12) rotate(2deg); opacity: 0.85; } }
 
-/* Pestaña oculta o el usuario pidió menos movimiento → todo quieto. */
+/* Pestaña oculta o el usuario pidió menos movimiento → todo quieto.
+   `.app-ico` incluido: el sol y la luna del header reutilizan estas mismas
+   animaciones (an-rayos / an-titila) y tienen que respetar la preferencia. */
 body.rut-quieto .rut-fondo *,
-body.rut-quieto .rut-dib * { animation-play-state: paused; }
+body.rut-quieto .rut-dib *,
+body.rut-quieto .app-ico * { animation-play-state: paused; }
 
 @media (prefers-reduced-motion: reduce) {
   .rut-fondo *,
-  .rut-dib * { animation: none !important; }
+  .rut-dib *,
+  .app-ico * { animation: none !important; }
   .rut-astro,
   .rut-fondo-cielo--noche,
   .rut-mapa::after { transition: none; }

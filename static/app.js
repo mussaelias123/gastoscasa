@@ -92,6 +92,7 @@ document.addEventListener('DOMContentLoaded', function() {
     inicializarToggleTema();
     resaltarNavActual();
     initDrawers();
+    initSalir();
     inicializarCategorias();
     initFiltros();
     initOrden();
@@ -574,31 +575,25 @@ FUNCIÓN: inicializarToggleTema()
 ================================================================================
 Propósito:
   Maneja el botón de Light/Dark del header.
-  - Lee el tema actual de document.documentElement.dataset.theme
-    (ya seteado por el script anti-flicker en <head>).
-  - Pinta el icono inicial (☀ si dark, 🌙 si light).
-  - Al hacer click, alterna el tema, lo guarda en localStorage('tema')
-    y actualiza el icono.
+  - Al hacer click, alterna document.documentElement.dataset.theme y lo guarda
+    en localStorage('tema').
   El modo activo es por dispositivo. Los colores se comparten vía config.json.
+
+  EL ICONO NO SE PINTA ACÁ (2026-08-16). El sol y la luna son dos SVG inline
+  que viven los dos en el botón (base.html) y CSS muestra uno según
+  `html[data-theme]`. Ventaja: el ícono sigue solo al tema aunque lo cambie
+  otro — en la hoja Rutina, `seguirTema()` pisa `data-theme` según la hora y
+  antes el emoji quedaba desincronizado hasta recargar.
 ================================================================================
 */
 function inicializarToggleTema() {
     var boton = document.getElementById('theme-toggle');
-    var icono = document.getElementById('theme-icon');
-    if (!boton || !icono) return;
-
-    function pintarIcono(tema) {
-        icono.textContent = (tema === 'dark') ? '☀' : '🌙';
-    }
-
-    var temaActual = document.documentElement.dataset.theme || 'light';
-    pintarIcono(temaActual);
+    if (!boton) return;
 
     boton.addEventListener('click', function() {
         var nuevo = (document.documentElement.dataset.theme === 'dark') ? 'light' : 'dark';
         document.documentElement.dataset.theme = nuevo;
         localStorage.setItem('tema', nuevo);
-        pintarIcono(nuevo);
         if (window._refrescarColoresSelects) window._refrescarColoresSelects();
     });
 }
@@ -749,6 +744,53 @@ function initDrawers() {
     // ESC cierra el que esté abierto.
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') cerrarTodo();
+    });
+}
+
+
+/*
+================================================================================
+FUNCIÓN: initSalir()
+================================================================================
+Propósito:
+  El círculo del avatar en el header abre la confirmación "¿Querés salir?".
+  Reemplaza a la tarjeta de texto "Salir" que había antes al lado de la foto.
+
+  El "Sí, salir" NO necesita JS: es un <a href="/logout"> y /logout es un GET
+  simple (auth.py). Acá solo se maneja abrir y cerrar.
+
+  Modal propio (`#modal-salir`), no el `#modal-confirmacion` del borrado: aquel
+  tiene el texto fijo y está atado a `formPendiente.submit()` (inicializarModal).
+
+  Sin sesión iniciada el botón y el modal no se renderizan → salida temprana.
+================================================================================
+*/
+function initSalir() {
+    var boton = document.getElementById('user-toggle');
+    var modal = document.getElementById('modal-salir');
+    var btnNo = document.getElementById('modal-salir-no');
+    if (!boton || !modal || !btnNo) return;
+
+    function abrir() {
+        modal.hidden = false;
+        btnNo.focus();              // el foco arranca en la opción segura
+    }
+
+    function cerrar() {
+        modal.hidden = true;
+        boton.focus();              // vuelve al círculo que lo abrió
+    }
+
+    boton.addEventListener('click', abrir);
+    btnNo.addEventListener('click', cerrar);
+
+    // Click en el fondo oscuro (no en la tarjeta) cierra.
+    modal.addEventListener('click', function (e) {
+        if (e.target === modal) cerrar();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !modal.hidden) cerrar();
     });
 }
 

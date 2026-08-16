@@ -50,10 +50,18 @@ Cada página hija define su propio {% block contenido %}.
   <div id="dev-banner">⚙ APP — MODO DESARROLLO</div>
   {% endif %}
 
-  {# HEADER sticky: ☰ menú (izq) · marca centrada · acciones a la derecha
-     (tema · Salir · avatar · 🔔). La navegación vive en la sidebar desplegable
-     y las notificaciones en el panel derecho — ambos overlay desde cualquier
-     página, así el contenido gana ancho. #}
+  {# HEADER sticky de vidrio: ☰ menú (izq) · marca centrada · TRES círculos a la
+     derecha (tema · avatar · campana). La navegación vive en la sidebar
+     desplegable y las notificaciones en el panel derecho — ambos overlay desde
+     cualquier página, así el contenido gana ancho.
+
+     Los íconos son SVG inline con la clase `.app-ico` (contrato de la casa:
+     viewBox 24, currentColor, `.relleno` como 2do tono). Van inline y no desde
+     `rutina-dibujos.js` porque ese archivo solo se carga en /rutina y en /.
+     El sol y la luna están LOS DOS acá y CSS muestra uno según `data-theme`:
+     así el ícono nunca parpadea y sigue solo a `seguirTema()` de Rutina.
+
+     No hay botón "Salir": se toca el círculo del avatar y abre `#modal-salir`. #}
   <div class="site-topbar">
     <header class="site-header">
       <button type="button" id="menu-toggle" class="header-icon-btn" title="Abrir menú"
@@ -64,16 +72,50 @@ Cada página hija define su propio {% block contenido %}.
       </div>
       <div class="header-acciones">
         <button type="button" id="theme-toggle" class="header-icon-btn" title="Cambiar tema" aria-label="Cambiar tema">
-          <span id="theme-icon" class="theme-icon">🌙</span>
+          {# Sol redondo — se ve en modo oscuro (destino: aclarar) #}
+          <svg class="app-ico app-ico--sol" viewBox="0 0 24 24" aria-hidden="true">
+            <circle class="relleno" cx="12" cy="12" r="4.6"/>
+            <circle cx="12" cy="12" r="4.6"/>
+            <g class="an-rayos">
+              <path d="M12 2.2v2.4M12 19.4v2.4M2.2 12h2.4M19.4 12h2.4M5.1 5.1l1.7 1.7M17.2 17.2l1.7 1.7M18.9 5.1l-1.7 1.7M6.8 17.2l-1.7 1.7"/>
+            </g>
+          </svg>
+          {# Luna con estrellitas — la misma de Rutina ("noche"); se ve en modo claro #}
+          <svg class="app-ico app-ico--luna" viewBox="0 0 24 24" aria-hidden="true">
+            <path class="relleno" d="M16 3.4A8.6 8.6 0 1 0 20.6 16 6.9 6.9 0 0 1 16 3.4Z"/>
+            <path d="M16 3.4A8.6 8.6 0 1 0 20.6 16 6.9 6.9 0 0 1 16 3.4Z"/>
+            <path class="an-titila an-titila-1" d="M5 4.4v2M4 5.4h2"/>
+            <path class="an-titila an-titila-2" d="M8.4 1.8v1.6M7.6 2.6h1.6"/>
+            <path class="an-titila an-titila-3" d="M3.4 10.2v1.6M2.6 11h1.6"/>
+          </svg>
         </button>
         {% if user_email %}
-        <a href="{{ url_for('auth.logout') }}" class="header-logout-btn" title="Cerrar sesión">Salir</a>
-        {% if user_photo %}
-        <img src="{{ user_photo }}" alt="" class="header-user-photo" title="{{ user_name or user_email }}" referrerpolicy="no-referrer">
-        {% endif %}
+        {# El avatar ES el botón de salir. Sin foto de Google (el bypass DEV nunca
+           setea user_photo) cae al dibujo de persona, si no el círculo no se vería. #}
+        <button type="button" id="user-toggle" class="header-icon-btn header-user-btn"
+                title="{{ user_name or user_email }}"
+                aria-label="Cuenta de {{ user_name or user_email }}" aria-haspopup="dialog">
+          {% if user_photo %}
+          <img src="{{ user_photo }}" alt="" class="header-user-photo" referrerpolicy="no-referrer">
+          {% else %}
+          <svg class="app-ico" viewBox="0 0 24 24" aria-hidden="true">
+            <circle class="relleno" cx="12" cy="8" r="3.6"/>
+            <circle cx="12" cy="8" r="3.6"/>
+            <path d="M4.6 20.2a7.4 7.4 0 0 1 14.8 0"/>
+          </svg>
+          {% endif %}
+        </button>
         {% endif %}
         <button type="button" id="notif-toggle" class="header-icon-btn" title="Notificaciones"
-                aria-label="Notificaciones" aria-controls="notif-panel" aria-expanded="false">🔔{% if notif_badge %}<span id="notif-badge" class="notif-badge">{{ notif_badge }}</span>{% endif %}</button>
+                aria-label="Notificaciones" aria-controls="notif-panel" aria-expanded="false">
+          <svg class="app-ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path class="relleno" d="M12 3.2a5.4 5.4 0 0 1 5.4 5.4c0 4 1.1 5.6 1.9 6.6H4.7c.8-1 1.9-2.6 1.9-6.6A5.4 5.4 0 0 1 12 3.2Z"/>
+            <path d="M12 3.2a5.4 5.4 0 0 1 5.4 5.4c0 4 1.1 5.6 1.9 6.6H4.7c.8-1 1.9-2.6 1.9-6.6A5.4 5.4 0 0 1 12 3.2Z"/>
+            <path d="M12 1.6v1.6"/>
+            <path d="M10 18.2a2.1 2.1 0 0 0 4 0"/>
+          </svg>
+          {% if notif_badge %}<span id="notif-badge" class="notif-badge">{{ notif_badge }}</span>{% endif %}
+        </button>
       </div>
     </header>
   </div>
@@ -115,6 +157,23 @@ Cada página hija define su propio {% block contenido %}.
       </div>
     </div>
   </div>
+
+  {# Confirmación de salida — la abre el círculo del avatar (`#user-toggle`).
+     Modal propio y NO el `#modal-confirmacion` de arriba: aquel tiene el texto
+     fijo del borrado y está cableado a `formPendiente.submit()` en app.js.
+     El "Sí, salir" es un <a> porque /logout es un GET simple (auth.py). #}
+  {% if user_email %}
+  <div id="modal-salir" class="modal-fondo" hidden>
+    <div class="tarjeta modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-salir-titulo">
+      <h3 id="modal-salir-titulo">¿Querés salir?</h3>
+      <p class="modal-texto">Vas a cerrar tu sesión en este dispositivo.</p>
+      <div class="modal-botones">
+        <button type="button" id="modal-salir-no" class="btn-secundario">No</button>
+        <a href="{{ url_for('auth.logout') }}" class="btn-primario">Sí, salir</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
