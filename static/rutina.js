@@ -606,7 +606,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 miembroId: m.id,
                 edadDias: m.dias,
                 anclaMin: m.ancla_min,
-                nocheMin: nocheMin()
+                nocheMin: nocheMin(),
+                // Cuántas tomas de madrugada: lo que fijó el usuario en la
+                // franja Madrugada (rutina_miembros.noct_n). -1 = las que
+                // sugiere la edad, que es el default de la columna.
+                nocturnas: m.noct_n
             });
 
             var pool = poolDe(m);
@@ -952,6 +956,17 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
     function restaurarItem(itemId) {
         postAccion('/api/rutina/restaurar', { etapa: ETAPA, item_id: itemId });
+    }
+
+    // Cuántas tomas de madrugada tiene un bebé. -1 = las que sugiere su edad.
+    // No es optimista: el payload que vuelve trae MIEMBROS fresco y de ahí sale
+    // la rutina generada de nuevo (una toma más cambia TODOS los horarios de la
+    // madrugada, porque se reparten parejo a lo largo de la noche).
+    function fijarNocturnas(miembroId, n) {
+        if (!(n >= -1 && n <= 6)) return;
+        editando = null;
+        quitando = null;
+        postAccion('/api/rutina/miembro/nocturnas', { id: miembroId, n: n });
     }
 
     function crearTarea(datos) {
@@ -1577,7 +1592,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     // tomas de madrugada lo abren). Reusan .rut-fila con su editor inline y
     // ✕ de siempre — son a demanda, el eje a escala no aporta ahí.
     function renderNoche(nocturnas, enCurso) {
-        if (!nocturnas.length) return '';
+        var cfg = renderNoctCfg();
+        if (!nocturnas.length && !cfg) return '';
         return '<div class="rut-noche">' +
             // La luna de las SIESTAS (creciente con zzz), no la de `noche`
             // (llena con estrellas): elección de Mari, 2026-08-06.
@@ -1621,7 +1637,52 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 }
                 return fila + '</div>';
             }).join('') +
+            cfg +
         '</div>';
+    }
+
+    // Cuántas tomas de madrugada tiene ESTE bebé: lo que fijó el usuario
+    // (rutina_miembros.noct_n) o, si está en automático, el tope del rango que
+    // la tabla de ventanas de sueño espera para su edad.
+    function noctDe(m) {
+        if (typeof m.noct_n === 'number' && m.noct_n >= 0) return m.noct_n;
+        var fila = window.RutinaSueno && typeof m.dias === 'number'
+            ? window.RutinaSueno.filaPorEdad(m.dias) : null;
+        return fila ? fila.nocturnas[1] : 0;
+    }
+
+    // "Tomas de madrugada − 2 +", al pie de la franja, uno por bebé visible.
+    // Por qué existe (Mari, 2026-08-15): lo que la tabla espera a cada edad es
+    // un RANGO —a los 3 meses, 1 a 2— y hay bebés que piden una más; el motor
+    // no tiene cómo saberlo. Lo elegido se guarda por bebé y vale todos los
+    // días hasta que se cambie; "según la edad" lo devuelve al automático.
+    function renderNoctCfg() {
+        var visibles = usuariosSel().map(miembroDe).filter(function (m) {
+            return m && m.es_bebe && typeof m.dias === 'number';
+        });
+        if (!visibles.length) return '';
+        var varios = visibles.length > 1;
+        return visibles.map(function (m) {
+            var n = noctDe(m);
+            var auto = !(typeof m.noct_n === 'number' && m.noct_n >= 0);
+            function paso(etiqueta, valor, habilitado) {
+                return '<button type="button" class="rut-editor-btn rut-noct-paso"' +
+                    (habilitado ? '' : ' disabled') +
+                    ' data-noct-id="' + m.id + '" data-noct-set="' + valor + '"' +
+                    ' aria-label="' + etiqueta + ' una toma">' + etiqueta + '</button>';
+            }
+            return '<div class="rut-noct-cfg rut--persona"' + styleColor(String(m.id)) + '>' +
+                '<span class="rut-noct-txt">Tomas de madrugada' +
+                    (varios ? ' de ' + escapeHtml(m.nombre) : '') + '</span>' +
+                paso('−', n - 1, n > 0) +
+                '<span class="rut-noct-n">' + n + '</span>' +
+                paso('+', n + 1, n < 6) +
+                (auto
+                    ? '<span class="rut-noct-auto">según la edad</span>'
+                    : '<button type="button" class="rut-editor-ok rut-noct-volver" ' +
+                          'data-noct-id="' + m.id + '" data-noct-set="-1">según la edad</button>') +
+            '</div>';
+        }).join('');
     }
 
     // Form de tarea suelta. Desde el 2026-08-15 su ÚNICA puerta de entrada es
@@ -2924,6 +2985,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             }
             if (t.closest('[data-q-cancelar]')) { quitando = null; return renderTodo(); }
             if ((el = t.closest('[data-restaurar]'))) return restaurarItem(el.dataset.restaurar);
+            if ((el = t.closest('[data-noct-set]'))) {
+                return fijarNocturnas(el.dataset.noctId, Number(el.dataset.noctSet));
+            }
 
             if (t.closest('.rut-hora-in')) return;   // tipeando la hora: no cerrar
             if (t.closest('[data-cerrar]')) { editando = null; return renderTodo(); }

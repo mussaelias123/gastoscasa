@@ -63,6 +63,7 @@
 | POST   | `/api/rutina/restaurar`   | `api_rutina_restaurar` | Deshace TODOS los quitados de un ítem (permanente y fechados). Form `etapa`, `item_id`. |
 | POST   | `/api/rutina/miembro/crear` | `api_rutina_miembro_crear` | Alta de miembro. Form `nombre`, `rol`, `es_bebe`, `fecha_nacimiento`, `dibujo`, `color_token`, `ancla_min`, `acompanan` (ids separados por coma; solo bebés). Valida con `_rut_leer_form_miembro`. |
 | POST   | `/api/rutina/miembro/editar` | `api_rutina_miembro_editar` | Edición completa (pide `id` + los campos de arriba + `activo`). |
+| POST   | `/api/rutina/miembro/nocturnas` | `api_rutina_miembro_nocturnas` | Cuántas tomas de madrugada tiene un bebé. Form `id`, `n` (`-1` = las que sugiere su edad; `0..6` = fijadas a mano). Es el "− 2 +" de la franja Madrugada: escribe `rutina_miembros.noct_n` sin pasar por el form de Familia. |
 | POST   | `/api/rutina/miembro/borrar` | `api_rutina_miembro_borrar` | Baja definitiva (form `id`); se lleva sus actividades y todos los ajustes de sus ítems. |
 | POST   | `/api/rutina/actividad/crear` | `api_rutina_actividad_crear` | Alta de actividad con frecuencia. Form `miembro_id`, `titulo`, `dibujo`, `inicio_min` (0..1439), `dur_min` (5..720), `dias` (7 bits, LUNES primero), `meses` (12 bits), **`vig_desde`/`vig_hasta`**, `anual`, `nota`, `participantes` (ids separados por coma; con quién se comparte). Valida con `_rut_leer_form_actividad`. |
 | POST   | `/api/rutina/actividad/editar` | `api_rutina_actividad_editar` | Edición completa (pide `id` + los campos de arriba + `activo`). |

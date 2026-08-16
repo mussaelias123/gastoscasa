@@ -299,7 +299,7 @@ IMPORTANTE — LOS NÚMEROS SON ORIENTATIVOS
 
         return {
             dia: items,
-            nocturnas: generarNocturnas(pfx, fila, anclaMin, nocheMin),
+            nocturnas: generarNocturnas(pfx, fila, anclaMin, nocheMin, opts.nocturnas),
             fila: fila,
             resumen: resumen(fila)
         };
@@ -309,9 +309,15 @@ IMPORTANTE — LOS NÚMEROS SON ORIENTATIVOS
      * Tomas nocturnas repartidas parejo a lo largo de la noche.
      * off = minutos desde el INICIO del sueño nocturno (no hora absoluta), que
      * es como las venía manejando rutina.js: si la noche se corre, se corren.
+     *
+     * `cuantas` manda sobre la tabla cuando viene un número ≥ 0 (lo que el
+     * usuario fijó a mano con el "− 2 +" de la franja Madrugada, guardado en
+     * rutina_miembros.noct_n). null/undefined/-1 = las que sugiere la edad.
+     * La tabla da un RANGO (a los 3 meses, 1-2) y el default toma el máximo:
+     * hay bebés que piden una más y el motor no tenía cómo saberlo.
      */
-    function generarNocturnas(pfx, fila, anclaMin, nocheMin) {
-        var cuantas = fila.nocturnas[1];
+    function generarNocturnas(pfx, fila, anclaMin, nocheMin, cuantas) {
+        if (typeof cuantas !== 'number' || cuantas < 0) cuantas = fila.nocturnas[1];
         if (!cuantas) { return []; }
 
         // Largo de la noche: de nocheMin hasta el ancla del día siguiente.
