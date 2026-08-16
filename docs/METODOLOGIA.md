@@ -112,3 +112,34 @@ git branch -r --merged origin/main | grep -v 'origin/main$'
 
 Nada se pierde: el historial queda en `main` y en el PR. Si `git branch -d` se
 niega, la rama tiene commits propios — no forzar con `-D`, avisar al usuario.
+
+**Excepción: no borrar una rama que sea base de un PR abierto (regla 2026-08-16).**
+
+Estar mergeada a main NO alcanza como criterio. Antes de borrar, chequear que
+nada cuelgue de ella:
+
+```
+gh pr list --state open --json number,baseRefName,headRefName
+```
+
+**Qué pasa si se borra igual** (lección de los PRs #66 → #67): GitHub **CIERRA**
+el PR hijo en vez de reapuntarlo a main, y después queda trabado — no se puede
+reabrir (le falta su rama base) ni cambiarle la base (está cerrado). Destrabarlo
+obliga a recrear la rama base en el remoto:
+
+```
+git push origin <sha>:refs/heads/<rama-base>   # el sha sigue vivo: es ancestro del hijo
+gh pr reopen <N-hijo>
+gh pr edit <N-hijo> --base main
+gh pr merge <N-hijo> --merge --delete-branch
+git push origin --delete <rama-base>
+```
+
+**Cómo evitarlo — PRs encadenados.** Cuando un PR sale de la rama de otro (pasa
+cuando los dos tocan el mismo archivo), antes de mergear el padre:
+
+1. `gh pr edit <N-hijo> --base main` — reapuntar el hijo PRIMERO.
+2. Recién ahí mergear el padre con `--delete-branch`.
+
+Alternativa: mergear el padre **sin** `--delete-branch` y borrar la rama a mano
+después de mergear el hijo.
