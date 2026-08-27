@@ -23,19 +23,40 @@ Cada página hija define su propio {% block contenido %}.
      /manifest.json de app.py (fuera del login) — ver CONTEXT_BACKEND.md.
      Va acá, en el layout base, para que valga en TODAS las páginas hijas.
 
-     `theme-color` pinta la barra de título de esa ventana: mismo valor que
-     el `theme_color` del manifest (`--color-superficie`, el color base del
-     banner superior). Sale de la paleta, no hardcodeado. ⚠ Es un solo valor
-     fijo: el toggle Light/Dark no lo mueve, así que en modo oscuro la barra
-     de título queda clara. Sincronizarlo requeriría tocar el toggle. #}
+     `theme-color` pinta la barra de título de esa ventana con el color base
+     del banner superior (`--color-superficie`). Arranca en el valor light —
+     que es el `theme_color` del manifest y el tema por defecto — y el script
+     de abajo lo sigue al tema real. Sale de la paleta, no hardcodeado. #}
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="{{ cfg.paleta_light.superficie }}">
 
   {# Anti-flicker: aplica data-theme antes del primer paint, sin esperar JS externo #}
   <script>
     (function () {
+      var raiz = document.documentElement;
       var t = localStorage.getItem('tema') || 'light';
-      document.documentElement.dataset.theme = t;
+      raiz.dataset.theme = t;
+
+      // Instalada como PWA, `theme-color` es la BARRA DE TÍTULO de la ventana.
+      // Chromium la repinta en caliente cuando cambia esta meta, así que la
+      // seguimos a `data-theme` con un MutationObserver. Se hace acá y por
+      // observador, y no dentro del toggle, porque `data-theme` lo escriben
+      // DOS lugares: `inicializarToggleTema()` (app.js) y `seguirTema()` de
+      // Rutina (rutina.js, que lo pisa según la hora). El observador cubre a
+      // los dos —y a cualquier otro que aparezca— sin tocarles el código.
+      // Los colores salen de la paleta: mismo criterio que el resto del head.
+      var BARRA = {
+        light: '{{ cfg.paleta_light.superficie }}',
+        dark:  '{{ cfg.paleta_dark.superficie }}'
+      };
+      var meta = document.querySelector('meta[name="theme-color"]');
+      function pintarBarra() {
+        if (meta) meta.content = BARRA[raiz.dataset.theme] || BARRA.light;
+      }
+      pintarBarra();
+      new MutationObserver(pintarBarra).observe(raiz, {
+        attributes: true, attributeFilter: ['data-theme']
+      });
     })();
   </script>
 
