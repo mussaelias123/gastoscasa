@@ -1276,6 +1276,74 @@ def index():
 
 
 # =============================================================================
+# RUTA: PWA — manifest de instalación (ventana propia, sin barra de dirección)
+# URL: GET /manifest.json
+# =============================================================================
+#
+# QUÉ HABILITA: que Edge/Chrome muestren el botón "Instalar" en la barra de
+# direcciones y que la app abra como ventana propia (`display: standalone`).
+#
+# POR QUÉ ES UNA RUTA Y NO UN ARCHIVO SUELTO EN static/:
+#   a. Tiene que colgar de la RAÍZ. El `scope` de un manifest no puede subir
+#      de carpeta: servido desde /static/ el scope máximo sería /static/.
+#   b. El Content-Type tiene que ser `application/manifest+json`. Flask sirve
+#      los estáticos como `application/json` y algunos validadores chillan.
+#   c. Los colores salen de `paleta_light` EN CALIENTE, así siguen lo que se
+#      guarde en Settings → Paleta. Cero hex escrito a mano acá (regla 1).
+#
+# FUERA DEL LOGIN: el endpoint 'manifest' está listado en `rutas_publicas` de
+# auth.py. El navegador pide el manifest antes de que haya sesión; si cayera
+# en el redirect al login leería el HTML del login como manifest, y no habría
+# botón de instalar. Los PNG ya son públicos: viven en static/.
+#
+# SIN SERVICE WORKER a propósito. El botón de instalar y la ventana propia no
+# lo necesitan. Si algún día se suma, va network-first y SIN cachear /api/*:
+# la app nunca debe mostrar saldos viejos.
+# =============================================================================
+
+@app.route('/manifest.json')
+def manifest():
+    import json
+    cfg    = config.cargar_config(CONFIG_FILE)
+    paleta = cfg.get('paleta_light') or {}
+
+    datos = {
+        'id':          '/',
+        'name':        'Núcleo',
+        'short_name':  'Núcleo',
+        'description': 'Nuestra familia: gastos, lactancia, calendario y rutina.',
+        'start_url':   '/',
+        'scope':       '/',
+        'display':     'standalone',
+        'lang':        'es-AR',
+        'dir':         'ltr',
+        # Barra de título de la ventana = el color del banner superior. El
+        # `.site-header` es vidrio (`--color-superficie` al 62%), y un manifest
+        # no sabe de `color-mix`: se usa el color base de ese banner. El splash
+        # de arranque usa el fondo de la hoja.
+        'theme_color':      paleta.get('superficie'),
+        'background_color': paleta.get('fondo'),
+        'icons': [
+            {'src':   url_for('static', filename='img/icon-192.png'),
+             'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
+            {'src':   url_for('static', filename='img/icon-512.png'),
+             'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
+            # Maskable: va a sangre y con ~10% de aire, porque Android recorta
+            # el ícono con la forma del launcher (círculo, gota, rombo).
+            {'src':   url_for('static', filename='img/icon-512-maskable.png'),
+             'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
+        ],
+    }
+
+    # Si a la paleta le faltara una clave, mejor omitir el campo que mandar
+    # null: un color inválido invalida el manifest entero y se cae el botón.
+    datos = {k: v for k, v in datos.items() if v is not None}
+
+    return Response(json.dumps(datos, ensure_ascii=False, indent=2),
+                    mimetype='application/manifest+json')
+
+
+# =============================================================================
 # RUTA: Módulo Gastos — Saldos + formulario + tabla de movimientos (ex /)
 # URL: http://localhost:5000/gastos
 # =============================================================================

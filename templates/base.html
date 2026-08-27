@@ -18,6 +18,19 @@ Cada página hija define su propio {% block contenido %}.
      Excepción documentada en CLAUDE.md punto 4, regla 1. Violeta = acento light. #}
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%234f46e5'/><text x='50' y='72' font-size='70' font-family='Segoe UI,Arial,sans-serif' font-weight='700' fill='%23ffffff' text-anchor='middle'>N</text></svg>">
 
+  {# PWA: con esto Edge/Chrome muestran el botón "Instalar" y la app abre en
+     ventana propia, sin barra de direcciones. El manifest lo sirve la ruta
+     /manifest.json de app.py (fuera del login) — ver CONTEXT_BACKEND.md.
+     Va acá, en el layout base, para que valga en TODAS las páginas hijas.
+
+     `theme-color` pinta la barra de título de esa ventana: mismo valor que
+     el `theme_color` del manifest (`--color-superficie`, el color base del
+     banner superior). Sale de la paleta, no hardcodeado. ⚠ Es un solo valor
+     fijo: el toggle Light/Dark no lo mueve, así que en modo oscuro la barra
+     de título queda clara. Sincronizarlo requeriría tocar el toggle. #}
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="{{ cfg.paleta_light.superficie }}">
+
   {# Anti-flicker: aplica data-theme antes del primer paint, sin esperar JS externo #}
   <script>
     (function () {
