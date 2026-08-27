@@ -24,11 +24,13 @@ Cada página hija define su propio {% block contenido %}.
      Va acá, en el layout base, para que valga en TODAS las páginas hijas.
 
      `theme-color` pinta la barra de título de esa ventana con el color base
-     del banner superior (`--color-superficie`). Arranca en el valor light —
-     que es el `theme_color` del manifest y el tema por defecto — y el script
-     de abajo lo sigue al tema real. Sale de la paleta, no hardcodeado. #}
+     del banner superior (`--color-superficie`). Arranca en el valor OSCURO
+     —igual que el `theme_color` del manifest— y el script de abajo lo ajusta
+     al tema real. Oscuro y no claro por pedido del usuario: arrancar oscuro y
+     pasar a claro molesta menos que al revés, y con el tema en dark no hay
+     salto ninguno. Sale de la paleta, no hardcodeado. #}
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="{{ cfg.paleta_light.superficie }}">
+  <meta name="theme-color" content="{{ cfg.paleta_dark.superficie }}">
 
   {# Anti-flicker: aplica data-theme antes del primer paint, sin esperar JS externo #}
   <script>

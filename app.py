@@ -1304,8 +1304,9 @@ def index():
 @app.route('/manifest.json')
 def manifest():
     import json
-    cfg    = config.cargar_config(CONFIG_FILE)
-    paleta = cfg.get('paleta_light') or {}
+    cfg     = config.cargar_config(CONFIG_FILE)
+    paleta  = cfg.get('paleta_light') or {}
+    oscura  = cfg.get('paleta_dark') or {}
 
     datos = {
         'id':          '/',
@@ -1319,9 +1320,15 @@ def manifest():
         'dir':         'ltr',
         # Barra de título de la ventana = el color del banner superior. El
         # `.site-header` es vidrio (`--color-superficie` al 62%), y un manifest
-        # no sabe de `color-mix`: se usa el color base de ese banner. El splash
-        # de arranque usa el fondo de la hoja.
-        'theme_color':      paleta.get('superficie'),
+        # no sabe de `color-mix`: se usa el color base de ese banner.
+        #
+        # Va el valor OSCURO a propósito (pedido del usuario, 2026-08-26). Este
+        # color lo usa el sistema para pintar el marco ANTES de que cargue la
+        # página; recién ahí el MutationObserver de `base.html` lo ajusta al
+        # tema real. Arrancar oscuro y pasar a claro molesta menos que al
+        # revés, y con el tema en dark —el caso habitual acá— ya no hay salto:
+        # el color de arranque es exactamente el que va a quedar.
+        'theme_color':      oscura.get('superficie'),
         'background_color': paleta.get('fondo'),
         'icons': [
             {'src':   url_for('static', filename='img/icon-192.png'),
