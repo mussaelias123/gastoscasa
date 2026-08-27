@@ -26,7 +26,12 @@ Para agregar usuario: editar la lista en `auth.py`. **No hay UI para esto** (dec
 1. `init_auth(app, config_file)` se llama desde `app.py` antes de registrar rutas.
 2. Se genera `secret_key` persistente si no existe (fix: sesiones sobreviven reinicios).
 3. Se registra `before_request` middleware → redirige a `/login` si:
-   - Endpoint NO está en `rutas_publicas` (`auth.*`, `static`).
+   - Endpoint NO está en `rutas_publicas` (`auth.*`, `static`, `manifest`).
+     `manifest` = `/manifest.json` (PWA, agregado 2026-08-26): el navegador lo
+     pide ANTES de que haya sesión; si cayera en el redirect al login leería el
+     HTML del login como manifest y no aparecería el botón de instalar. No filtra
+     nada: solo nombre, colores de la paleta e íconos, que ya eran públicos vía
+     `static`. Ver la ruta en `CONTEXT_BACKEND.md`.
    - Y `session['user_email']` falta o no está en whitelist.
 4. Si `google_client_id` o `google_client_secret` faltan en config → middleware deja pasar (modo bootstrap para configurar).
 

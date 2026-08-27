@@ -108,12 +108,18 @@ def init_auth(app, config_file):
         estáticos.
         """
         # Rutas que NO requieren autenticación
+        # 'manifest' = /manifest.json (PWA). El navegador lo pide ANTES de que
+        # exista sesión; si cayera en el redirect al login leería el HTML del
+        # login como manifest y no ofrecería instalar la app. No expone datos:
+        # solo nombre, colores de la paleta e íconos (que ya son públicos vía
+        # 'static'). Ver la ruta en app.py.
         rutas_publicas = [
             'auth.login',
             'auth.google_login',
             'auth.callback',
             'auth.logout',
             'static',
+            'manifest',
         ]
 
         if request.endpoint in rutas_publicas:
