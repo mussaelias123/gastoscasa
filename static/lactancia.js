@@ -1139,6 +1139,20 @@
     // Calendarios: el formato de fecha es día/mes (decisión de Mari).
     var LOCALE_FP = 'es';
 
+    // El teclado nativo no debe taparle el calendario/reloj en el primer
+    // toque: ese toque solo tiene que abrir el picker. Recién si vuelve a
+    // tocar el campo (ya enfocado, para escribir la fecha/hora a mano) se
+    // habilita el teclado. inputmode="none" es lo que el navegador respeta
+    // para no levantar el teclado al enfocar.
+    function frenarTecladoHastaSegundoToque(fp) {
+        var el = fp.altInput || fp.input;
+        el.setAttribute('inputmode', 'none');
+        el.addEventListener('pointerdown', function () {
+            el.setAttribute('inputmode', document.activeElement === el ? 'text' : 'none');
+        });
+        el.addEventListener('blur', function () { el.setAttribute('inputmode', 'none'); });
+    }
+
     function initFlatpickrs() {
         // Fecha del alta: en la pastilla se muestra corta ("Hoy" o "28/07").
         // disableMobile es CLAVE acá (mismo motivo que en las horas): sin él,
@@ -1153,14 +1167,17 @@
             },
             onChange: function () { pintarVencimiento(); }
         });
+        frenarTecladoHastaSegundoToque(fpExFecha);
         fpCfFecha = flatpickr($('lac-cf-fecha'), {
             locale: LOCALE_FP, dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
             allowInput: true, maxDate: 'today'
         });
+        frenarTecladoHastaSegundoToque(fpCfFecha);
         fpEdFecha = flatpickr($('lac-ed-fecha'), {
             locale: LOCALE_FP, dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
             allowInput: true, maxDate: 'today'
         });
+        frenarTecladoHastaSegundoToque(fpEdFecha);
         // Hora en 24h. disableMobile es CLAVE: sin él, flatpickr en celulares
         // se reemplaza solo por el <input type="time"> NATIVO ("modo mobile"),
         // que en iOS es 12h AM/PM y desborda la tarjeta "+Cargar" — justo lo
@@ -1171,18 +1188,22 @@
             onChange: function () { pintarVencimiento(); },
             onClose: function () { pintarVencimiento(); }
         });
+        frenarTecladoHastaSegundoToque(fpExHora);
         fpEdHora = flatpickr($('lac-ed-hora'), {
             enableTime: true, noCalendar: true, dateFormat: 'H:i',
             time_24hr: true, allowInput: true, disableMobile: true
         });
+        frenarTecladoHastaSegundoToque(fpEdHora);
         fpRecHora = flatpickr($('lac-rec-hora'), {
             enableTime: true, noCalendar: true, dateFormat: 'H:i',
             time_24hr: true, allowInput: true, disableMobile: true
         });
+        frenarTecladoHastaSegundoToque(fpRecHora);
         fpBebeNac = flatpickr($('lac-bebe-nac'), {
             locale: LOCALE_FP, dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
             allowInput: true, maxDate: 'today'
         });
+        frenarTecladoHastaSegundoToque(fpBebeNac);
     }
 
     // ── Recordatorio nocturno de bajar bolsitas ──────────────────────────────
