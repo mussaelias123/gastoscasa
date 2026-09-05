@@ -5107,6 +5107,9 @@ body.has-dev-banner .settings-aside {
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
+  /* Sin esto, dos toques rápidos en el botón (para sumar/restar 20 ml) el
+     celular los toma como doble-tap y hace zoom en la pantalla. */
+  touch-action: manipulation;
 }
 
 .lac-stepper-btn:hover,
