@@ -844,7 +844,12 @@ def _lac_recordatorio(cfg=None):
         datetime.strptime(hora, '%H:%M')
     except ValueError:
         hora = config.DEFAULTS['lactancia_recordatorio_hora']
-    return {'activo': activo, 'hora': hora}
+    dias_txt = cfg.get('lactancia_recordatorio_dias') or config.DEFAULTS['lactancia_recordatorio_dias']
+    try:
+        dias = {int(d) for d in str(dias_txt).split(',') if d.strip() != ''}
+    except ValueError:
+        dias = set(range(7))
+    return {'activo': activo, 'hora': hora, 'dias': sorted(dias)}
 
 
 def _lac_bajo_leche_hoy(ahora):
@@ -872,6 +877,9 @@ def _lac_recordatorio_pendiente(rec=None, ahora=None):
     if rec is None:
         rec = _lac_recordatorio()
     if not rec['activo']:
+        return False
+    manana = ahora.date() + timedelta(days=1)
+    if manana.weekday() not in rec.get('dias', range(7)):
         return False
     hh, mm = rec['hora'].split(':')
     hora_dt = ahora.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
@@ -2114,10 +2122,20 @@ def api_lactancia_recordatorio():
             datetime.strptime(hora, '%H:%M')
         except ValueError:
             raise ValueError("La hora del recordatorio debe ser HH:MM (ej. 21:00).")
-        config.guardar_config({
+        cambios = {
             'lactancia_recordatorio_activo': activo,
             'lactancia_recordatorio_hora':   hora,
-        }, CONFIG_FILE)
+        }
+        dias_raw = request.form.get('dias')
+        if dias_raw is not None:
+            try:
+                dias = sorted({int(d) for d in dias_raw.split(',') if d.strip() != ''})
+            except ValueError:
+                raise ValueError("Los días del recordatorio no son válidos.")
+            if any(d < 0 or d > 6 for d in dias):
+                raise ValueError("Los días del recordatorio no son válidos.")
+            cambios['lactancia_recordatorio_dias'] = ','.join(str(d) for d in dias)
+        config.guardar_config(cambios, CONFIG_FILE)
         if _es_ajax():
             return jsonify({'ok': True, **_lac_payload()})
         return redirect(url_for('lactancia'))
