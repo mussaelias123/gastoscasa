@@ -58,6 +58,9 @@ DEFAULTS = {
     # aviso in-app (la campana); nunca bloquea nada.
     "lactancia_recordatorio_activo":      False,
     "lactancia_recordatorio_hora":        "21:00",
+    # Días de jardín: todos por defecto, para que a nadie que no lo tocó le
+    # cambie el comportamiento. "0"=lunes ... "6"=domingo.
+    "lactancia_recordatorio_dias":        "0,1,2,3,4,5,6",
     # Perfil del bebé: nombre (se usa en los textos de la app) y fecha de
     # nacimiento (YYYY-MM-DD; habilita mostrar la edad y los cortes por mes de
     # vida). Deliberadamente NO se guarda peso ni estatura ni se estima cuánta

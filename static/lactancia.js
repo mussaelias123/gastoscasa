@@ -1190,11 +1190,21 @@
     // recordatorio está VIGENTE (el server decide `pendiente`: activo + pasó la
     // hora + hay leche en freezer + no se bajó ninguna hoy). Es solo un aviso.
     function renderRecordatorio() {
-        var rec = DATOS.recordatorio || { activo: false, hora: '21:00', pendiente: false };
+        var rec = DATOS.recordatorio || { activo: false, hora: '21:00', pendiente: false, dias: [0, 1, 2, 3, 4, 5, 6] };
         var chk = $('lac-rec-activo');
         if (chk) chk.checked = !!rec.activo;
         if (fpRecHora) fpRecHora.setDate(rec.hora || '21:00', true);
         else { var h = $('lac-rec-hora'); if (h) h.value = rec.hora || '21:00'; }
+
+        var dias = rec.dias || [0, 1, 2, 3, 4, 5, 6];
+        var cont = $('lac-rec-dias');
+        if (cont) {
+            var botones = cont.querySelectorAll('.lac-rec-dia');
+            for (var i = 0; i < botones.length; i++) {
+                var d = parseInt(botones[i].getAttribute('data-dia'), 10);
+                botones[i].classList.toggle('is-activo', dias.indexOf(d) !== -1);
+            }
+        }
 
         var banner = $('lac-rec-banner');
         if (banner) {
@@ -1214,6 +1224,13 @@
         var params = new URLSearchParams();
         params.append('activo', $('lac-rec-activo').checked ? '1' : '0');
         params.append('hora', ($('lac-rec-hora').value || '').trim());
+        var cont = $('lac-rec-dias');
+        if (cont) {
+            var activos = [];
+            var botones = cont.querySelectorAll('.lac-rec-dia.is-activo');
+            for (var i = 0; i < botones.length; i++) activos.push(botones[i].getAttribute('data-dia'));
+            params.append('dias', activos.join(','));
+        }
         var btn = $('lac-rec-guardar');
         btn.disabled = true;
         postAccion('/api/lactancia/recordatorio', params, function () {
@@ -1363,6 +1380,11 @@
             if (e.target.classList.contains('lac-check-input')) pintarBotonFreezar();
         });
         $('lac-rec-guardar').addEventListener('click', guardarRecordatorio);
+        var recDias = $('lac-rec-dias');
+        if (recDias) recDias.addEventListener('click', function (e) {
+            var btn = e.target.closest('.lac-rec-dia');
+            if (btn) btn.classList.toggle('is-activo');
+        });
         $('lac-bebe-guardar').addEventListener('click', guardarBebe);
         $('lac-config-guardar').addEventListener('click', guardarConfig);
         var capTog = $('cfg-bolsa_capacidad_activa');
