@@ -135,6 +135,34 @@ class TestBackUpDelJardin(unittest.TestCase):
                                          datetime(2026, 2, 1, 10, 0)), 'disponible')
 
 
+class TestBackUpDelJardinEnLaHeladera(unittest.TestCase):
+    """La bolsita que se fue con León ya descongelada: está en la heladera del
+    jardín, no en la de casa. Misma marca, misma prioridad."""
+
+    def _bolsita(self, en_jardin):
+        # Con heladera_horas=48, vence el 3/7/2026 a las 08:00.
+        return {'ubicacion': 'heladera', 'tipo': 'fresca', 'motivo_cierre': None,
+                'fecha_extraccion': '2026-07-01', 'hora_extraccion': '08:00',
+                'en_jardin': en_jardin}
+
+    def test_marcada_y_sana_dice_que_esta_en_el_jardin(self):
+        self.assertEqual(_lac_estado(self._bolsita(1), PARAMS,
+                                     datetime(2026, 7, 2, 10, 0)), 'en_jardin')
+
+    def test_el_aviso_le_gana_a_la_marca(self):
+        # Acá importa más todavía: el reloj de la heladera corre en horas.
+        p = self._bolsita(1)
+        self.assertEqual(_lac_estado(p, PARAMS, datetime(2026, 7, 2, 20, 0)),
+                         'vence_pronto')
+        self.assertEqual(_lac_estado(p, PARAMS, datetime(2026, 7, 3, 9, 0)),
+                         'vencida')
+
+    def test_sin_la_marca_sigue_en_la_heladera(self):
+        for marca in (None, 0):
+            self.assertEqual(_lac_estado(self._bolsita(marca), PARAMS,
+                                         datetime(2026, 7, 2, 10, 0)), 'en_heladera')
+
+
 class TestParsearExtraccion(unittest.TestCase):
 
     def test_rechaza_extraccion_futura(self):

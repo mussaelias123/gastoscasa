@@ -183,7 +183,8 @@
         <div class="home-lac-item is-{{ p.estado }}">
           <div class="home-lac-info">
             <div class="home-lac-top">
-              <span class="home-lac-vol">{{ p.volumen_ml }} ml</span>
+              {# El 🏫 avisa que esa bolsita no está en la heladera de casa. #}
+              <span class="home-lac-vol">{{ p.volumen_ml }} ml{% if p.en_jardin %} 🏫{% endif %}</span>
               <span class="home-lac-venc t-{{ p.estado }}">
                 {%- if p.horas_restantes < 0 -%}
                   {%- set h = -p.horas_restantes -%}

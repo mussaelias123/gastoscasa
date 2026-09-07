@@ -1253,7 +1253,7 @@ def bajar_partida_lactancia(freezer_id, fecha_cierre):
         cursor = conn.cursor()
         f = cursor.execute(
             'SELECT ubicacion, motivo_cierre, fecha_extraccion, hora_extraccion, '
-            'volumen_ml, notas FROM lactancia_partidas WHERE id = ?', (freezer_id,)
+            'volumen_ml, notas, en_jardin FROM lactancia_partidas WHERE id = ?', (freezer_id,)
         ).fetchone()
         if f is None:
             raise ValueError('La partida no existe.')
@@ -1262,14 +1262,17 @@ def bajar_partida_lactancia(freezer_id, fecha_cierre):
         if f['motivo_cierre'] is not None:
             raise ValueError('Esa bolsa ya no está en el freezer.')
         ahora = _ahora_iso()
+        # La marca del jardín viaja con la leche: si el back up estaba allá y lo
+        # descongelaron allá, la bolsita nueva sigue estando en el jardín. Si en
+        # realidad volvió a casa, se destilda con el mismo botón.
         cursor.execute('''
             INSERT INTO lactancia_partidas (
                 ubicacion, tipo, cargada, fecha_extraccion, hora_extraccion,
-                volumen_ml, notas, origen_id, actualizado
+                volumen_ml, notas, origen_id, actualizado, en_jardin
             )
-            VALUES ('heladera', 'descongelada', ?, ?, ?, ?, ?, NULL, ?)
+            VALUES ('heladera', 'descongelada', ?, ?, ?, ?, ?, NULL, ?, ?)
         ''', (ahora, f['fecha_extraccion'], f['hora_extraccion'],
-              f['volumen_ml'], f['notas'], ahora))
+              f['volumen_ml'], f['notas'], ahora, f['en_jardin'] or 0))
         nueva_id = cursor.lastrowid
         cursor.execute('''
             UPDATE lactancia_partidas
