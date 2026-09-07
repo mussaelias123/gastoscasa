@@ -5517,6 +5517,7 @@ html[data-theme="dark"] .lac-destino-card { color: var(--color-texto-muted); }
 
 .lac-pill-disponible { background: var(--color-exito-suave); color: var(--color-exito); }
 .lac-pill-en_heladera { background: var(--color-exito-suave); color: var(--color-exito); }
+.lac-pill-en_jardin { background: var(--color-jardin-suave); color: var(--color-jardin); }
 .lac-pill-vence_pronto { background: var(--color-alerta-suave); color: var(--color-alerta); }
 .lac-pill-vencida { background: var(--color-peligro-suave); color: var(--color-peligro); }
 .lac-pill-usada { background: var(--color-deco-4); color: var(--color-texto); }
@@ -5680,6 +5681,9 @@ html[data-theme="dark"] .lac-destino-card { color: var(--color-texto-muted); }
 
 .lac-menu-btn:hover { border-color: var(--color-acento); color: var(--color-acento); }
 
+.lac-menu-btn-jardin { color: var(--color-jardin); }
+.lac-menu-btn-jardin:hover { border-color: var(--color-jardin); background: var(--color-jardin-suave); color: var(--color-jardin); }
+
 .lac-menu-btn-peligro { color: var(--color-peligro); }
 .lac-menu-btn-peligro:hover { border-color: var(--color-peligro); background: var(--color-peligro-suave); color: var(--color-peligro); }
 
@@ -5815,10 +5819,14 @@ html[data-theme="dark"] .lac-destino-card { color: var(--color-texto-muted); }
 }
 .lac-tipo--fresca { color: var(--color-exito);  border-color: var(--color-exito); }
 .lac-tipo--desc   { color: var(--color-acento); border-color: var(--color-acento); }
+/* Back up en el freezer del jardín. Aparece cuando la pastilla no lo puede
+   decir: la tapó un aviso de vencimiento o un cierre. */
+.lac-tipo--jardin { color: var(--color-jardin); border-color: var(--color-jardin); }
 
 /* La bolsa descongelada, marcada con un filito de acento a la izquierda (sin
    correr el layout — box-shadow inset, no border) */
-.lac-item--desc { box-shadow: inset 3px 0 0 var(--color-acento); }
+.lac-item--desc   { box-shadow: inset 3px 0 0 var(--color-acento); }
+.lac-item--jardin { box-shadow: inset 3px 0 0 var(--color-jardin); }
 
 /* KPIs de ciclo de la leche */
 .lac-kpis-titulo {
@@ -9383,6 +9391,10 @@ body:has(.lac-wrap) {
   --color-exito-suave:     #E6ECF5;
   --color-alerta-suave:    #F8E9D2;
   --color-peligro-suave:   #F8E1DA;
+  /* Jardín: verde salvia, afinado a la paleta cálida. Par propio y NO
+     --color-exito, que acá es el azul de "Disponible". */
+  --color-jardin:          #5E9B72;
+  --color-jardin-suave:    #E4EFE6;
   /* Personas (familia cálida) */
   --color-persona-elias:   #6C97A0;
   --color-persona-mari:    #DE7B62;
@@ -9423,6 +9435,8 @@ html[data-theme="dark"] body:has(.lac-wrap) {
   --color-exito-suave:     #28323F;
   --color-alerta-suave:    #3E3120;
   --color-peligro-suave:   #3E2620;
+  --color-jardin:          #93C8A6;
+  --color-jardin-suave:    #26332B;
   --color-persona-elias:   #82A7B0;
   --color-persona-mari:    #EE9E86;
   --color-persona-leon:    #E7BE6E;

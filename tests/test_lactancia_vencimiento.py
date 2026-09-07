@@ -98,6 +98,43 @@ class TestVencimientoFreezer(unittest.TestCase):
                          datetime(2027, 1, 15, 23, 59, 59))
 
 
+class TestBackUpDelJardin(unittest.TestCase):
+    """La bolsita que dejamos en el freezer del jardín maternal.
+
+    Sigue estando bien y sigue siendo stock: lo único que cambia es que no la
+    tenemos en casa. Por eso la marca reemplaza solo a "disponible" y JAMÁS
+    puede tapar un aviso de vencimiento: si se está por vencer, hay que ir a
+    buscarla."""
+
+    def _bolsita(self, en_jardin):
+        # Con freezer_meses=6, vence el 1/7/2026 a las 23:59:59.
+        return {'ubicacion': 'freezer', 'fecha_extraccion': '2026-01-01',
+                'hora_extraccion': '10:00', 'motivo_cierre': None,
+                'en_jardin': en_jardin}
+
+    def test_marcada_y_sana_dice_que_esta_en_el_jardin(self):
+        self.assertEqual(_lac_estado(self._bolsita(1), PARAMS,
+                                     datetime(2026, 2, 1, 10, 0)), 'en_jardin')
+
+    def test_el_aviso_de_vencimiento_le_gana_a_la_marca(self):
+        p = self._bolsita(1)
+        self.assertEqual(_lac_estado(p, PARAMS, datetime(2026, 6, 28, 10, 0)),
+                         'vence_pronto')
+        self.assertEqual(_lac_estado(p, PARAMS, datetime(2026, 7, 2, 0, 1)),
+                         'vencida')
+
+    def test_el_cierre_manual_le_gana_a_todo(self):
+        p = self._bolsita(1)
+        p['motivo_cierre'] = 'usada'
+        self.assertEqual(_lac_estado(p, PARAMS, datetime(2026, 2, 1, 10, 0)), 'usada')
+
+    def test_sin_la_marca_sigue_disponible(self):
+        # Las partidas viejas, anteriores a la columna, llegan con el campo None.
+        for marca in (None, 0):
+            self.assertEqual(_lac_estado(self._bolsita(marca), PARAMS,
+                                         datetime(2026, 2, 1, 10, 0)), 'disponible')
+
+
 class TestParsearExtraccion(unittest.TestCase):
 
     def test_rechaza_extraccion_futura(self):

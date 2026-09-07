@@ -268,7 +268,13 @@ def inicializar_db():
     #        descongelada corre desde que se baja, no desde la extracción).
     #  consumido_ml: ml que León realmente tomó de la bolsa (solo 'usada';
     #        NULL = se asume que se consumió todo). Base del desperdicio.
-    for columna, definicion in [('tipo', 'TEXT'), ('consumido_ml', 'INTEGER')]:
+    #  en_jardin: 1 si la bolsita está guardada en el freezer del JARDÍN maternal
+    #        (back up por si algún día va menos leche). Sigue en el freezer y
+    #        sigue contando como stock: lo único que cambia es que no la tenés
+    #        en casa. NO es un cierre — la bolsita está viva y abierta — por eso
+    #        es columna propia y no un motivo_cierre.
+    for columna, definicion in [('tipo', 'TEXT'), ('consumido_ml', 'INTEGER'),
+                                ('en_jardin', 'INTEGER DEFAULT 0')]:
         try:
             cursor.execute(f'ALTER TABLE lactancia_partidas ADD COLUMN {columna} {definicion}')
         except Exception:
@@ -1153,6 +1159,21 @@ def editar_partida_lactancia(partida_id, fecha_extraccion, hora_extraccion, volu
         SET fecha_extraccion=?, hora_extraccion=?, volumen_ml=?, notas=?, actualizado=?
         WHERE id=?
     ''', (fecha_extraccion, hora_extraccion, volumen_ml, notas, _ahora_iso(), partida_id))
+    conn.commit()
+    conn.close()
+
+
+def marcar_jardin_lactancia(partida_id, en_jardin):
+    """Marca (o desmarca) una bolsita como back up en el freezer del jardín.
+
+    No es un cierre: la bolsita sigue abierta, en el freezer y contando como
+    stock. Lo único que cambia es DÓNDE está guardada. La validación (que sea de
+    freezer y esté abierta) vive en app.py, como con el resto de las mutaciones."""
+    conn = conectar()
+    conn.execute(
+        'UPDATE lactancia_partidas SET en_jardin = ?, actualizado = ? WHERE id = ?',
+        (1 if en_jardin else 0, _ahora_iso(), partida_id)
+    )
     conn.commit()
     conn.close()
 

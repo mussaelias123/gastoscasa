@@ -377,6 +377,9 @@ su vencimiento se muestra relativo ("Vence en 5 h").
       <button type="button" class="lac-x" data-lac-cerrar-modal aria-label="Cerrar">×</button>
     </div>
     <div class="lac-modal-body lac-menu">
+      {# El texto lo escribe el JS: dice "marcar" o "sacar" según dónde esté la
+         bolsita, y el botón se esconde para las de heladera y las del historial. #}
+      <button type="button" class="lac-menu-btn lac-menu-btn-jardin" id="lac-mas-jardin" hidden></button>
       <button type="button" class="lac-menu-btn" id="lac-mas-usada">✓ Marcar usada con otra fecha…</button>
       <button type="button" class="lac-menu-btn" id="lac-mas-descartada">🗑 Marcar descartada con otra fecha…</button>
       <button type="button" class="lac-menu-btn" id="lac-mas-editar">✎ Editar bolsita…</button>

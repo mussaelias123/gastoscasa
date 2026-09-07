@@ -250,7 +250,9 @@
         top.className = 'home-lac-top';
         var vol = document.createElement('span');
         vol.className = 'home-lac-vol';
-        vol.textContent = (Number(p.volumen_ml) || 0) + ' ml';
+        // El 🏫 avisa que esa bolsita está de back up en el freezer del jardín:
+        // desde el Inicio parecería que la tenemos a mano y no la tenemos.
+        vol.textContent = (Number(p.volumen_ml) || 0) + ' ml' + (p.en_jardin ? ' 🏫' : '');
         var venc = document.createElement('span');
         venc.className = 'home-lac-venc t-' + p.estado;
         venc.textContent = vencTexto;
