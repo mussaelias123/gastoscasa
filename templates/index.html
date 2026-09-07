@@ -207,7 +207,9 @@
         <div class="home-lac-item is-{{ p.estado }}">
           <div class="home-lac-info">
             <div class="home-lac-top">
-              <span class="home-lac-vol">{{ p.volumen_ml }} ml</span>
+              {# Si la próxima a usar está de back up en el jardín, decirlo acá:
+                 desde el Inicio parecería que la tenemos a mano y no la tenemos. #}
+              <span class="home-lac-vol">{{ p.volumen_ml }} ml{% if p.en_jardin %} 🏫{% endif %}</span>
               <span class="home-lac-venc t-{{ p.estado }}">
                 {%- if p.dias_restantes == 0 %}Vence hoy
                 {%- elif p.dias_restantes == 1 %}Vence mañana

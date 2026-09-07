@@ -142,6 +142,7 @@
     // traslado heladera → freezer). Las claves son las del backend.
     var ESTADO_LABEL = {
         disponible:   'Disponible',
+        en_jardin:    'En el jardín',
         vence_pronto: 'Vence pronto',
         vencida:      'Vencida',
         en_heladera:  'En heladera',
@@ -446,6 +447,17 @@
         }
         html += '<div class="lac-stats-heladera">' + hel + '</div>';
 
+        // Del stock del freezer, cuánto está de back up en el jardín. Solo
+        // aparece si hay algo allá: si no, es una línea de ruido.
+        if (t.jardin_bolsas) {
+            html += '<div class="lac-stats-heladera">🏫 ' + T('En el jardín:') +
+                ' <strong>' + t.jardin_bolsas + ' ' +
+                (t.jardin_bolsas === 1 ? T('bolsita') : T('bolsitas')) +
+                ' · ' + fmtMl(t.jardin_ml) + '</strong>' +
+                ' <span class="lac-sep">·</span> ' + T('ya contadas en el stock del freezer') +
+                '</div>';
+        }
+
         // KPIs de ciclo de vida: producción ("litros de amor", resaltado),
         // consumo de León, leche descongelada, desperdicio, y los dos de
         // promedio móvil (días de stock y bolsita sugerida) que se ajustan solos
@@ -464,7 +476,7 @@
                     (t.desperdicio_ml ? 'is-alerta' : '')) +
             kpiCard('almanaque', dias, T('Alcanza para'),
                     (t.dias_stock == null ? T('cuando {bebe} tome de las bolsitas', { bebe: nombreBebe() })
-                                          : T('al ritmo actual'))) +
+                                          : T('al ritmo actual · freezer + heladera'))) +
             kpiCard('bolsita', bolsa, T('Bolsita sugerida'),
                     (t.bolsa_sugerida_ml == null ? T('según el consumo de {bebe}', { bebe: nombreBebe() })
                                                  : T('promedio real'))) +
@@ -522,9 +534,10 @@
     function itemFreezer(p) {
         var venc = '<span class="lac-venc t-' + p.estado + '">' + textoVencFreezer(p.dias_restantes) + '</span>' +
                    ' <span class="lac-venc-fecha">(' + fmtFechaCorta(p.vencimiento) + ')</span>';
-        return '<div class="lac-item is-' + p.estado + '">' +
+        return '<div class="lac-item is-' + p.estado + (p.en_jardin ? ' lac-item--jardin' : '') + '">' +
             '<div class="lac-item-body">' +
-                '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' + pill(p.estado) + '</div>' +
+                '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' +
+                    jardinTag(p) + pill(p.estado) + '</div>' +
                 '<div class="lac-item-meta">' + extraidaTxt(p) + edadHtml(p) +
                     ' <span class="lac-sep">·</span> ' + venc +
                 '</div>' + notasHtml(p) +
@@ -564,6 +577,17 @@
         return '<span class="lac-tipo lac-tipo--fresca" title="' + T('Extraída y puesta directo en la heladera') + '">🥛 ' + T('Fresca') + '</span>';
     }
 
+    // Back up en el freezer del jardín maternal: la bolsita sigue en el freezer
+    // y sigue contando como stock, pero no la tenemos en casa.
+    function jardinTag(p) {
+        // Cuando la pastilla ya dice "En el jardín" alcanza con eso. La etiqueta
+        // aparece cuando la pastilla la tapó un aviso de vencimiento o un cierre
+        // (historial): justo cuando hace falta saber dónde ir a buscarla.
+        if (!p.en_jardin || p.estado === 'en_jardin') return '';
+        return '<span class="lac-tipo lac-tipo--jardin" title="' +
+            T('Back up guardado en el freezer del jardín') + '">🏫 ' + T('Jardín') + '</span>';
+    }
+
     function itemHeladera(p) {
         var esDesc = p.tipo === 'descongelada';
         return '<div class="lac-item is-' + p.estado + (esDesc ? ' lac-item--desc' : ' lac-item--fresca') + '">' +
@@ -592,7 +616,7 @@
         return '<div class="lac-item lac-item--hist">' +
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' +
-                    pill(p.estado) + ' <span class="lac-hist-ubi" title="' + (p.ubicacion === 'freezer' ? T('Freezer') : T('Heladera')) + '">' + ubi + '</span></div>' +
+                    jardinTag(p) + pill(p.estado) + ' <span class="lac-hist-ubi" title="' + (p.ubicacion === 'freezer' ? T('Freezer') : T('Heladera')) + '">' + ubi + '</span></div>' +
                 '<div class="lac-item-meta">' + extraidaTxt(p) +
                     ' <span class="lac-sep">·</span> ' + verbo + ' ' + fmtFechaCorta(p.fecha_cierre) +
                 '</div>' + notasHtml(p) +
@@ -822,7 +846,31 @@
         if (!p) return;
         masPartidaId = id;
         $('lac-mas-sub').textContent = subPartida(p);
+        // El back up del jardín solo tiene sentido en una bolsita congelada que
+        // siga abierta: la heladera no viaja y una cerrada ya no está en ningún
+        // freezer. El texto cambia según de qué lado esté.
+        var btnJardin = $('lac-mas-jardin');
+        var puede = p.ubicacion === 'freezer' && !p.motivo_cierre;
+        btnJardin.hidden = !puede;
+        if (puede) {
+            btnJardin.textContent = p.en_jardin
+                ? '🏠 ' + T('Sacar del jardín (volvió a casa)')
+                : '🏫 ' + T('Marcar como back up del jardín');
+        }
         $('lac-modal-mas').hidden = false;
+    }
+
+    // Marca/desmarca la bolsita como back up del jardín. No es un cierre: no
+    // pide fecha ni confirmación, se puede volver atrás con el mismo botón.
+    function alternarJardin(id) {
+        var p = buscarPartida(id);
+        if (!p) return;
+        var params = new URLSearchParams();
+        params.set('en_jardin', p.en_jardin ? '0' : '1');
+        postAccion('/api/lactancia/' + id + '/jardin', params, function () {
+            toast(p.en_jardin ? '🏠 ' + T('Volvió a casa: está en tu freezer.')
+                              : '🏫 ' + T('Anotada como back up del jardín.'), 'info');
+        });
     }
 
     // ── Modal: Editor (fecha/hora de extracción editables en ambas
@@ -1391,6 +1439,10 @@
         if (capTog) capTog.addEventListener('change', pintarCapacidad);
 
         // Hoja "Más opciones" → acciones sobre masPartidaId
+        $('lac-mas-jardin').addEventListener('click', function () {
+            $('lac-modal-mas').hidden = true;
+            alternarJardin(masPartidaId);
+        });
         $('lac-mas-usada').addEventListener('click', function () {
             $('lac-modal-mas').hidden = true;
             abrirCerrarFecha(masPartidaId, 'usada');

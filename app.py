@@ -366,7 +366,12 @@ def _lac_vencimiento(p, params):
 def _lac_estado(p, params, ahora):
     """Estado de una partida, en cascada (mismo espíritu que el Excel):
     cierre manual (usada/descartada/trasladada) > vencida > vence_pronto >
-    disponible (freezer) | en_heladera (heladera)."""
+    en_jardin > disponible (freezer) | en_heladera (heladera).
+
+    `en_jardin` (la bolsita que está de back up en el freezer del jardín) va
+    DEBAJO del aviso a propósito: que esté allá no puede tapar que se está por
+    vencer. Para no perder de vista dónde está, la tarjeta muestra la
+    etiqueta 🏫 aparte de esta pastilla."""
     if p.get('motivo_cierre'):
         return p['motivo_cierre']
     venc = _lac_vencimiento(p, params)
@@ -374,7 +379,9 @@ def _lac_estado(p, params, ahora):
         return 'vencida'
     if p['ubicacion'] == 'freezer':
         dias = (venc.date() - ahora.date()).days
-        return 'vence_pronto' if dias <= params['aviso_freezer_dias'] else 'disponible'
+        if dias <= params['aviso_freezer_dias']:
+            return 'vence_pronto'
+        return 'en_jardin' if p.get('en_jardin') else 'disponible'
     horas = (venc - ahora).total_seconds() / 3600
     umbral = (params['aviso_descongelada_horas'] if p.get('tipo') == 'descongelada'
               else params['aviso_heladera_horas'])
@@ -416,6 +423,9 @@ def _lac_enriquecer(row, params, ahora):
     venc = _lac_vencimiento(p, params)
     p['vencimiento'] = venc.isoformat(timespec='seconds')
     p['estado'] = _lac_estado(p, params, ahora)
+    # Las filas viejas (previas a la columna) traen NULL: el front espera un
+    # booleano firme para decidir si dibuja la etiqueta del jardín.
+    p['en_jardin'] = bool(p.get('en_jardin'))
     if p['ubicacion'] == 'freezer':
         p['dias_restantes'] = (venc.date() - ahora.date()).days
         p['horas_restantes'] = None
@@ -449,8 +459,10 @@ def _lac_payload():
     historial = sorted((p for p in partidas if p['motivo_cierre']),
                        key=lambda p: (p['fecha_cierre'] or '', p['id']), reverse=True)
 
-    # "Usables" = disponible + vence_pronto (las vencidas NO suman al stock).
-    usables = [p for p in freezer if p['estado'] in ('disponible', 'vence_pronto')]
+    # "Usables" = disponible + en_jardin + vence_pronto (las vencidas NO suman al
+    # stock). La del jardín cuenta igual: es leche sana de León, solo que
+    # guardada allá.
+    usables = [p for p in freezer if p['estado'] in ('disponible', 'en_jardin', 'vence_pronto')]
     heladera_vigente = [p for p in heladera if p['estado'] in ('en_heladera', 'vence_pronto')]
 
     # KPIs de ciclo de vida. Se calculan sobre TODAS las partidas (abiertas +
@@ -484,7 +496,12 @@ def _lac_payload():
     ventana = ahora.date() - timedelta(days=6)
     consumo_semana = sum(_consumido(p) for p in usadas
                          if _fecha_cierre(p) and _fecha_cierre(p) >= ventana)
-    stock_usable_ml = sum(p['volumen_ml'] for p in usables)
+    # Se mide sobre TODA la leche que León tiene para tomar: freezer + heladera +
+    # la que está de back up en el jardín. El resto del tablero sigue separando
+    # freezer y heladera (son stocks de naturaleza distinta); este KPI es la
+    # excepción a propósito.
+    stock_usable_ml = (sum(p['volumen_ml'] for p in usables)
+                       + sum(p['volumen_ml'] for p in heladera_vigente))
     dias_stock = int(stock_usable_ml / (consumo_semana / 7)) if consumo_semana else None
 
     tablero = {
@@ -493,6 +510,10 @@ def _lac_payload():
         'freezer_vence_pronto':  sum(1 for p in freezer if p['estado'] == 'vence_pronto'),
         'freezer_vencidas':      sum(1 for p in freezer if p['estado'] == 'vencida'),
         'freezer_proximo_venc':  min((p['vencimiento'] for p in usables), default=None),
+        # De ese stock del freezer, lo que está guardado en el jardín (ya viene
+        # contado arriba; se muestra aparte solo para saber qué no hay en casa).
+        'jardin_bolsas':         sum(1 for p in usables if p['en_jardin']),
+        'jardin_ml':             sum(p['volumen_ml'] for p in usables if p['en_jardin']),
         # Las trasladadas no cuentan como usadas ni descartadas: la leche
         # sigue existiendo, solo cambió de ubicación.
         'usadas_total':          sum(1 for p in partidas if p['motivo_cierre'] == 'usada'),
@@ -815,7 +836,9 @@ def _notif_lactancia():
                 tiempo = 'venció hoy' if dias == 0 else f'venció hace {_dias_texto(dias)}'
             else:
                 tiempo = 'vence hoy' if dias == 0 else f'vence en {_dias_texto(dias)}'
-            ubicacion_txt = 'Freezer'
+            # Si está de back up en el jardín, avisarlo: hay que ir a buscarla
+            # allá, no está en casa.
+            ubicacion_txt = 'Freezer del jardín 🏫' if p['en_jardin'] else 'Freezer'
         else:
             tiempo = 'venció' if vencida else f"vence en {p['horas_restantes']} h"
             ubicacion_txt = 'Heladera'
@@ -1991,6 +2014,37 @@ def api_lactancia_cerrar(id):
                         "(lo que tenía la bolsa).")
 
         database.cerrar_partida_lactancia(id, motivo, fecha_cierre, notas, consumido_ml)
+        if _es_ajax():
+            return jsonify({'ok': True, **_lac_payload()})
+        return redirect(url_for('lactancia'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('lactancia'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('lactancia'))
+
+
+@app.route('/api/lactancia/<int:id>/jardin', methods=['POST'])
+def api_lactancia_jardin(id):
+    """Marca o desmarca una partida del freezer como back up en el jardín.
+
+    No cierra nada: la bolsita se queda en el freezer y sigue contando como
+    stock. Lo único que cambia es que no la tenemos en casa. Es reversible con
+    el mismo botón (volvió a casa), así que no pide fecha ni confirmación."""
+    try:
+        partida = database.obtener_partida_lactancia(id)
+        if partida is None:
+            raise ValueError(f"No existe la partida {id}.")
+        if partida['motivo_cierre']:
+            raise ValueError("La partida ya está cerrada.")
+        if partida['ubicacion'] != 'freezer':
+            raise ValueError("Al jardín solo se llevan bolsitas congeladas.")
+
+        en_jardin = (request.form.get('en_jardin') or '').strip() == '1'
+        database.marcar_jardin_lactancia(id, en_jardin)
         if _es_ajax():
             return jsonify({'ok': True, **_lac_payload()})
         return redirect(url_for('lactancia'))
