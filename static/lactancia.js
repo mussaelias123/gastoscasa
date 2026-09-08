@@ -419,8 +419,13 @@
         }
 
         var html = '<div class="lac-stats">' +
-            stat(t.freezer_bolsas || 0, T('Bolsitas disponibles')) +
-            stat(fmtMl(t.freezer_ml), T('Stock freezer') + ' (' + fmtLitros(t.freezer_ml) + ')') +
+            // Los dos primeros hablan del stock TOTAL: freezer + heladera +
+            // lo que está de back up en el jardín (el jardín no es una
+            // ubicación aparte, ya viene sumado dentro de esos dos). El
+            // backend los manda listos; los avisos de abajo siguen siendo del
+            // freezer, que es donde el vencimiento se mide en meses.
+            stat(t.stock_total_bolsas || 0, T('Bolsitas disponibles')) +
+            stat(fmtMl(t.stock_total_ml), T('Stock total') + ' (' + fmtLitros(t.stock_total_ml) + ')') +
             stat(t.freezer_vence_pronto || 0, T('Vencen pronto'), t.freezer_vence_pronto ? 'is-alerta' : '') +
             stat(t.freezer_vencidas || 0, T('Vencidas'), t.freezer_vencidas ? 'is-peligro' : '') +
             stat(t.freezer_proximo_venc ? fmtFechaCorta(t.freezer_proximo_venc) : '—', T('Próxima a vencer')) +

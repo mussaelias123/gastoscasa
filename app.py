@@ -502,10 +502,12 @@ def _lac_payload():
     ventana = ahora.date() - timedelta(days=6)
     consumo_semana = sum(_consumido(p) for p in usadas
                          if _fecha_cierre(p) and _fecha_cierre(p) >= ventana)
-    # Se mide sobre TODA la leche que León tiene para tomar: freezer + heladera +
-    # la que está de back up en el jardín. El resto del tablero sigue separando
-    # freezer y heladera (son stocks de naturaleza distinta); este KPI es la
-    # excepción a propósito.
+    # El stock total (y para cuántos días alcanza) se mide sobre TODA la leche
+    # que León tiene para tomar: freezer + heladera + la que está de back up en
+    # el jardín — el jardín no es una ubicación aparte, es una marca sobre esas
+    # dos, así que ya viene contada acá. El resto del tablero sigue separando
+    # freezer y heladera (son stocks de naturaleza distinta); estos dos KPI son
+    # la excepción a propósito.
     stock_usable_ml = (sum(p['volumen_ml'] for p in usables)
                        + sum(p['volumen_ml'] for p in heladera_vigente))
     dias_stock = int(stock_usable_ml / (consumo_semana / 7)) if consumo_semana else None
@@ -541,6 +543,8 @@ def _lac_payload():
         'descongelada_ml':       sum(p['volumen_ml'] for p in partidas if p.get('tipo') == 'descongelada'),
         'consumida_ml':          sum(_consumido(p) for p in usadas),
         'desperdicio_ml':        desperdicio_ml,
+        'stock_total_bolsas':    len(usables) + len(heladera_vigente),
+        'stock_total_ml':        stock_usable_ml,
         'dias_stock':            dias_stock,          # None = aún sin datos
         'bolsa_sugerida_ml':     bolsa_sugerida_ml,   # None = aún sin datos
     }
