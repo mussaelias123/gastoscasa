@@ -454,7 +454,7 @@
                 ' <strong>' + t.jardin_bolsas + ' ' +
                 (t.jardin_bolsas === 1 ? T('bolsita') : T('bolsitas')) +
                 ' · ' + fmtMl(t.jardin_ml) + '</strong>' +
-                ' <span class="lac-sep">·</span> ' + T('ya contadas en el stock del freezer') +
+                ' <span class="lac-sep">·</span> ' + T('ya contadas en el stock de arriba') +
                 '</div>';
         }
 
@@ -593,7 +593,7 @@
         return '<div class="lac-item is-' + p.estado + (esDesc ? ' lac-item--desc' : ' lac-item--fresca') + '">' +
             '<div class="lac-item-body">' +
                 '<div class="lac-item-top"><span class="lac-item-vol">' + fmtMl(p.volumen_ml) + '</span>' +
-                    tipoTag(p) + pill(p.estado) + '</div>' +
+                    tipoTag(p) + jardinTag(p) + pill(p.estado) + '</div>' +
                 '<div class="lac-item-meta">' + extraidaTxt(p) + edadHtml(p) +
                     ' <span class="lac-sep">·</span> <span class="lac-venc t-' + p.estado + '">' +
                     textoVencHeladera(p.horas_restantes) + '</span>' +
@@ -846,11 +846,11 @@
         if (!p) return;
         masPartidaId = id;
         $('lac-mas-sub').textContent = subPartida(p);
-        // El back up del jardín solo tiene sentido en una bolsita congelada que
-        // siga abierta: la heladera no viaja y una cerrada ya no está en ningún
-        // freezer. El texto cambia según de qué lado esté.
+        // Vale para freezer y heladera —el back up congelado y la que se fue con
+        // León ya descongelada—, pero no para una cerrada: esa ya no está en
+        // ningún lado. El texto cambia según de qué lado esté.
         var btnJardin = $('lac-mas-jardin');
-        var puede = p.ubicacion === 'freezer' && !p.motivo_cierre;
+        var puede = !p.motivo_cierre;
         btnJardin.hidden = !puede;
         if (puede) {
             btnJardin.textContent = p.en_jardin
