@@ -497,7 +497,7 @@ def _lac_payload():
         except (TypeError, ValueError):
             return None
     ventana = ahora.date() - timedelta(days=6)
-    consumo_semana = sum(_consumido(p) for p in usadas
+    consumo_semana = sum(_lac_consumido(p) for p in usadas
                          if _fecha_cierre(p) and _fecha_cierre(p) >= ventana)
     # El stock total (y para cuántos días alcanza) se mide sobre TODA la leche
     # que León tiene para tomar: freezer + heladera + la que está de back up en
