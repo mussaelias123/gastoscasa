@@ -13,15 +13,23 @@ CÓMO SE LE AGREGA UNA VARIABLE. Un renglón en EJES_X o en EJES_Y. Nada más: e
 desplegable, el agrupado, el tipo de gráfico, los rótulos y la tabla salen solos
 de esa definición. Esa es toda la gracia de tenerlo separado.
 
-DE DÓNDE SALEN LOS DATOS. De `DATOS.muestras`, que arma el servidor
-(logica._lac_muestras). Cada muestra es UNA extracción real:
+DE DÓNDE SALEN LOS DATOS. De DOS listas que arma el servidor, con los MISMOS
+nombres de campo a propósito:
+
+    DATOS.muestras → una fila por EXTRACCIÓN real
+    DATOS.consumos → una fila por BOLSITA QUE TOMÓ el bebé (+ en_jardin)
 
     { id, fecha: '2026-08-05', hora: '07:30' | null, ml: 120,
       dia_vida: 84 | null, mes_vida: 3 | null, dia_semana: 0..6 }
 
-Acá NO se decide qué cuenta como extracción —eso ya viene resuelto del
-servidor, que es donde vive esa regla— ni se calcula la edad del bebé. Acá solo
-se agrupa y se dibuja.
+Cada variable del eje vertical dice de cuál de las dos sale (`serie`), y como
+los campos se llaman igual, los ejes horizontales sirven para las dos sin saber
+de dónde vienen. En `consumos` la fecha es el día en que se marcó la bolsita
+como usada, y la hora viaja en null: el cierre guarda el día y nada más.
+
+Acá NO se decide qué cuenta como extracción ni como toma —eso ya viene resuelto
+del servidor, que es donde vive esa regla— ni se calcula la edad del bebé. Acá
+solo se agrupa y se dibuja.
 
 POR QUÉ SIN LIBRERÍA. La app se instala en el teléfono y tiene que abrir sin
 conexión: sumar 200 KB de una librería de gráficos para dibujar puntos, barras y
@@ -43,11 +51,12 @@ window.LAC_GRAFICO = (function () {
     var fmtMl = function (n) { return (Number(n) || 0) + ' ml'; };
     var esc = function (s) { return String(s); };
     var fmtFechaCorta = function (s) { return String(s); };
+    var fmtVol = function (n) { return (Number(n) || 0) + ' ml'; };
 
     var DATOS = null;
     var armado = false;                       // ¿ya se dibujaron los desplegables?
     var MEMORIA = 'lac_grafico_ejes';         // la última combinación elegida
-    var selX = 'hora';
+    var selX = 'fecha';
     var selY = 'ml_muestra';
 
     function $(id) { return document.getElementById(id); }
@@ -76,6 +85,83 @@ window.LAC_GRAFICO = (function () {
         return Number(p[0]) + Number(p[1]) / 60;
     }
 
+    // ── Las dos fuentes de datos ─────────────────────────────────────────────
+    // Lo que cambia de una a otra no es solo la lista: es CÓMO SE LLAMA lo que
+    // se está contando. Una fila de `muestras` es una vez que la mamá se
+    // extrajo; una de `consumos`, una bolsita que el bebé tomó. Si las frases
+    // no cambiaran con la serie, el gráfico de lo tomado diría "donde más te
+    // extraés", que es sencillamente falso. Por eso cada serie se trae puestos
+    // sus propios textos.
+    var SERIES = {
+        muestras: {
+            clave: 'muestras',
+            tieneHora: true,
+            conteo: function () { return T('Extracciones'); },
+            fechaLabel: function () { return T('Fecha de extracción'); },
+            vacia: function () {
+                return [T('Todavía no hay extracciones para graficar'),
+                        T('Cargá tus bolsitas y acá vas a poder cruzar tus datos.')];
+            },
+            sinDato: function () {
+                return [T('Ninguna extracción tiene ese dato cargado'),
+                        T('Probá con otra variable en el eje horizontal.')];
+            },
+            pocas: function () {
+                return T('Todavía son pocas extracciones para ver una relación. Seguí cargando y esto se va a ir afinando.');
+            },
+            mejor: function (d) {
+                return T('Donde más sale: {grupo}, con {prom} por extracción, contra {resto} en el resto. ({n} de {total} extracciones)', d);
+            },
+            parejo: function (d) {
+                return T('Tu promedio se mantiene parejo: {a} al principio y {b} ahora.', d);
+            },
+            subio: function (d) {
+                return T('Últimamente estás sacando más: {b} por extracción, contra {a} al principio.', d);
+            },
+            bajo: function (d) {
+                return T('Últimamente estás sacando menos: {b} por extracción, contra {a} al principio.', d);
+            }
+        },
+        consumos: {
+            clave: 'consumos',
+            // El cierre de una bolsita guarda el DÍA, no la hora: los ejes por
+            // hora no tienen de dónde agarrarse y quedan apagados.
+            tieneHora: false,
+            conteo: function () { return T('Bolsitas'); },
+            fechaLabel: function () { return T('Fecha en que la tomó'); },
+            vacia: function () {
+                return [T('Todavía no hay bolsitas usadas para graficar'),
+                        T('Marcá una bolsita como usada y anotá cuánto tomó.')];
+            },
+            sinDato: function () {
+                return [T('Ninguna bolsita usada tiene ese dato cargado'),
+                        T('Probá con otra variable en el eje horizontal.')];
+            },
+            pocas: function () {
+                return T('Todavía son pocas bolsitas usadas para ver una relación. Seguí cargando y esto se va a ir afinando.');
+            },
+            mejor: function (d) {
+                return T('Donde más toma: {grupo}, con {prom} por bolsita, contra {resto} en el resto. ({n} de {total} bolsitas)', d);
+            },
+            parejo: function (d) {
+                return T('Lo que toma se mantiene parejo: {a} por bolsita al principio y {b} ahora.', d);
+            },
+            subio: function (d) {
+                return T('Últimamente toma más: {b} por bolsita, contra {a} al principio.', d);
+            },
+            bajo: function (d) {
+                return T('Últimamente toma menos: {b} por bolsita, contra {a} al principio.', d);
+            }
+        }
+    };
+
+    function serieDe(vy) { return SERIES[vy.serie || 'muestras']; }
+
+    // La serie que se está mirando ahora mismo. La usan los rótulos que cambian
+    // de significado según la fuente (la fecha de una extracción no es la fecha
+    // de una toma) y el apagado de los ejes por hora.
+    function serieActual() { return serieDe(buscarEje(EJES_Y, selY)); }
+
     // ── Las variables del eje horizontal ─────────────────────────────────────
     // `tipo` decide cómo se dibuja: 'numero' va sobre una regla continua (los
     // huecos se ven, que es justamente lo que interesa en las horas), y
@@ -85,7 +171,7 @@ window.LAC_GRAFICO = (function () {
     //   etiqueta  → cómo se escribe ese grupo en el eje y en la tabla
     var EJES_X = [
         {
-            clave: 'hora', tipo: 'numero',
+            clave: 'hora', tipo: 'numero', requiereHora: true,
             label: function () { return T('Hora de extracción'); },
             grupo: function (m) { var h = horaDecimal(m); return h === null ? null : Math.floor(h); },
             punto: function (m) { return horaDecimal(m); },
@@ -94,7 +180,7 @@ window.LAC_GRAFICO = (function () {
             marcas: [0, 6, 12, 18, 24]
         },
         {
-            clave: 'momento', tipo: 'categoria',
+            clave: 'momento', tipo: 'categoria', requiereHora: true,
             label: function () { return T('Momento del día'); },
             grupo: function (m) {
                 var h = horaDecimal(m);
@@ -115,7 +201,11 @@ window.LAC_GRAFICO = (function () {
         },
         {
             clave: 'fecha', tipo: 'numero',
-            label: function () { return T('Fecha de extracción'); },
+            // El rótulo cambia con la serie: en una es el día en que se sacó la
+            // leche y en la otra el día en que el bebé la tomó. Es la misma
+            // cuenta, pero decir "de extracción" en el gráfico de lo tomado
+            // haría leer mal todo el gráfico.
+            label: function () { return serieActual().fechaLabel(); },
             grupo: function (m) { return indiceDeFecha(m.fecha); },
             etiqueta: function (g) { return fmtFechaCorta(fechaDeIndice(g)); }
         },
@@ -177,6 +267,38 @@ window.LAC_GRAFICO = (function () {
             label: function () { return T('Cantidad de extracciones'); },
             unidad: function () { return T('extracciones'); },
             fmt: function (n) { return String(n); }
+        },
+        // Las tres de abajo miran la OTRA lista: lo que el bebé se tomó. El
+        // total y su desglose por dónde estaba la leche, que es exactamente lo
+        // que muestran las tarjetas del Resumen. `filtro` es lo único que las
+        // separa; el resto del gráfico ni se entera.
+        {
+            clave: 'tomado_total', modo: 'suma', serie: 'consumos',
+            label: function () { return T('Ml que tomó {bebe} (total)', { bebe: nombreBebe() }); },
+            unidad: function () { return T('ml'); },
+            fmt: function (n) { return fmtMl(n); }
+        },
+        {
+            clave: 'tomado_jardin', modo: 'suma', serie: 'consumos',
+            filtro: function (f) { return !!f.en_jardin; },
+            label: function () { return T('Ml que tomó {bebe} en el jardín', { bebe: nombreBebe() }); },
+            unidad: function () { return T('ml'); },
+            fmt: function (n) { return fmtMl(n); },
+            vacia: function () {
+                return [T('Todavía no hay bolsitas tomadas en el jardín'),
+                        T('Marcá la bolsita con 🏫 antes de darla por usada.')];
+            }
+        },
+        {
+            clave: 'tomado_fuera', modo: 'suma', serie: 'consumos',
+            filtro: function (f) { return !f.en_jardin; },
+            label: function () { return T('Ml que tomó {bebe} fuera del jardín', { bebe: nombreBebe() }); },
+            unidad: function () { return T('ml'); },
+            fmt: function (n) { return fmtMl(n); },
+            vacia: function () {
+                return [T('Todavía no hay bolsitas tomadas fuera del jardín'),
+                        T('Acá van las que tomó en casa.')];
+            }
         }
     ];
 
@@ -189,6 +311,19 @@ window.LAC_GRAFICO = (function () {
 
     function hayBebe() {
         return !!(DATOS && DATOS.bebe && DATOS.bebe.fecha_nacimiento);
+    }
+
+    // Mismo fallback que usa lactancia.js: sin nombre cargado, "el bebé".
+    function nombreBebe() {
+        return (DATOS && DATOS.bebe && DATOS.bebe.nombre) || 'el bebé';
+    }
+
+    // Las filas que le corresponden a una variable del eje vertical: la lista de
+    // su serie, y de esa lista solo las que pasan su filtro (lo del jardín, lo
+    // de afuera). Es el único lugar donde el gráfico elige de dónde mira.
+    function filasDe(vy) {
+        var base = (DATOS && DATOS[serieDe(vy).clave]) || [];
+        return vy.filtro ? base.filter(vy.filtro) : base;
     }
 
     // ── Agrupar ──────────────────────────────────────────────────────────────
@@ -425,9 +560,8 @@ window.LAC_GRAFICO = (function () {
     }
 
     function lectura(vx, vy, muestras) {
-        if (muestras.length < MINIMO_TOTAL) {
-            return T('Todavía son pocas extracciones para ver una relación. Seguí cargando y esto se va a ir afinando.');
-        }
+        var S = serieDe(vy);
+        if (muestras.length < MINIMO_TOTAL) return S.pocas();
         var porCantidad = vy.modo === 'cantidad';
 
         // Con muchos grupos (fechas, días de vida) comparar uno contra uno no
@@ -436,7 +570,7 @@ window.LAC_GRAFICO = (function () {
         if (vx.clave === 'hora') vAgrupar = buscarEje(EJES_X, 'momento');
         var grupos = agrupar(vAgrupar, muestras).filter(function (g) { return g.n > 0; });
 
-        if (grupos.length > 12 || grupos.length < 2) return mitades(muestras, porCantidad);
+        if (grupos.length > 12 || grupos.length < 2) return mitades(muestras, porCantidad, S);
 
         var mejor = null;
         grupos.forEach(function (g) {
@@ -444,7 +578,7 @@ window.LAC_GRAFICO = (function () {
             var valor = porCantidad ? g.n : g.promedio;
             if (!mejor || valor > mejor.valor) mejor = { g: g, valor: valor };
         });
-        if (!mejor) return mitades(muestras, porCantidad);
+        if (!mejor) return mitades(muestras, porCantidad, S);
 
         var restoN = 0, restoSuma = 0;
         grupos.forEach(function (g) {
@@ -452,7 +586,7 @@ window.LAC_GRAFICO = (function () {
             restoN += g.n;
             restoSuma += g.suma;
         });
-        if (restoN < MINIMO_GRUPO) return mitades(muestras, porCantidad);
+        if (restoN < MINIMO_GRUPO) return mitades(muestras, porCantidad, S);
 
         // El grupo va después de dos puntos y no metido en la oración: así la
         // misma frase sirve para "la mañana", "los martes" y "el mes 4" sin
@@ -465,21 +599,18 @@ window.LAC_GRAFICO = (function () {
             return T('Donde más te extraés: {grupo}, con {n} extracciones, contra {resto} en promedio en las demás.',
                      { grupo: nombre, n: mejor.g.n, resto: Math.round(restoN / otras) });
         }
-        return T('Donde más sale: {grupo}, con {prom} por extracción, contra {resto} en el resto. ({n} de {total} extracciones)',
-                 { grupo: nombre, prom: fmtMl(mejor.g.promedio),
-                   resto: fmtMl(Math.round(restoSuma / restoN)),
-                   n: mejor.g.n, total: muestras.length });
+        return S.mejor({ grupo: nombre, prom: fmtMl(mejor.g.promedio),
+                         resto: fmtMl(Math.round(restoSuma / restoN)),
+                         n: mejor.g.n, total: muestras.length });
     }
 
-    function mitades(muestras, porCantidad) {
+    function mitades(muestras, porCantidad, S) {
         var orden = muestras.slice().sort(function (a, b) {
             return (a.fecha + (a.hora || '')) < (b.fecha + (b.hora || '')) ? -1 : 1;
         });
         var corte = Math.floor(orden.length / 2);
         var prim = orden.slice(0, corte), seg = orden.slice(corte);
-        if (prim.length < MINIMO_GRUPO || seg.length < MINIMO_GRUPO) {
-            return T('Todavía son pocas extracciones para ver una relación. Seguí cargando y esto se va a ir afinando.');
-        }
+        if (prim.length < MINIMO_GRUPO || seg.length < MINIMO_GRUPO) return S.pocas();
 
         // Con el eje vertical en "cantidad" no sirve comparar cuántas cayeron en
         // cada mitad: las dos mitades tienen la MISMA cantidad, porque el corte
@@ -502,20 +633,13 @@ window.LAC_GRAFICO = (function () {
             return Math.round(lista.reduce(function (a, m) { return a + m.ml; }, 0) / lista.length);
         }
         var a = prom(prim), b = prom(seg);
-        if (Math.abs(b - a) <= a * 0.05) {
-            return T('Tu promedio se mantiene parejo: {a} al principio y {b} ahora.',
-                     { a: fmtMl(a), b: fmtMl(b) });
-        }
-        if (b > a) {
-            return T('Últimamente estás sacando más: {b} por extracción, contra {a} al principio.',
-                     { a: fmtMl(a), b: fmtMl(b) });
-        }
-        return T('Últimamente estás sacando menos: {b} por extracción, contra {a} al principio.',
-                 { a: fmtMl(a), b: fmtMl(b) });
+        var d = { a: fmtMl(a), b: fmtMl(b) };
+        if (Math.abs(b - a) <= a * 0.05) return S.parejo(d);
+        return b > a ? S.subio(d) : S.bajo(d);
     }
 
     // ── La tabla ─────────────────────────────────────────────────────────────
-    function dibujarTabla(vx, grupos, muestras) {
+    function dibujarTabla(vx, vy, grupos, muestras) {
         var filas = grupos.map(function (g) {
             return '<tr><th scope="row">' + esc(vx.etiqueta(g.clave)) + '</th>' +
                 '<td>' + g.n + '</td>' +
@@ -529,34 +653,56 @@ window.LAC_GRAFICO = (function () {
             '<table class="lac-gr-tabla">' +
             '<thead><tr>' +
                 '<th scope="col">' + esc(vx.label()) + '</th>' +
-                '<th scope="col">' + T('Extracciones') + '</th>' +
+                '<th scope="col">' + esc(serieDe(vy).conteo()) + '</th>' +
                 '<th scope="col">' + T('Total') + '</th>' +
                 '<th scope="col">' + T('Promedio') + '</th>' +
             '</tr></thead>' +
             '<tbody>' + filas + '</tbody>' +
             '<tfoot><tr><th scope="row">' + T('Todo') + '</th>' +
                 '<td>' + muestras.length + '</td>' +
-                '<td>' + esc(fmtMl(total)) + '</td>' +
+                '<td>' + esc(fmtVol(total)) + '</td>' +
                 '<td>' + esc(fmtMl(prom)) + '</td></tr></tfoot>' +
             '</table></div>';
     }
 
     // ── Los desplegables ─────────────────────────────────────────────────────
-    function opciones(lista, elegida, deshabilitarBebe) {
+    // Una variable horizontal está apagada cuando los datos que se están
+    // mirando no la pueden contestar: sin fecha de nacimiento no hay día de
+    // vida, y de lo que el bebé tomó no se guarda la hora.
+    function apagado(v, serie, sinBebe) {
+        if (v.requiereBebe && sinBebe) return true;
+        if (v.requiereHora && !serie.tieneHora) return true;
+        return false;
+    }
+
+    function opciones(lista, elegida, off) {
         return lista.map(function (v) {
-            var off = deshabilitarBebe && v.requiereBebe;
             return '<option value="' + v.clave + '"' +
                 (v.clave === elegida ? ' selected' : '') +
-                (off ? ' disabled' : '') + '>' + esc(v.label()) + '</option>';
+                (off && off(v) ? ' disabled' : '') + '>' + esc(v.label()) + '</option>';
         }).join('');
     }
 
     function pintarSelects() {
         var sinBebe = !hayBebe();
-        $('lac-gr-x').innerHTML = opciones(EJES_X, selX, sinBebe);
-        $('lac-gr-y').innerHTML = opciones(EJES_Y, selY, false);
+        var serie = serieActual();
+        var off = function (v) { return apagado(v, serie, sinBebe); };
+
+        // Si la variable elegida quedó apagada —se pasó a mirar lo tomado y
+        // estaba puesta la hora—, el eje salta solo a la fecha, que es la única
+        // que sirve siempre. Sin esto quedaría una opción elegida que dibuja un
+        // gráfico vacío, y no habría forma de darse cuenta de por qué.
+        if (off(buscarEje(EJES_X, selX))) {
+            selX = 'fecha';
+            recordar();
+        }
+
+        $('lac-gr-x').innerHTML = opciones(EJES_X, selX, off);
+        $('lac-gr-y').innerHTML = opciones(EJES_Y, selY, null);
         var nota = $('lac-gr-nota-bebe');
         if (nota) nota.hidden = !sinBebe;
+        var notaHora = $('lac-gr-nota-hora');
+        if (notaHora) notaHora.hidden = serie.tieneHora;
     }
 
     function recordar() {
@@ -590,19 +736,29 @@ window.LAC_GRAFICO = (function () {
         var tabla = $('lac-gr-tabla');
         if (!lienzo) return;
 
-        var todas = (DATOS && DATOS.muestras) || [];
-        if (!todas.length) {
-            lienzo.innerHTML = vacio('📈', T('Todavía no hay extracciones para graficar'),
-                                     T('Cargá tus bolsitas y acá vas a poder cruzar tus datos.'));
+        var vx = buscarEje(EJES_X, selX);
+        var vy = buscarEje(EJES_Y, selY);
+        var S = serieDe(vy);
+
+        function nadaQueVer(emoji, textos) {
+            lienzo.innerHTML = vacio(emoji, textos[0], textos[1]);
             lect.innerHTML = '';
             tabla.innerHTML = '';
+        }
+
+        // Tres formas de quedarse sin datos, y cada una se dice distinto: no hay
+        // nada cargado todavía, no hay nada de ESTA variable (leche tomada en el
+        // jardín, por ejemplo), o hay pero el eje horizontal no las puede ubicar.
+        // Un solo mensaje para las tres dejaría a la mamá buscando el problema
+        // donde no está.
+        var todas = filasDe(vy);
+        if (!todas.length) {
+            var hayEnLaSerie = ((DATOS && DATOS[S.clave]) || []).length;
+            nadaQueVer('📈', (hayEnLaSerie && vy.vacia) ? vy.vacia() : S.vacia());
             return;
         }
 
-        var vx = buscarEje(EJES_X, selX);
-        var vy = buscarEje(EJES_Y, selY);
-
-        // Las muestras que esta variable puede ubicar (una sin hora cargada no
+        // Las filas que esta variable puede ubicar (una sin hora cargada no
         // entra en un gráfico por hora; una sin edad, en uno por día de vida).
         var muestras = todas.filter(function (m) {
             var g = vx.grupo(m);
@@ -610,10 +766,7 @@ window.LAC_GRAFICO = (function () {
         });
 
         if (!muestras.length) {
-            lienzo.innerHTML = vacio('🤔', T('Ninguna extracción tiene ese dato cargado'),
-                                     T('Probá con otra variable en el eje horizontal.'));
-            lect.innerHTML = '';
-            tabla.innerHTML = '';
+            nadaQueVer('🤔', S.sinDato());
             return;
         }
 
@@ -625,7 +778,7 @@ window.LAC_GRAFICO = (function () {
             '<p class="lac-gr-lectura-hint">' +
             T('Es lo que muestran tus datos, no una regla: cada mamá y cada día son únicos.') +
             '</p>';
-        tabla.innerHTML = dibujarTabla(vx, grupos, muestras);
+        tabla.innerHTML = dibujarTabla(vx, vy, grupos, muestras);
     }
 
     // ── Enganche con lactancia.js ────────────────────────────────────────────
@@ -635,6 +788,7 @@ window.LAC_GRAFICO = (function () {
         if (ayudantes.fmtMl) fmtMl = ayudantes.fmtMl;
         if (ayudantes.esc) esc = ayudantes.esc;
         if (ayudantes.fmtFechaCorta) fmtFechaCorta = ayudantes.fmtFechaCorta;
+        if (ayudantes.fmtVol) fmtVol = ayudantes.fmtVol;
         recordado();
     }
 
@@ -649,6 +803,11 @@ window.LAC_GRAFICO = (function () {
                     selX = $('lac-gr-x').value;
                     selY = $('lac-gr-y').value;
                     recordar();
+                    // Repintar ANTES de dibujar: al cambiar de serie cambian
+                    // los rótulos ("Fecha en que la tomó") y qué variables
+                    // quedan apagadas, y si el eje horizontal elegido quedó
+                    // apagado, es acá donde salta solo a la fecha.
+                    pintarSelects();
                     dibujar();
                 });
             });
