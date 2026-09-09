@@ -87,11 +87,12 @@ Nota: capa de datos PURA. `database.py` NO calcula próximas fechas ni estados
 | `origen_id`        | INTEGER | En heladeras cerradas `trasladada`: id de la partida de freezer nacida de la combinación (N heladeras → 1 freezer). En una FREEZER cerrada `trasladada` (bajada a descongelar): id de la heladera `descongelada` que nació de ella (1 → 1). NULL ok |
 | `tipo`             | TEXT    | `fresca` (extracción directa a heladera) \| `congelada` (agregado de freezer, nace de combinar) \| `descongelada` (bajada del freezer a la heladera). Base de los KPIs y del vencimiento |
 | `consumido_ml`     | INTEGER | ml que el bebé realmente tomó de la bolsa (solo `usada`). NULL = no se anotó → se asume que se consumió todo. Base del desperdicio |
+| `en_jardin`        | INTEGER | 0/1 — la bolsita está de back up en el jardín (vale en freezer Y en heladera). NO es un cierre: sigue abierta y contando como stock, por eso es columna propia. Viaja con la leche al descongelar. Al cerrar la bolsita queda congelada: es lo que separa `consumida_jardin_ml` de `consumida_fuera_ml` |
 | `actualizado`      | TEXT    | Timestamp ISO al modificar                                   |
 
 Nota: capa PURA — vencimiento/estado se calculan en `app.py` (`_lac_*`), nunca se almacenan. Cerradas (`motivo_cierre` no NULL) = historial, misma tabla.
 
-Migración `tipo`/`consumido_ml`: `ALTER TABLE ... ADD COLUMN` en try/except (mismo patrón que `movimientos`), + backfill de `tipo` en filas viejas (`freezer`→`congelada`, `heladera`→`fresca`).
+Migración `tipo`/`consumido_ml`/`en_jardin`: `ALTER TABLE ... ADD COLUMN` en try/except (mismo patrón que `movimientos`), + backfill de `tipo` en filas viejas (`freezer`→`congelada`, `heladera`→`fresca`). `en_jardin` no necesita backfill: el `DEFAULT 0` alcanza, y las filas viejas con NULL se normalizan a `False` en `_lac_enriquecer`.
 
 Por qué `tipo` importa para los KPIs: la producción total cuenta SOLO las `fresca` — cada extracción entra una vez como fresca; `congelada` y `descongelada` son la MISMA leche movida de lugar (si no, se contaría 2-3 veces al freezar y descongelar).
 

@@ -112,6 +112,15 @@
         return n.replace('.', ',') + ' L';
     }
 
+    // Para los NÚMEROS GRANDES: los totales del tablero y las tarjetas del ciclo
+    // de la leche. Los ml son la unidad con la que se carga cada bolsita, y el
+    // litro al lado es el que da la escala de lo que se hizo ("1240 ml" no dice
+    // lo mismo que "1,24 L"). En una bolsita suelta no va: "120 ml (0,12 L)" es
+    // ruido, ahí el litro no significa nada.
+    function fmtVol(ml) {
+        return fmtMl(ml) + ' (' + fmtLitros(ml) + ')';
+    }
+
     // Freezer: texto relativo desde dias_restantes (del server)
     function textoVencFreezer(dias) {
         if (dias === null || dias === undefined) return '';
@@ -239,10 +248,12 @@
                     { activo: false, hora: '21:00', pendiente: false },
                 bebe: data.bebe || DATOS.bebe ||
                     { nombre: '', fecha_nacimiento: '', edad_texto: '', mes_de_vida: null },
-                // Las extracciones que alimentan el gráfico del Resumen. Va en
-                // esta lista como todo lo demás: lo que no se nombre acá, el
-                // servidor lo manda igual pero la pantalla lo tira.
-                muestras: data.muestras || []
+                // Las dos listas que alimentan el gráfico del Resumen: las
+                // extracciones y lo que el bebé tomó. Van en esta lista como
+                // todo lo demás: lo que no se nombre acá, el servidor lo manda
+                // igual pero la pantalla lo tira.
+                muestras: data.muestras || [],
+                consumos: data.consumos || []
             };
             // El cambio YA quedó guardado. Si fallara el repintado de la
             // pantalla no hay que decirle que falló la acción (sería mentira):
@@ -425,7 +436,7 @@
             // backend los manda listos; los avisos de abajo siguen siendo del
             // freezer, que es donde el vencimiento se mide en meses.
             stat(t.stock_total_bolsas || 0, T('Bolsitas disponibles')) +
-            stat(fmtMl(t.stock_total_ml), T('Stock total') + ' (' + fmtLitros(t.stock_total_ml) + ')') +
+            stat(fmtVol(t.stock_total_ml), T('Stock total')) +
             stat(t.freezer_vence_pronto || 0, T('Vencen pronto'), t.freezer_vence_pronto ? 'is-alerta' : '') +
             stat(t.freezer_vencidas || 0, T('Vencidas'), t.freezer_vencidas ? 'is-peligro' : '') +
             stat(t.freezer_proximo_venc ? fmtFechaCorta(t.freezer_proximo_venc) : '—', T('Próxima a vencer')) +
@@ -444,7 +455,7 @@
             });
             hel = '🥛 ' + T('En heladera:') + ' <strong>' + t.heladera_bolsas + ' ' +
                 (t.heladera_bolsas === 1 ? T('bolsita') : T('bolsitas')) +
-                ' · ' + fmtMl(t.heladera_ml) + '</strong>' +
+                ' · ' + fmtVol(t.heladera_ml) + '</strong>' +
                 (proxima !== null ? ' <span class="lac-sep">·</span> ' + T('la próxima') + ' ' +
                     textoVencHeladera(proxima).toLowerCase() : '');
         } else {
@@ -458,7 +469,7 @@
             html += '<div class="lac-stats-heladera">🏫 ' + T('En el jardín:') +
                 ' <strong>' + t.jardin_bolsas + ' ' +
                 (t.jardin_bolsas === 1 ? T('bolsita') : T('bolsitas')) +
-                ' · ' + fmtMl(t.jardin_ml) + '</strong>' +
+                ' · ' + fmtVol(t.jardin_ml) + '</strong>' +
                 ' <span class="lac-sep">·</span> ' + T('ya contadas en el stock de arriba') +
                 '</div>';
         }
@@ -471,13 +482,21 @@
             ? t.dias_stock + ' ' + (t.dias_stock === 1 ? T('día') : T('días')) : '—';
         var bolsa = (t.bolsa_sugerida_ml !== null && t.bolsa_sugerida_ml !== undefined)
             ? fmtMl(t.bolsa_sugerida_ml) : '—';
+        // El desglose de dónde tomó solo aparece si hubo algo en el jardín: con
+        // el jardín en cero diría "0 ml en el jardín · todo fuera", que es una
+        // línea de ruido. Mismo criterio que la línea 🏫 de acá arriba.
+        var dondeTomo = t.consumida_jardin_ml
+            ? T('{jardin} en el jardín · {fuera} fuera',
+                { jardin: fmtMl(t.consumida_jardin_ml), fuera: fmtMl(t.consumida_fuera_ml || 0) })
+            : null;
         html += '<div class="lac-kpis-titulo">' + T('Ciclo de la leche') + '</div>' +
             '<div class="lac-kpis">' +
-            kpiCard('gota_corazon', fmtLitros(t.producido_ml), T('Producción total'),
+            kpiCard('gota_corazon', fmtVol(t.producido_ml), T('Producción total'),
                     T('todo lo que produjiste'), 'lac-kpi--amor') +
-            kpiCard('mamadera', fmtMl(t.consumida_ml || 0), T('Consumida por {bebe}', { bebe: nombreBebe() })) +
-            kpiCard('copo_gota', fmtMl(t.descongelada_ml || 0), T('Descongelada')) +
-            kpiCard('gota_tachada', fmtMl(t.desperdicio_ml || 0), T('Desperdicio'), null,
+            kpiCard('mamadera', fmtVol(t.consumida_ml || 0),
+                    T('Consumida por {bebe}', { bebe: nombreBebe() }), dondeTomo) +
+            kpiCard('copo_gota', fmtVol(t.descongelada_ml || 0), T('Descongelada')) +
+            kpiCard('gota_tachada', fmtVol(t.desperdicio_ml || 0), T('Desperdicio'), null,
                     (t.desperdicio_ml ? 'is-alerta' : '')) +
             kpiCard('almanaque', dias, T('Alcanza para'),
                     (t.dias_stock == null ? T('cuando {bebe} tome de las bolsitas', { bebe: nombreBebe() })
@@ -1431,7 +1450,8 @@
         // no tenga su propia versión de "120 ml" ni de "12 ago").
         if (window.LAC_GRAFICO) {
             window.LAC_GRAFICO.init({ T: T, fmtMl: fmtMl, esc: esc,
-                                      fmtFechaCorta: fmtFechaCorta });
+                                      fmtFechaCorta: fmtFechaCorta,
+                                      fmtVol: fmtVol });
         }
 
         // Botones fijos
