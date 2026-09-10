@@ -5517,7 +5517,6 @@ html[data-theme="dark"] .lac-destino-card { color: var(--color-texto-muted); }
 
 .lac-pill-disponible { background: var(--color-exito-suave); color: var(--color-exito); }
 .lac-pill-en_heladera { background: var(--color-exito-suave); color: var(--color-exito); }
-.lac-pill-en_jardin { background: var(--color-jardin-suave); color: var(--color-jardin); }
 .lac-pill-vence_pronto { background: var(--color-alerta-suave); color: var(--color-alerta); }
 .lac-pill-vencida { background: var(--color-peligro-suave); color: var(--color-peligro); }
 .lac-pill-usada { background: var(--color-deco-4); color: var(--color-texto); }
@@ -5819,8 +5818,8 @@ html[data-theme="dark"] .lac-destino-card { color: var(--color-texto-muted); }
 }
 .lac-tipo--fresca { color: var(--color-exito);  border-color: var(--color-exito); }
 .lac-tipo--desc   { color: var(--color-acento); border-color: var(--color-acento); }
-/* Back up en el freezer del jardín. Aparece cuando la pastilla no lo puede
-   decir: la tapó un aviso de vencimiento o un cierre. */
+/* La leche que está en el jardín. Se dibuja SIEMPRE que la bolsita esté
+   marcada: el jardín no es un estado, es dónde está. */
 .lac-tipo--jardin { color: var(--color-jardin); border-color: var(--color-jardin); }
 
 /* La bolsa descongelada, marcada con un filito de acento a la izquierda (sin
