@@ -180,7 +180,43 @@
 
 </div>{# /per-layout #}
 
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# RESUMEN — el MISMO dashboard que /resumen, con los movimientos personales. #}
+{# Va acá abajo y no en una pestaña: se llega scrolleando (pedido del usuario).#}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="per-resumen">
+  <div class="pagina-header per-header">
+    <h2>📊 Mi resumen</h2>
+    <p class="per-sub">
+      Todo en USD, con la cotización del día en que se cargó cada movimiento.
+      Hoy: 1 USD = AR$ {{ cotizacion_valor | int }}.
+    </p>
+  </div>
+
+  {% if movimientos_json %}
+    {% include '_dashboard_resumen.html' %}
+  {% else %}
+  <div class="sin-datos">
+    <p>Todavía no hay nada para resumir. Cargá tu primer movimiento personal.</p>
+  </div>
+  {% endif %}
+</div>
+
 {# Contenedor de notificaciones toast — los agrega JS dinámicamente #}
 <div class="toast-container" id="toast-container"></div>
 
+{% endblock %}
+
+{% block scripts %}
+{% if movimientos_json %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+/* Los mismos nombres que espera static/resumen.js en /resumen. GASTOS_FIJOS
+   va vacío a propósito: son del fondo familiar, y su sección está escondida
+   con dash_fijos=False. */
+var MOVIMIENTOS  = {{ movimientos_json | tojson }};
+var GASTOS_FIJOS = [];
+</script>
+<script src="{{ url_for('static', filename='resumen.js') }}?v={{ static_version }}"></script>
+{% endif %}
 {% endblock %}

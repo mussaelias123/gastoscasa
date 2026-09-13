@@ -27,6 +27,7 @@
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
 | Personal      | `app.py` (ruta `/personal` + helpers `_persona_actual`, `_leer_personal_form`, `_personal_*`), `database.py` (columna `movimientos.personal`, `calcular_saldos_personales`, `obtener_sueldos_resto`), `auth.py` (`PERSONAS_POR_EMAIL`), `templates/personal.html`, `tests/test_personal.py` | `docs/CONTEXT_DB.md` + `docs/CONTEXT_BACKEND.md` |
+| Dashboard     | `static/resumen.js`, `templates/_dashboard_resumen.html` (compartidos por `/resumen` y `/personal`), `templates/resumen.html` | `docs/CONTEXT_FRONTEND.md`        |
 | Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/grafico.js`, `static/rutina.js`, `static/rutina-sueno.js`, `static/rutina-dibujos.js`, `static/rutina-actividades.js`, `static/home.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
 | PWA (instalar) | `app.py` (ruta `/manifest.json`), `templates/base.html` (`<link rel="manifest">` + meta `theme-color`), `static/img/icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `TempScripts/generar_iconos_pwa.py` | `docs/CONTEXT_BACKEND.md` (ruta) + `docs/CONTEXT_FRONTEND.md` (head) |
 | Notificaciones| `app.py` (providers + `/api/notificaciones`), `static/app.js` (`window.Notif`), `templates/base.html` (campana/panel) | `docs/CONTEXT_NOTIFICATIONS.md`  |

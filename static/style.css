@@ -10315,3 +10315,18 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
   font-size: 0.72rem;
   color: var(--color-texto-muted);
 }
+
+/* El resumen cuelga debajo del bloque de movimientos, separado con aire y una
+   línea: es la segunda mitad de la misma página, no otra tarjeta más. */
+.per-resumen {
+  margin-top: 2rem;
+  padding-top: 0.5rem;
+  border-top: 2px solid var(--color-borde);
+}
+
+/* El navegador de mes del dashboard es del cliente (solo repinta gráficos) y
+   convive con el de la tabla, que es del servidor. Se lo centra y se le da
+   aire para que se lea como el control de ESTA sección. */
+.per-resumen .dash-mes-nav {
+  margin-bottom: 1.2rem;
+}

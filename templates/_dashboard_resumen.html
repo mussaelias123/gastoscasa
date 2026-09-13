@@ -1,0 +1,160 @@
+{# ════════════════════════════════════════════════════════════════════════════
+   PARTIAL: el dashboard analitico (KPIs + navegador de mes + 5 secciones).
+
+   LO COMPARTEN /resumen (fondo familiar) y /personal (cuenta propia). Los
+   datos los inyecta la pagina en `MOVIMIENTOS` / `GASTOS_FIJOS` y los dibuja
+   `static/resumen.js`; este archivo es solo el esqueleto, igual para las dos.
+
+   Variable opcional del contexto:
+   - `dash_fijos` → False esconde la seccion "Gastos fijos". La usa /personal:
+                    los fijos cuelgan de la tabla gastos_fijos, que es del
+                    fondo familiar, y ahi la seccion quedaria con graficos
+                    vacios.
+   ════════════════════════════════════════════════════════════════════════ #}
+
+{# ── NAVEGADOR DE MES (global) ─────────────────────────────────────────── #}
+<div class="dash-mes-nav">
+  <button class="btn-mes-nav" id="btn-mes-ant" title="Mes anterior">&#8249;</button>
+  <h3 class="dash-mes-titulo" id="titulo-mes">—</h3>
+  <button class="btn-mes-nav" id="btn-mes-sig" title="Mes siguiente">&#8250;</button>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   SECCIÓN 1: EVOLUCIÓN DE SALDOS
+   ══════════════════════════════════════════════════════════════════════════ #}
+<section class="dash-section-wrapper">
+  <h3 class="dash-section-title">Evolución de saldos</h3>
+
+  {# KPIs del mes #}
+  <div class="dash-kpi-row">
+    <div class="dash-kpi-card kpi-ingreso">
+      <div class="dash-kpi-label">Ingresos del mes</div>
+      <div class="dash-kpi-valor" id="kpi-ingresos">—</div>
+    </div>
+    <div class="dash-kpi-card kpi-gasto">
+      <div class="dash-kpi-label">Gastos del mes</div>
+      <div class="dash-kpi-valor" id="kpi-gastos">—</div>
+      <div class="dash-kpi-sub" id="kpi-gastos-sub"></div>
+    </div>
+    <div class="dash-kpi-card kpi-neto">
+      <div class="dash-kpi-label">Neto del mes</div>
+      <div class="dash-kpi-valor" id="kpi-neto">—</div>
+    </div>
+    <div class="dash-kpi-card kpi-ahorro">
+      <div class="dash-kpi-label">Tasa de ahorro</div>
+      <div class="dash-kpi-valor" id="kpi-ahorro">—</div>
+    </div>
+  </div>
+
+  {# Gráficos: Barras 6 meses + Gasto por persona #}
+  <div class="dash-graficos-grid">
+    <div class="dash-chart-card">
+      <h4 class="dash-chart-titulo">Ingresos vs Gastos · últimos 6 meses</h4>
+      <div class="dash-chart-contenedor"><canvas id="chart-evolucion"></canvas></div>
+    </div>
+    <div class="dash-chart-card">
+      <h4 class="dash-chart-titulo" id="persona-titulo">Gasto por persona</h4>
+      <div class="dash-chart-contenedor"><canvas id="chart-personas"></canvas></div>
+    </div>
+  </div>
+
+  {# Tendencia de ahorro #}
+  <div class="dash-chart-card">
+    <h4 class="dash-chart-titulo">Tendencia de ahorro mensual</h4>
+    <div class="dash-chart-contenedor dash-chart-wide"><canvas id="chart-ahorro"></canvas></div>
+  </div>
+</section>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   SECCIÓN 2: SUELDOS
+   ══════════════════════════════════════════════════════════════════════════ #}
+<section class="dash-section-wrapper">
+  <h3 class="dash-section-title">Sueldos</h3>
+
+  <div class="dash-chart-card">
+    <h4 class="dash-chart-titulo">Sueldo por persona · últimos 6 meses</h4>
+    <div class="dash-chart-contenedor dash-chart-wide"><canvas id="chart-sueldo-persona"></canvas></div>
+  </div>
+</section>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   SECCIÓN 3: ANÁLISIS DE GASTOS
+   ══════════════════════════════════════════════════════════════════════════ #}
+<section class="dash-section-wrapper">
+  <h3 class="dash-section-title">Análisis de gastos</h3>
+
+  <div class="dash-graficos-grid">
+    {# Donut del mes #}
+    <div class="dash-chart-card">
+      <h4 class="dash-chart-titulo" id="cat-donut-titulo">Distribución del mes</h4>
+      <div class="dash-chart-contenedor dash-donut-contenedor">
+        <canvas id="chart-cat-donut"></canvas>
+        <div class="dash-donut-centro" id="cat-donut-centro"></div>
+      </div>
+    </div>
+
+    {# Ranking #}
+    <div class="dash-chart-card">
+      <h4 class="dash-chart-titulo" id="ranking-titulo">Ranking del mes</h4>
+      <div id="ranking-categorias" class="dash-ranking"></div>
+    </div>
+  </div>
+
+  {# Evolución por categoría (seleccionable) #}
+  <div class="dash-chart-card">
+    <h4 class="dash-chart-titulo">Evolución por categoría · últimos 6 meses</h4>
+    <div class="dash-toggle-bar" id="cat-toggles"></div>
+    <div class="dash-chart-contenedor dash-chart-wide"><canvas id="chart-cat-evolucion"></canvas></div>
+  </div>
+</section>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   SECCIÓN 4: GASTOS DE ENVÍO
+   ══════════════════════════════════════════════════════════════════════════ #}
+<section class="dash-section-wrapper">
+  <h3 class="dash-section-title">Gastos de envío</h3>
+
+  <div class="dash-kpi-row dash-kpi-row-compact">
+    <div class="dash-kpi-card kpi-envio">
+      <div class="dash-kpi-label">Envíos este mes</div>
+      <div class="dash-kpi-valor" id="kpi-envio-mes">—</div>
+      <div class="dash-kpi-sub" id="kpi-envio-cant"></div>
+    </div>
+    <div class="dash-kpi-card kpi-envio">
+      <div class="dash-kpi-label">Envíos acumulados</div>
+      <div class="dash-kpi-valor" id="kpi-envio-total">—</div>
+      <div class="dash-kpi-sub" id="kpi-envio-total-cant"></div>
+    </div>
+  </div>
+
+  <div class="dash-chart-card">
+    <h4 class="dash-chart-titulo">Evolución de gastos de envío</h4>
+    <div class="dash-chart-contenedor dash-chart-wide"><canvas id="chart-envios"></canvas></div>
+  </div>
+</section>
+
+{% if dash_fijos is not defined or dash_fijos %}
+{# ══════════════════════════════════════════════════════════════════════════
+   SECCIÓN 5: GASTOS FIJOS
+   ══════════════════════════════════════════════════════════════════════════ #}
+<section class="dash-section-wrapper">
+  <h3 class="dash-section-title">Gastos fijos</h3>
+
+  <div class="dash-kpi-row dash-kpi-row-compact">
+    <div class="dash-kpi-card kpi-fijo">
+      <div class="dash-kpi-label">Total fijos este mes</div>
+      <div class="dash-kpi-valor" id="kpi-fijos-mes">—</div>
+    </div>
+    <div class="dash-kpi-card kpi-fijo">
+      <div class="dash-kpi-label">% sobre ingresos</div>
+      <div class="dash-kpi-valor" id="kpi-fijos-pct">—</div>
+    </div>
+  </div>
+
+  <div class="dash-chart-card">
+    <h4 class="dash-chart-titulo">Evolución de gastos fijos · últimos 6 meses</h4>
+    <div class="dash-toggle-bar" id="fijos-toggles"></div>
+    <div class="dash-chart-contenedor dash-chart-wide"><canvas id="chart-fijos"></canvas></div>
+  </div>
+</section>
+{% endif %}

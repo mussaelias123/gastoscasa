@@ -2041,6 +2041,16 @@ def personal():
 
     movimientos, total = _personal_movimientos(persona, nav['mes'], vista)
 
+    # El resumen de abajo es el MISMO dashboard que /resumen (partial
+    # `_dashboard_resumen.html` + `static/resumen.js`), alimentado con los
+    # movimientos personales de TODA la base — no los del mes: el navegador
+    # de mes del dashboard es del cliente y necesita el historial completo
+    # para dibujar los "últimos 6 meses".
+    #
+    # `gastos_fijos` va vacío y la sección se esconde (`dash_fijos=False`):
+    # los fijos cuelgan de la tabla `gastos_fijos`, que es del fondo familiar.
+    historial, _ = _personal_movimientos(persona, vista='todos')
+
     return render_template(
         'personal.html',
         persona=persona,
@@ -2050,6 +2060,9 @@ def personal():
         movimientos=movimientos,
         total_movimientos=total,
         vista=vista,
+        movimientos_json=historial,
+        gastos_fijos_json=[],
+        dash_fijos=False,
         **nav)
 
 
