@@ -1712,10 +1712,58 @@ a.btn-filtro {
 .form-rapido-extras {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
+  /* `wrap` desde que se sumó "Personal" (2026-09): con tres grupos, en un
+     teléfono angosto `nowrap` los apretaba hasta desbordar la tarjeta. En
+     desktop entra todo en una línea igual, así que no cambia nada ahí. */
+  flex-wrap: wrap;
   gap: 0.8rem;
   padding: 0.5rem 0.2rem 0;
   min-height: 2.4rem;
+}
+
+/* Envío + cuotas. Es el grupo que app.js esconde entero cuando el tipo no es
+   "gasto"; por eso el id `seccion-envio` vive acá y no en la fila: si no,
+   "Personal" —que vale para gasto, ingreso y cambio— desaparecería con él. */
+.extras-grupo {
+  display: inline-flex;
+  align-items: center;
+  /* Wrap también acá: `inline-flex` arranca en `nowrap`, y en un teléfono de
+     375px "Incluye envío" + "En cuotas" no entran en una línea — se salían
+     de la tarjeta y le daban scroll horizontal a la página entera. */
+  flex-wrap: wrap;
+  gap: 0.5rem 0.8rem;
+}
+
+/* Con la fila partida en dos líneas, el borde separador de cuotas queda
+   colgando al principio de un renglón y se lee como un error de dibujo. */
+@media (max-width: 520px) {
+  .extra-cuotas-grupo {
+    border-left: none;
+    padding-left: 0;
+  }
+}
+
+/* "Personal": mismo formato que "Incluye envío" y "En cuotas" — es un
+   checkbox más de la fila, no una caja aparte. Solo se diferencia al estar
+   tildado, y con el color de acento (cambia a dónde va la plata). */
+.checkbox-personal input[type="checkbox"] {
+  accent-color: var(--color-acento);
+}
+
+.checkbox-personal:has(input:checked) {
+  color: var(--color-acento);
+  font-weight: 600;
+}
+
+/* Cuotas bloqueadas mientras "Personal" está tildado: cuelgan de la tabla
+   gastos_fijos, que es del fondo familiar. Se atenúan en vez de esconderse
+   para que se entienda que la opción existe y por qué no está disponible. */
+.extra-cuotas-grupo.is-bloqueado {
+  opacity: 0.45;
+}
+
+.extra-cuotas-grupo.is-bloqueado .checkbox-envio {
+  cursor: not-allowed;
 }
 
 /* Grupo de cuotas: separado visualmente con borde izquierdo */

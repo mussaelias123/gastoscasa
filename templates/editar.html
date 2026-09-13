@@ -84,6 +84,20 @@
     </div>
   </div>
 
+  {# Ámbito — de qué bolsillo es el movimiento.
+     `ambito_presente` es la marca que le dice a /editar que este form SÍ sabe
+     del checkbox: sin ella el backend pasa personal=None y no toca la
+     columna, así un form viejo nunca mueve un movimiento de bolsillo sin
+     querer. Acá se manda siempre, tildado o no. #}
+  <input type="hidden" name="ambito_presente" value="1">
+  <div class="campo">
+    <label class="checkbox-envio checkbox-personal"
+           title="Va a la cuenta personal de la persona elegida: no toca el fondo familiar">
+      <input type="checkbox" id="personal" name="personal" value="1"
+             {{ 'checked' if mov['personal'] else '' }}> Personal
+    </label>
+  </div>
+
   <div class="campo info-gasto">
     <small>📌 Editando movimiento ID: <strong>#{{ mov['id'] }}</strong></small>
   </div>
