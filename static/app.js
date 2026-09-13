@@ -1781,6 +1781,32 @@ function initFormAjax() {
             // alta personal terminaba en la tabla del fondo, donde no aparece.
             var destino = form.dataset.destino || '/gastos';
             var mes = new URLSearchParams(window.location.search).get('mes') || '';
+
+            // Un alta PERSONAL cargada desde /gastos no deja rastro al volver:
+            // la fila no está en la tabla (se filtra `personal = 0`) y los
+            // saldos no se movieron, así que parece que el POST no hizo nada.
+            // Se muestra el toast —que dice a qué cuenta fue— y recién después
+            // se navega. Si la cuenta es la propia, se va a /personal, donde el
+            // movimiento SÍ se ve; si se cargó en la del otro (el form del
+            // fondo deja elegir persona), se vuelve a /gastos: /personal
+            // mostraría la cuenta propia y ese movimiento tampoco estaría ahí.
+            if (data.personal && data.movimiento) {
+                var esMia = data.movimiento.persona === form.dataset.personaActual;
+                var aDonde = esMia ? '/personal' : (mes ? destino + '?mes=' + mes : destino);
+
+                // Ya estando en /personal la recarga muestra la fila sola: se
+                // navega directo, sin hacer esperar por un toast que la propia
+                // recarga va a borrar.
+                if (aDonde === window.location.pathname) {
+                    window.location.href = aDonde;
+                    return;
+                }
+
+                mostrarToast(data.movimiento);
+                setTimeout(function() { window.location.href = aDonde; }, 1600);
+                return;
+            }
+
             window.location.href = mes ? destino + '?mes=' + mes : destino;
         })
         .catch(function(err) {

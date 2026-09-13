@@ -1177,6 +1177,25 @@ def _persona_actual(cfg=None):
     return persona_dev if persona_dev in ('elias', 'mari') else 'elias'
 
 
+def _es_ajeno(mov):
+    """
+    True si `mov` es un movimiento PERSONAL de la otra persona.
+
+    Existe porque `/editar/<id>` y `/eliminar/<id>` trabajan por id, sin
+    ámbito. Los ids son una sola secuencia compartida con el fondo, y /gastos
+    imprime los del fondo en el HTML: los huecos de la secuencia son
+    justamente los personales, así que alcanzaba con escribir `/editar/102` a
+    mano para leer el gasto personal del otro. El fondo es compartido y ahí no
+    aplica (cualquiera edita cualquier cosa, es la idea); la cuenta personal es
+    lo contrario, y `/personal` promete "solo vos ves esta pantalla".
+
+    Acepta None (movimiento inexistente) para poder llamarla sin guardas.
+    """
+    if mov is None:
+        return False
+    return bool(mov['personal']) and mov['persona'] != _persona_actual()
+
+
 def _leer_personal_form(form, tipo, categoria):
     """
     Lee el checkbox "Personal" del formulario y valida que la combinación
@@ -1232,6 +1251,10 @@ def inject_config():
         'user_email': flask_session.get('user_email', ''),
         'user_name': flask_session.get('user_name', ''),
         'user_photo': flask_session.get('user_photo', ''),
+        # Quién está mirando ('elias' | 'mari'). Lo usa el form de movimiento
+        # para saber, tras un alta personal, si mandar a /personal (es la
+        # cuenta propia) o quedarse donde está (se cargó en la del otro).
+        'persona_actual': _persona_actual(),
         # mtime de los estáticos → cache-busting automático: el navegador
         # recarga style.css/app.js cuando cambian, sin Ctrl+F5.
         'static_version': _static_version(),
@@ -1831,6 +1854,11 @@ def eliminar(id):
     # borrar algo desde /personal (el form sin JS hace POST y redirect) dejaba
     # al usuario en /gastos, donde ese movimiento ni aparece.
     mov = database.obtener_movimiento(id)
+
+    # La cuenta personal del otro tampoco se borra desde acá (ver _es_ajeno).
+    if _es_ajeno(mov):
+        return redirect(url_for('personal'))
+
     era_personal = bool(mov['personal']) if mov is not None else False
 
     database.eliminar_movimiento(id)
@@ -1849,24 +1877,38 @@ def eliminar(id):
 
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
 def editar(id):
-    if request.method == 'POST':
-        fecha       = request.form['fecha']
-        descripcion = request.form['descripcion']
-        persona     = request.form['persona']
-        moneda      = request.form['moneda']
-        tipo        = request.form['tipo']
-        monto       = float(request.form['monto'])
-        categoria   = request.form.get('categoria') or None
-        costo_envio_str = request.form.get('costo_envio', '').strip()
-        costo_envio = float(costo_envio_str) if costo_envio_str else None
+    # La cuenta personal del otro no se mira ni se toca desde acá (ver
+    # _es_ajeno). El fondo sigue igual: ahí `personal` es 0 y nunca entra.
+    if _es_ajeno(database.obtener_movimiento(id)):
+        return redirect(url_for('personal'))
 
-        # Ámbito: el form de edición manda `ambito_presente=1` para distinguir
-        # "el usuario dejó el checkbox destildado" de "este form ni sabe que
-        # existe". Sin esa marca, `personal=None` deja el movimiento donde
-        # estaba (editar_movimiento no toca la columna).
-        es_personal = None
-        if request.form.get('ambito_presente') == '1':
-            es_personal = _leer_personal_form(request.form, tipo, categoria)
+    if request.method == 'POST':
+        try:
+            fecha       = request.form['fecha']
+            descripcion = request.form['descripcion']
+            persona     = request.form['persona']
+            moneda      = request.form['moneda']
+            tipo        = request.form['tipo']
+            monto       = float(request.form['monto'])
+            categoria   = request.form.get('categoria') or None
+            costo_envio_str = request.form.get('costo_envio', '').strip()
+            costo_envio = float(costo_envio_str) if costo_envio_str else None
+
+            # Ámbito: el form de edición manda `ambito_presente=1` para
+            # distinguir "el usuario dejó el checkbox destildado" de "este
+            # form ni sabe que existe". Sin esa marca, `personal=None` deja el
+            # movimiento donde estaba (editar_movimiento no toca la columna).
+            es_personal = None
+            if request.form.get('ambito_presente') == '1':
+                es_personal = _leer_personal_form(request.form, tipo, categoria)
+        except ValueError as e:
+            # Validación (un sueldo marcado como personal, un monto que no es
+            # número). Se vuelve al formulario con el motivo en vez de tirar un
+            # 500: el doc promete que este mensaje lo lee el usuario.
+            mov = database.obtener_movimiento(id)
+            if mov is None:
+                return redirect(url_for('gastos'))
+            return render_template('editar.html', mov=mov, error=str(e)), 400
 
         # Recalculamos monto_usd con la cotización actual cada vez que se edita.
         cfg_actual = config.cargar_config(CONFIG_FILE)

@@ -30,6 +30,7 @@ import sys
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
@@ -289,6 +290,89 @@ class TestEditarConserva(BaseTemporal):
                                    monto_usd=8.5, cotizacion_usd_aplicada=1000.0,
                                    personal=0)
         self.assertEqual(database.obtener_movimiento(mid)['personal'], 0)
+
+
+# ── 6. La cuenta personal del otro no se mira ni se toca ─────────────────────
+
+class TestGuardaDePrivacidad(unittest.TestCase):
+    """`_es_ajeno` es la guarda de /editar y /eliminar, que trabajan por id.
+
+    Por que existe: los ids son UNA sola secuencia compartida con el fondo, y
+    /gastos imprime los del fondo en el HTML. Los huecos de la secuencia son
+    justamente los movimientos personales, asi que alcanzaba con escribir
+    /editar/102 a mano para leer el gasto personal del otro — en un modulo cuya
+    pantalla promete "solo vos ves esta pantalla".
+    """
+
+    def setUp(self):
+        import app as app_mod
+        self.app_mod = app_mod
+
+    def _mov(self, persona, personal):
+        return {'persona': persona, 'personal': personal}
+
+    def _con_persona(self, quien):
+        """Fija quien esta mirando, sin tocar la sesion de Flask."""
+        return unittest.mock.patch.object(self.app_mod, '_persona_actual',
+                                          lambda *a, **k: quien)
+
+    def test_el_personal_del_otro_es_ajeno(self):
+        with self._con_persona('elias'):
+            self.assertTrue(self.app_mod._es_ajeno(self._mov('mari', 1)))
+
+    def test_el_personal_propio_no_es_ajeno(self):
+        with self._con_persona('elias'):
+            self.assertFalse(self.app_mod._es_ajeno(self._mov('elias', 1)))
+
+    def test_el_fondo_nunca_es_ajeno(self):
+        # El fondo es compartido: cualquiera edita cualquier cosa, es la idea.
+        # Esta es la garantia de que la guarda no toca el modulo Gastos.
+        with self._con_persona('elias'):
+            self.assertFalse(self.app_mod._es_ajeno(self._mov('mari', 0)))
+            self.assertFalse(self.app_mod._es_ajeno(self._mov('elias', 0)))
+
+    def test_movimiento_inexistente_no_explota(self):
+        # /editar y /eliminar la llaman antes de chequear None.
+        with self._con_persona('elias'):
+            self.assertFalse(self.app_mod._es_ajeno(None))
+
+
+# ── 7. Que combina con que en un movimiento personal ─────────────────────────
+
+class TestValidacionDelForm(unittest.TestCase):
+    """_leer_personal_form es la red del servidor: el front ya saca estas
+    opciones del desplegable, pero un POST sin JS tiene que fallar igual."""
+
+    def setUp(self):
+        import app as app_mod
+        self.app_mod = app_mod
+
+    def form(self, **kw):
+        base = {'personal': '1'}
+        base.update(kw)
+        return base
+
+    def test_sin_el_checkbox_es_del_fondo(self):
+        self.assertFalse(self.app_mod._leer_personal_form({}, 'gasto', 'Otros'))
+
+    def test_un_sueldo_personal_se_rechaza(self):
+        # Siempre entra al fondo; lo que el factor deja afuera se deriva.
+        with self.assertRaises(ValueError):
+            self.app_mod._leer_personal_form(self.form(), 'ingreso', 'Sueldo')
+
+    def test_un_fijo_personal_se_rechaza(self):
+        with self.assertRaises(ValueError):
+            self.app_mod._leer_personal_form(self.form(), 'gasto', 'Fijo')
+
+    def test_no_le_importa_la_capitalizacion(self):
+        with self.assertRaises(ValueError):
+            self.app_mod._leer_personal_form(self.form(), 'ingreso', 'SUELDO')
+
+    def test_gasto_ingreso_y_cambio_pasan(self):
+        for tipo in ('gasto', 'ingreso', 'cambio'):
+            self.assertTrue(
+                self.app_mod._leer_personal_form(self.form(), tipo, 'Otros'),
+                f'{tipo} deberia poder ser personal')
 
 
 if __name__ == '__main__':

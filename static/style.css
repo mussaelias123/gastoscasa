@@ -10210,11 +10210,15 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
     gap: 1rem;
     align-items: start;
   }
+  /* NO va `position: sticky` acá, aunque tiente: el bloque contenedor de un
+     sticky es su padre, y el padre es `.per-layout` — que mide lo que mide la
+     columna más alta (~695px) y TERMINA antes del resumen, que cuelga afuera.
+     O sea que la columna podría "pegarse" unas decenas de píxeles y se iría
+     igual: nunca acompañaría hasta el resumen, que es justo para lo que se
+     querría. Para que funcionara habría que meter el resumen adentro de la
+     grilla, y ahí los gráficos perderían el ancho completo. Se probó y se
+     sacó (2026-09); la página scrollea entera y listo. */
   .per-col-izq {
-    /* Sticky: al bajar a leer el resumen, los saldos y el form quedan a la
-       vista. Es lo que reemplaza al "sin scroll" de /gastos. */
-    position: sticky;
-    top: 1rem;
     margin-bottom: 0;
   }
 }
@@ -10262,7 +10266,11 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
    No es una fila de la base: es el resto que el factor deja afuera del
    fondo, derivado al vuelo. Se marca de dos formas porque no se puede
    editar ni borrar desde acá, y eso tiene que leerse de un vistazo. */
-.per-fila-auto {
+.per-fila-auto,
+/* En mobile la tabla se vuelve tarjetas y `.tabla-gastos tr` pinta un fondo
+   plano de superficie (seccion 2202) que se comia el tinte. La regla del
+   modificador tiene que ganarle, y por eso se repite calificada. */
+.tabla-gastos tbody tr.per-fila-auto {
   background: var(--color-superficie);   /* fallback sin color-mix */
   background: color-mix(in srgb, var(--color-acento) 6%, var(--color-superficie));
 }
@@ -10277,11 +10285,17 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
 .badge-auto {
   display: inline-block;
   padding: 0.1rem 0.45rem;
+  /* El borde punteado es la marca (un borde no es texto: con 3:1 alcanza).
+     El TEXTO no va en `--color-acento`: sobre `--color-superficie` da 3,27:1
+     en modo noche, abajo del 4,5:1 que pide un texto de 0,68rem — es el mismo
+     problema que CLAUDE.md ya documenta para `.dash-toggle-btn.activo`. Con
+     `--color-texto-muted` da 5,71:1 en noche y 4,83:1 en día, y además dice lo
+     que corresponde: es un dato secundario. Sin hardcodear nada. */
   border: 1px dashed var(--color-acento);
   border-radius: 999px;
   font-size: 0.68rem;
   font-weight: 700;
-  color: var(--color-acento);
+  color: var(--color-texto-muted);
   white-space: nowrap;
 }
 
