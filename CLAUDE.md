@@ -26,6 +26,7 @@
 | Cotización    | `cotizacion.py`, `tests/test_cotizacion.py`            | `docs/CONTEXT_COTIZACION.md`     |
 | Auth Google   | `auth.py`, `templates/login.html`                      | `docs/CONTEXT_AUTH.md`           |
 | Config        | `config.py`, `config.json`, `config.example.json`      | `docs/CONTEXT_CONFIG.md`         |
+| Personal      | `app.py` (ruta `/personal` + helpers `_persona_actual`, `_leer_personal_form`, `_personal_*`), `database.py` (columna `movimientos.personal`, `calcular_saldos_personales`, `obtener_sueldos_resto`), `auth.py` (`PERSONAS_POR_EMAIL`), `templates/personal.html`, `tests/test_personal.py` | `docs/CONTEXT_DB.md` + `docs/CONTEXT_BACKEND.md` |
 | Frontend      | `static/style.css`, `static/app.js`, `static/calendario.js`, `static/lactancia.js`, `static/grafico.js`, `static/rutina.js`, `static/rutina-sueno.js`, `static/rutina-dibujos.js`, `static/rutina-actividades.js`, `static/home.js`, `templates/*.html`| `docs/CONTEXT_FRONTEND.md`       |
 | PWA (instalar) | `app.py` (ruta `/manifest.json`), `templates/base.html` (`<link rel="manifest">` + meta `theme-color`), `static/img/icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `TempScripts/generar_iconos_pwa.py` | `docs/CONTEXT_BACKEND.md` (ruta) + `docs/CONTEXT_FRONTEND.md` (head) |
 | Notificaciones| `app.py` (providers + `/api/notificaciones`), `static/app.js` (`window.Notif`), `templates/base.html` (campana/panel) | `docs/CONTEXT_NOTIFICATIONS.md`  |
@@ -52,6 +53,7 @@
 | Script one-shot (backfill, migración)  | `CLAUDE.md` + `CONTEXT_DB.md`                                 | `db-engineer`           |
 | Módulo Lactancia (banco de leche)      | `CLAUDE.md` + `CONTEXT_BACKEND.md` + `CONTEXT_DB.md` + `CONTEXT_FRONTEND.md` (+ `CONTEXT_CONFIG.md` si tocás parámetros) | según capa |
 | Módulo Rutina (rutina diaria de la familia) | `CLAUDE.md` + `CONTEXT_FRONTEND.md` (la lógica vive en `static/rutina.js`; el motor de ventanas de sueño en `static/rutina-sueno.js`) + `CONTEXT_DB.md` (familia y actividades) + `CONTEXT_BACKEND.md` si tocás rutas (+ `CONTEXT_CONFIG.md` para las horas de día/noche) | según capa |
+| Módulo Personal (cuenta propia de cada uno) | `CLAUDE.md` + `CONTEXT_DB.md` (la columna `personal` y el filtro que no se puede olvidar) + `CONTEXT_BACKEND.md` (ruta y helpers) + `CONTEXT_FRONTEND.md` si tocás la pantalla o el form | según capa |
 | Notificaciones (sumar provider de un módulo, campana, panel) | `CLAUDE.md` + `CONTEXT_NOTIFICATIONS.md` (+ `CONTEXT_BACKEND.md` o `CONTEXT_FRONTEND.md` según la capa que toques) | según capa |
 | PWA (manifest, íconos, instalar en el celu/escritorio) | `CLAUDE.md` + `CONTEXT_BACKEND.md` (ruta `/manifest.json`) + `CONTEXT_FRONTEND.md` (head de `base.html`, excepción 1(e) de íconos) + `CONTEXT_AUTH.md` si tocás `rutas_publicas` | según capa |
 

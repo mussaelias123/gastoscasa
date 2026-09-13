@@ -1540,11 +1540,41 @@ def manifest():
 # URL: http://localhost:5000/gastos
 # =============================================================================
 
-@app.route('/gastos')
-def gastos():
-    import re
+MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+            'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+
+def _nav_mes(valor):
+    """
+    Navegador de mes: `'2026-09'` → `{'mes', 'mes_prev', 'mes_next',
+    'mes_nombre'}`. Un valor vacío o con formato raro cae al mes actual.
+
+    Extraído de `gastos()` cuando `/personal` necesitó la misma barra. Es la
+    misma cuenta de siempre, sin cambios de comportamiento.
+    """
     from datetime import date
 
+    mes_actual = date.today().strftime('%Y-%m')
+    mes = valor or mes_actual
+    if not _re.match(r'^\d{4}-\d{2}$', mes):
+        mes = mes_actual
+
+    year, month = int(mes[:4]), int(mes[5:])
+    prev_month = month - 1 if month > 1 else 12
+    prev_year  = year if month > 1 else year - 1
+    next_month = month + 1 if month < 12 else 1
+    next_year  = year if month < 12 else year + 1
+
+    return {
+        'mes':        mes,
+        'mes_prev':   f"{prev_year:04d}-{prev_month:02d}",
+        'mes_next':   f"{next_year:04d}-{next_month:02d}",
+        'mes_nombre': f"{MESES_ES[month - 1]} {year}",
+    }
+
+
+@app.route('/gastos')
+def gastos():
     cfg    = config.cargar_config(CONFIG_FILE)
     saldos = database.calcular_saldos()
 
@@ -1552,23 +1582,9 @@ def gastos():
     cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
     gauges = _calcular_gauges(saldos, cotizacion_valor)
 
-    mes_actual = date.today().strftime('%Y-%m')
-    mes = request.args.get('mes', mes_actual)
-    if not re.match(r'^\d{4}-\d{2}$', mes):
-        mes = mes_actual
-
-    year, month = int(mes[:4]), int(mes[5:])
-
-    prev_month = month - 1 if month > 1 else 12
-    prev_year  = year if month > 1 else year - 1
-    next_month = month + 1 if month < 12 else 1
-    next_year  = year if month < 12 else year + 1
-    mes_prev = f"{prev_year:04d}-{prev_month:02d}"
-    mes_next = f"{next_year:04d}-{next_month:02d}"
-
-    MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-    mes_nombre = f"{MESES_ES[month - 1]} {year}"
+    nav = _nav_mes(request.args.get('mes'))
+    mes, mes_prev, mes_next, mes_nombre = (
+        nav['mes'], nav['mes_prev'], nav['mes_next'], nav['mes_nombre'])
 
     vista = request.args.get('vista', 'mes')
     if vista == 'ultimos100':
@@ -1810,7 +1826,16 @@ def agregar():
 
 @app.route('/eliminar/<int:id>', methods=['POST'])
 def eliminar(id):
+    # De qué bolsillo era, ANTES de borrarlo: define a dónde volver. Sin esto,
+    # borrar algo desde /personal (el form sin JS hace POST y redirect) dejaba
+    # al usuario en /gastos, donde ese movimiento ni aparece.
+    mov = database.obtener_movimiento(id)
+    era_personal = bool(mov['personal']) if mov is not None else False
+
     database.eliminar_movimiento(id)
+
+    if era_personal:
+        return redirect(url_for('personal', mes=request.args.get('mes', '') or None))
     mes = request.args.get('mes', '')
     return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
@@ -1848,6 +1873,10 @@ def editar(id):
 
         database.editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_aplicada, personal=es_personal)
 
+        # Si quedó personal, volver a /personal: en la tabla del fondo no
+        # aparece y parecería que se perdió.
+        if es_personal:
+            return redirect(url_for('personal'))
         mes = request.form.get('mes', '') or request.args.get('mes', '')
         return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
     else:
@@ -1902,6 +1931,126 @@ def resumen():
                            movimientos_json=movimientos_json,
                            gastos_fijos_json=gastos_fijos_json,
                            cotizacion_valor=cotizacion_valor)
+
+
+# =============================================================================
+# MÓDULO PERSONAL — la cuenta propia de cada uno
+# URL: GET /personal   (una sola página: movimientos arriba, resumen abajo)
+# =============================================================================
+#
+# QUÉ MUESTRA: los movimientos cargados con el checkbox "Personal" tildado,
+# de la persona que está logueada (`_persona_actual`), MÁS el resto del
+# sueldo que el factor deja afuera del fondo.
+#
+# Ese resto NO es una fila de la base: se deriva. Acá se lo convierte en una
+# FILA SINTÉTICA para que se vea en la lista como cualquier otro ingreso,
+# marcada con `sintetico: True`. No se puede editar ni borrar desde esta
+# pantalla — se toca el sueldo real, en Gastos —, y su `id` ES el del sueldo
+# real justamente para poder linkearlo.
+#
+# PRIVACIDAD: cada uno ve solo lo suyo. No hay parámetro de persona en la
+# URL a propósito: la identidad sale de la sesión y nada más.
+#
+# SIN patrón de página sin scroll (`.layout-desktop`): esta hoja SÍ scrollea,
+# el resumen vive abajo de todo.
+
+
+def _personal_fila(mov):
+    """Un movimiento personal real, listo para el template."""
+    return {
+        'id':           int(mov['id']),
+        'fecha':        str(mov['fecha']),
+        'descripcion':  str(mov['descripcion']),
+        'persona':      str(mov['persona']),
+        'moneda':       str(mov['moneda']),
+        'tipo':         str(mov['tipo']),
+        'monto':        float(mov['monto']),
+        'categoria':    str(mov['categoria']) if mov['categoria'] else None,
+        'costo_envio':  float(mov['costo_envio']) if mov['costo_envio'] else None,
+        'monto_usd':    float(mov['monto_usd']) if mov['monto_usd'] is not None else None,
+        'sintetico':    False,
+    }
+
+
+def _personal_fila_sueldo(fila):
+    """
+    El resto de un sueldo, como fila sintética de la cuenta personal.
+
+    `id` es el del SUELDO REAL (fila del fondo): el template lo usa para
+    mandar a editarlo allá, que es el único lugar donde se toca.
+    """
+    return {
+        'id':           int(fila['id']),
+        'fecha':        str(fila['fecha']),
+        'descripcion':  'Sueldo · parte personal',
+        'persona':      str(fila['persona']),
+        'moneda':       str(fila['moneda']),
+        'tipo':         'ingreso',
+        'monto':        float(fila['resto']),
+        'categoria':    'Sueldo',
+        'costo_envio':  None,
+        'monto_usd':    float(fila['resto_usd'] or 0.0),
+        'sintetico':    True,
+        # Para el subtítulo: "15 % de AR$ 1.000.000". Se guarda el porcentaje
+        # ya redondeado (sin decimales si es redondo, con uno si no) porque en
+        # Jinja formatear un número en castellano es más engorroso que acá.
+        'sueldo_monto': float(fila['monto']),
+        'resto_pct':    _pct_texto((1 - float(fila['factor_aplicado'])) * 100),
+    }
+
+
+def _pct_texto(valor):
+    """`15.0` → `'15'`; `33.33` → `'33,3'`. Coma decimal, como toda la app."""
+    redondeado = round(valor, 1)
+    if abs(redondeado - round(redondeado)) < 0.05:
+        return str(int(round(redondeado)))
+    return f'{redondeado:.1f}'.replace('.', ',')
+
+
+def _personal_movimientos(persona, mes=None, vista='mes'):
+    """
+    La lista de la cuenta personal: movimientos propios + sueldos derivados,
+    mezclados y ordenados por fecha descendente (desempate por id, igual que
+    `obtener_movimientos`). Retorna `(filas, total)`.
+    """
+    mes_filtro = mes if vista == 'mes' else None
+    limite     = 100 if vista == 'ultimos100' else None
+
+    reales = database.obtener_movimientos(
+        persona=persona, mes=mes_filtro, limite=limite, ambito='personal')[0]
+    sueldos = database.obtener_sueldos_resto(persona, mes=mes_filtro, limite=limite)
+
+    filas = ([_personal_fila(m) for m in reales] +
+             [_personal_fila_sueldo(s) for s in sueldos])
+    filas.sort(key=lambda f: (f['fecha'], f['id']), reverse=True)
+
+    if limite is not None:
+        filas = filas[:limite]
+    return filas, len(filas)
+
+
+@app.route('/personal')
+def personal():
+    cfg     = config.cargar_config(CONFIG_FILE)
+    persona = _persona_actual(cfg)
+
+    nav   = _nav_mes(request.args.get('mes'))
+    vista = request.args.get('vista', 'mes')
+    if vista not in ('mes', 'ultimos100', 'todos'):
+        vista = 'mes'
+
+    movimientos, total = _personal_movimientos(persona, nav['mes'], vista)
+
+    return render_template(
+        'personal.html',
+        persona=persona,
+        persona_nombre=('Elías' if persona == 'elias' else 'Mari'),
+        saldos=database.calcular_saldos_personales(persona),
+        cotizacion_valor=float(cfg.get('cotizacion_valor') or 1.0),
+        movimientos=movimientos,
+        total_movimientos=total,
+        vista=vista,
+        **nav)
 
 
 # =============================================================================
