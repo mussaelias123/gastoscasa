@@ -6,12 +6,18 @@
    - `mes`       → solo /gastos: hidden que preserva el mes tras el POST.
    - `form_modo` → el home lo define ('inline'): initFormAjax (app.js) no
                    navega tras el alta, refresca saldos/toast en el lugar.
-                   /personal lo define ('personal'): re-renderiza esa página.
+   - `form_destino` → a dónde navegar tras el alta cuando NO es inline.
+                   Default `/gastos`; `/personal` manda el suyo, si no un
+                   alta personal terminaba en la tabla del fondo, donde no
+                   aparece.
    - `form_personal` → /personal lo define (True): el checkbox "Personal"
-                   nace tildado y bloqueado (ahí TODO es personal). Sin la
-                   variable el checkbox nace destildado, como en /gastos y
-                   el Inicio: cargar como siempre da el resultado de siempre. #}
-  <form action="{{ url_for('agregar') }}" method="POST" class="form-rapido"{% if form_modo is defined %} data-modo="{{ form_modo }}"{% endif %}>
+                   nace tildado y bloqueado (ahí TODO es personal) Y la
+                   persona deja de ser un desplegable — es la dueña de la
+                   cuenta, va como badge + hidden. Sin la variable todo nace
+                   como siempre: checkbox destildado y persona elegible.
+   - `form_persona` / `form_persona_nombre` → obligatorias si `form_personal`:
+                   el valor ('elias'|'mari') y el nombre para el badge. #}
+  <form action="{{ url_for('agregar') }}" method="POST" class="form-rapido"{% if form_modo is defined %} data-modo="{{ form_modo }}"{% endif %}{% if form_destino is defined %} data-destino="{{ form_destino }}"{% endif %}>
 
     {# Mes actual — se preserva al volver después del POST (el home no pasa mes) #}
     {% if mes is defined %}<input type="hidden" name="mes" value="{{ mes }}">{% endif %}
@@ -48,11 +54,22 @@
     {# Fila 3: Persona + Moneda (con colores dinámicos via JS) #}
     <div class="form-fila">
       <div class="campo-rapido campo-rapido-persona">
-        <label for="persona">Persona</label>
-        <select id="persona" name="persona" required>
-          <option value="elias">Elías</option>
-          <option value="mari">Mari</option>
-        </select>
+        <label {% if not form_personal %}for="persona"{% endif %}>Persona</label>
+        {% if form_personal %}
+          {# En /personal la persona NO se elige: es la dueña de la cuenta, la
+             que sale de la sesión. Si fuera un desplegable se podría cargar
+             algo en la cuenta del otro y desaparecería de la propia vista. #}
+          <div class="campo-persona-fija">
+            <span class="badge-persona badge-{{ form_persona }}">{{ form_persona_nombre }}</span>
+            <span class="campo-persona-fija-nota">tu cuenta</span>
+          </div>
+          <input type="hidden" name="persona" value="{{ form_persona }}">
+        {% else %}
+          <select id="persona" name="persona" required>
+            <option value="elias">Elías</option>
+            <option value="mari">Mari</option>
+          </select>
+        {% endif %}
       </div>
       <div class="campo-rapido campo-rapido-moneda">
         <label for="moneda">Moneda</label>
@@ -71,11 +88,22 @@
     {# Fila 3c: Persona final + Moneda final (solo Cambio) #}
     <div class="form-fila form-fila-cambio" id="fila-cambio-destino" style="display:none">
       <div class="campo-rapido campo-rapido-persona">
-        <label for="persona_final">Persona final</label>
-        <select id="persona_final" name="persona_final">
-          <option value="elias">Elías</option>
-          <option value="mari">Mari</option>
-        </select>
+        <label {% if not form_personal %}for="persona_final"{% endif %}>Persona final</label>
+        {% if form_personal %}
+          {# Un cambio personal mueve plata entre TUS monedas. El destino es la
+             misma cuenta: si se pudiera elegir, un cambio terminaría en la
+             cuenta personal del otro. #}
+          <div class="campo-persona-fija">
+            <span class="badge-persona badge-{{ form_persona }}">{{ form_persona_nombre }}</span>
+            <span class="campo-persona-fija-nota">tu cuenta</span>
+          </div>
+          <input type="hidden" name="persona_final" value="{{ form_persona }}">
+        {% else %}
+          <select id="persona_final" name="persona_final">
+            <option value="elias">Elías</option>
+            <option value="mari">Mari</option>
+          </select>
+        {% endif %}
       </div>
       <div class="campo-rapido campo-rapido-moneda">
         <label for="moneda_final">Moneda final</label>

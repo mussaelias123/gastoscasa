@@ -10151,3 +10151,167 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
   .rut-fondo-cielo--noche,
   .rut-mapa::after { transition: none; }
 }
+
+/* ============================================================================
+   MÓDULO PERSONAL (prefijo `per-`) — la cuenta propia de cada uno
+   ============================================================================
+   UNA SOLA PÁGINA CON SCROLL: arriba lo mismo que /gastos (saldos, form,
+   tabla) y abajo el resumen. A propósito NO usa `.layout-desktop`: ese
+   selector fija el alto del body al viewport (`body:has(.layout-desktop)`) y
+   acá hace falta scrollear para llegar al resumen.
+
+   Reusa el chrome que ya existe — `.tarjeta-saldos`, `.carga-rapida`,
+   `.movimientos-card`, `.tabla-gastos`, badges — así que este bloque solo
+   agrega el layout propio y las dos marcas de la fila sintética del sueldo.
+   ========================================================================= */
+
+/* El subtítulo es una frase larga; al lado del h2 en un teléfono el título
+   quedaba partido en tres renglones de una palabra. */
+.per-header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.per-header .per-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+  color: var(--color-texto-muted);
+}
+
+.per-layout {
+  display: block;              /* mobile: columna única */
+}
+
+.per-col-izq {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 0.6rem;
+  min-width: 0;
+}
+
+.per-col-izq .carga-rapida {
+  margin-bottom: 0;
+}
+
+.per-col-der {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .per-layout {
+    display: grid;
+    grid-template-columns: 380px minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+  }
+  .per-col-izq {
+    /* Sticky: al bajar a leer el resumen, los saldos y el form quedan a la
+       vista. Es lo que reemplaza al "sin scroll" de /gastos. */
+    position: sticky;
+    top: 1rem;
+    margin-bottom: 0;
+  }
+}
+
+/* ── Tarjeta de saldos personales ─────────────────────────────────────────
+   Son 3 filas (AR$, USD, Total), no la grilla persona × moneda del fondo. */
+.per-saldos-titulo {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.per-tabla-saldos th[scope="row"] {
+  text-align: left;
+  font-weight: 500;
+  /* Columna angosta a medida del badge: `.tabla-saldos` es `table-layout:
+     fixed` en mobile y con dos columnas partía 50/50 — el saldo entraba en
+     157px y se cortaba con puntos suspensivos. */
+  width: 5.5rem;
+  white-space: nowrap;
+}
+
+.per-tabla-saldos {
+  table-layout: auto;
+}
+
+.per-tabla-saldos td.saldo-monto {
+  text-align: right;
+}
+
+.per-tabla-saldos .per-fila-total th,
+.per-tabla-saldos .per-fila-total td {
+  border-top: 2px solid var(--color-borde);
+  font-weight: 700;
+}
+
+.per-nota {
+  margin: 0.6rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--color-texto-muted);
+}
+
+/* ── La fila sintética del sueldo ─────────────────────────────────────────
+   No es una fila de la base: es el resto que el factor deja afuera del
+   fondo, derivado al vuelo. Se marca de dos formas porque no se puede
+   editar ni borrar desde acá, y eso tiene que leerse de un vistazo. */
+.per-fila-auto {
+  background: var(--color-superficie);   /* fallback sin color-mix */
+  background: color-mix(in srgb, var(--color-acento) 6%, var(--color-superficie));
+}
+
+.per-sub-fila {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.76rem;
+  color: var(--color-texto-muted);
+}
+
+.badge-auto {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border: 1px dashed var(--color-acento);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--color-acento);
+  white-space: nowrap;
+}
+
+/* Los filtros de /personal son links, no botones: sin el reset de `.btn` se
+   ven subrayados y con el color de link. */
+.per-filtros .btn-filtro {
+  text-decoration: none;
+}
+
+/* El ↗ de una fila sintética: lleva al sueldo del fondo, que es donde se
+   edita. Se distingue del ✎ de una fila real — punteado, como su badge. */
+.per-btn-ir {
+  border-style: dashed;
+  color: var(--color-acento);
+}
+
+/* Persona fija (solo en /personal): ocupa el lugar del desplegable, con el
+   alto de un input para que la fila no se descuadre. */
+.campo-persona-fija {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.1rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px dashed var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+}
+
+.campo-persona-fija-nota {
+  font-size: 0.72rem;
+  color: var(--color-texto-muted);
+}
