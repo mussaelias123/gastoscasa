@@ -1787,6 +1787,14 @@ def agregar():
         mes = request.form.get('mes', '')
         return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
+    except ValueError as e:
+        # Validación (ej. un sueldo marcado como personal): el mensaje es para
+        # el usuario y va con 400, no con 500 — misma convención que el resto
+        # de los módulos. El front lo muestra tal cual.
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        mes = request.form.get('mes', '')
+        return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
     except Exception as e:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'ok': False, 'error': str(e)}), 500

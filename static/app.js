@@ -59,12 +59,26 @@ var CATEGORIAS = {
     ingreso: ['Sueldo', 'Láser', 'Venta', 'Cambio', 'Otros']
 };
 
+// Categorías que NO existen en la cuenta personal. Espejo de
+// CATEGORIAS_VEDADAS_PERSONAL en app.py, que es quien manda: acá se sacan del
+// desplegable para que no se puedan elegir, allá se rechazan aunque lleguen.
+//   - Sueldo: un sueldo siempre entra al fondo y se le aplica el factor; lo
+//     que el factor deja afuera aparece solo en la cuenta personal.
+//   - Fijo:   los gastos fijos cuelgan de la tabla gastos_fijos, que es del
+//     fondo familiar y no tiene persona ni ámbito.
+var CATEGORIAS_VEDADAS_PERSONAL = ['Sueldo', 'Fijo'];
+
 // Llena un <select> con las categorías correspondientes al tipo dado.
 // Si se pasa valorSeleccionado, pre-selecciona esa opción.
-function llenarSelectCategorias(selectEl, tipo, valorSeleccionado) {
+// `excluir` (array de nombres) saca categorías de la lista — lo usa el modo
+// personal. Si la categoría que estaba elegida es una de las excluidas, el
+// select queda en la primera opción: el llamador compara y reacciona.
+function llenarSelectCategorias(selectEl, tipo, valorSeleccionado, excluir) {
     selectEl.innerHTML = '';
     var cats = CATEGORIAS[tipo] || CATEGORIAS.gasto;
+    var vedadas = (excluir || []).map(function(c) { return c.toLowerCase(); });
     cats.forEach(function(cat) {
+        if (vedadas.indexOf(cat.toLowerCase()) !== -1) return;
         var opt = document.createElement('option');
         opt.value = cat;
         opt.textContent = cat;
@@ -179,12 +193,54 @@ function inicializarCategorias() {
 
     if (!selectTipo || !selectCategoria) return;
 
+    // ── Modo personal ────────────────────────────────────────────────────
+    // El checkbox "Personal" manda el movimiento a la cuenta propia de la
+    // persona elegida. Ahí no existen ni el sueldo ni los gastos fijos (ver
+    // CATEGORIAS_VEDADAS_PERSONAL), así que esas categorías salen del
+    // desplegable y las cuotas se bloquean mientras esté tildado.
+    var checkPersonal = document.getElementById('personal');
+
+    function vedadasSiPersonal() {
+        return (checkPersonal && checkPersonal.checked) ? CATEGORIAS_VEDADAS_PERSONAL : null;
+    }
+
+    function aplicarModoPersonal() {
+        var esPersonal = !!(checkPersonal && checkPersonal.checked);
+
+        // Repoblar el desplegable conservando lo elegido, si sigue existiendo.
+        var elegida = selectCategoria.value;
+        llenarSelectCategorias(selectCategoria, selectTipo.value, elegida, vedadasSiPersonal());
+        if (selectCategoria.value !== elegida) {
+            // La categoría que estaba se fue de la lista (era Sueldo o Fijo):
+            // quedó la primera. Hay que re-sincronizar la descripción, que en
+            // modo Fijo es un <select> y no un input de texto.
+            actualizarDescripcionSegunCategoria(selectCategoria.value);
+        }
+
+        // Cuotas: no existen en la cuenta personal.
+        if (checkboxCuotas) {
+            checkboxCuotas.disabled = esPersonal;
+            if (esPersonal && checkboxCuotas.checked) {
+                checkboxCuotas.checked = false;
+                if (campoCuotas) campoCuotas.style.visibility = 'hidden';
+                if (inputTotalCuotas) inputTotalCuotas.value = '';
+            }
+        }
+        if (seccionCuotas) seccionCuotas.classList.toggle('is-bloqueado', esPersonal);
+    }
+
+    if (checkPersonal) checkPersonal.addEventListener('change', aplicarModoPersonal);
+
     // Carga inicial: tipo es "gasto" por defecto.
     var valorActual = selectCategoria.dataset.valor || null;
-    llenarSelectCategorias(selectCategoria, selectTipo.value || 'gasto', valorActual);
+    llenarSelectCategorias(selectCategoria, selectTipo.value || 'gasto', valorActual,
+                           vedadasSiPersonal());
 
     // Mostrar sección cuotas en la carga inicial si el tipo es gasto
     if (seccionCuotas && selectTipo.value === 'gasto') seccionCuotas.style.display = '';
+
+    // En /personal el checkbox nace tildado: dejar cuotas bloqueadas de entrada.
+    if (checkPersonal && checkPersonal.checked) aplicarModoPersonal();
 
     // Función para mostrar/ocultar campos de Cambio
     function actualizarModoCambio(esCambio) {
@@ -239,7 +295,7 @@ function inicializarCategorias() {
         }
 
         // Flujo normal para gasto/ingreso
-        llenarSelectCategorias(selectCategoria, selectTipo.value, null);
+        llenarSelectCategorias(selectCategoria, selectTipo.value, null, vedadasSiPersonal());
         if (seccionEnvio) seccionEnvio.style.display = esGasto ? '' : 'none';
         if (!esGasto) {
             if (checkboxEnvio) checkboxEnvio.checked = false;
@@ -252,6 +308,9 @@ function inicializarCategorias() {
         } else {
             if (seccionCuotas) seccionCuotas.style.display = '';
         }
+        // Volver a aplicar el modo personal: el bloque de arriba puede haber
+        // re-mostrado las cuotas, que con "Personal" tildado siguen vedadas.
+        aplicarModoPersonal();
         actualizarDescripcionSegunCategoria(selectCategoria.value);
     });
 
@@ -1568,12 +1627,19 @@ function mostrarToast(mov) {
     var montoFmt      = mov.moneda  === 'ars'     ? fmtArs(mov.monto) : fmtUsd(mov.monto);
     var categoriaLabel = mov.categoria || 'No Definido';
 
+    // Un movimiento personal no toca el fondo y no aparece en su tabla: el
+    // toast lo dice, si no parece que se perdió. Nombra a la persona porque
+    // en el form del fondo se puede cargar algo personal del otro.
+    var destino = mov.personal
+        ? ' → cuenta personal de ' + personaNombre
+        : '';
+
     var toast = document.createElement('div');
-    toast.className = 'toast toast-' + mov.tipo;
+    toast.className = 'toast toast-' + mov.tipo + (mov.personal ? ' toast-personal' : '');
     toast.innerHTML =
         '<span class="toast-icono">✓</span>' +
         '<span class="toast-texto">' +
-            '<strong>' + tipoLabel + ' cargado</strong> — ' +
+            '<strong>' + tipoLabel + ' cargado' + destino + '</strong> — ' +
             categoriaLabel + ' · ' + montoFmt + ' · ' + personaNombre + ' · ' + monedaLabel +
         '</span>';
 
@@ -1623,8 +1689,19 @@ function initFormAjax() {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(function(res) {
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            return res.json();
+            // Los rechazos de validación (400) traen un mensaje pensado para
+            // leerse — ej. "Un sueldo siempre entra al fondo familiar". Se
+            // parsea el cuerpo ANTES de cortar, si no se pierde.
+            return res.json()
+                .catch(function() { return null; })
+                .then(function(data) {
+                    if (!res.ok) {
+                        var err = new Error((data && data.error) || ('HTTP ' + res.status));
+                        err.deUsuario = !!(data && data.error);
+                        throw err;
+                    }
+                    return data;
+                });
         })
         .then(function(data) {
             if (!data.ok) throw new Error('El servidor devolvió ok=false');
@@ -1705,7 +1782,9 @@ function initFormAjax() {
         })
         .catch(function(err) {
             console.error('Error AJAX al agregar:', err);
-            alert('Error al agregar el movimiento. Recargá la página e intentá de nuevo.');
+            alert(err && err.deUsuario
+                ? err.message
+                : 'Error al agregar el movimiento. Recargá la página e intentá de nuevo.');
         })
         .finally(function() {
             if (btnAgregar) btnAgregar.disabled = false;

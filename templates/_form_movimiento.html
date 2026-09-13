@@ -5,7 +5,12 @@
    Variables opcionales del contexto:
    - `mes`       → solo /gastos: hidden que preserva el mes tras el POST.
    - `form_modo` → el home lo define ('inline'): initFormAjax (app.js) no
-                   navega tras el alta, refresca saldos/toast en el lugar. #}
+                   navega tras el alta, refresca saldos/toast en el lugar.
+                   /personal lo define ('personal'): re-renderiza esa página.
+   - `form_personal` → /personal lo define (True): el checkbox "Personal"
+                   nace tildado y bloqueado (ahí TODO es personal). Sin la
+                   variable el checkbox nace destildado, como en /gastos y
+                   el Inicio: cargar como siempre da el resultado de siempre. #}
   <form action="{{ url_for('agregar') }}" method="POST" class="form-rapido"{% if form_modo is defined %} data-modo="{{ form_modo }}"{% endif %}>
 
     {# Mes actual — se preserva al volver después del POST (el home no pasa mes) #}
@@ -102,24 +107,43 @@
       </div>
     </div>
 
-    {# Extras: Envío y Cuotas en una sola fila inline — visible solo para gastos #}
-    <div class="form-rapido-extras" id="seccion-envio">
-      <label class="checkbox-envio">
-        <input type="checkbox" id="incluye-envio"> Incluye envío
-      </label>
-      <div id="campo-costo-envio" style="visibility:hidden;" class="campo-extra-inline">
-        <input type="number" id="costo_envio" name="costo_envio"
-               step="0.01" min="0" placeholder="$ envío">
-      </div>
-      <div id="seccion-cuotas" style="display:none;" class="extra-cuotas-grupo">
+    {# Extras: Envío, Cuotas y Personal en una sola fila inline.
+       OJO con la anidación: app.js esconde `#seccion-envio` entero cuando el
+       tipo no es "gasto", así que ese id NO puede seguir estando en la fila —
+       si no, "Personal" desaparecería en ingreso y en cambio, donde sí vale.
+       Por eso la fila es `.form-rapido-extras` y el id quedó en el grupo de
+       adentro (mismo id = cero cambios en el resto de app.js). #}
+    <div class="form-rapido-extras">
+
+      <div class="extras-grupo" id="seccion-envio">
         <label class="checkbox-envio">
-          <input type="checkbox" id="incluye-cuotas" name="cuotas_checkbox" value="1"> En cuotas
+          <input type="checkbox" id="incluye-envio"> Incluye envío
         </label>
-        <div id="campo-total-cuotas" style="visibility:hidden;" class="campo-extra-inline">
-          <input type="number" id="total_cuotas" name="total_cuotas"
-                 step="1" min="2" max="999" placeholder="# cuotas">
+        <div id="campo-costo-envio" style="visibility:hidden;" class="campo-extra-inline">
+          <input type="number" id="costo_envio" name="costo_envio"
+                 step="0.01" min="0" placeholder="$ envío">
+        </div>
+        <div id="seccion-cuotas" style="display:none;" class="extra-cuotas-grupo">
+          <label class="checkbox-envio">
+            <input type="checkbox" id="incluye-cuotas" name="cuotas_checkbox" value="1"> En cuotas
+          </label>
+          <div id="campo-total-cuotas" style="visibility:hidden;" class="campo-extra-inline">
+            <input type="number" id="total_cuotas" name="total_cuotas"
+                   step="1" min="2" max="999" placeholder="# cuotas">
+          </div>
         </div>
       </div>
+
+      {# Personal: va a la cuenta propia de la persona elegida y no toca el
+         fondo familiar. Visible para gasto, ingreso y cambio.
+         En /personal viaja deshabilitado (un checkbox disabled no se manda)
+         y el valor lo lleva el hidden de al lado. #}
+      <label class="checkbox-envio checkbox-personal" id="campo-personal"
+             title="Va a tu cuenta personal: no toca el fondo familiar">
+        <input type="checkbox" id="personal" name="personal" value="1"
+               {% if form_personal %}checked disabled{% endif %}> Personal
+      </label>
+      {% if form_personal %}<input type="hidden" name="personal" value="1">{% endif %}
     </div>
 
     {# Botón Agregar — full-width, último elemento #}
