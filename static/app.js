@@ -1591,7 +1591,7 @@ function crearFilaMovimiento(mov) {
         '<td data-label="Fecha">' + fmtFecha(mov.fecha) + '</td>' +
         '<td class="col-descripcion" data-label="Descripción">' + descTexto + '</td>' +
         '<td class="col-info" data-label="Info">' +
-            '<span class="badge-persona badge-' + mov.persona + '">' + personaNombre + '</span> ' +
+            '<span class="badge-persona badge-' + mov.persona + '" data-corto="' + personaNombre.charAt(0) + '">' + personaNombre + '</span> ' +
             '<span class="badge-moneda badge-moneda-' + mov.moneda + '">' + monedaLabel + '</span> ' +
             '<span class="badge-tipo badge-' + mov.tipo + '">' + tipoLabel + '</span>' +
         '</td>' +

@@ -13,6 +13,10 @@
    - el resumen cuelga DEBAJO de todo, y por eso esta página SÍ scrollea
      (ver la excepción al "sin scroll" en la sección `per-` de style.css).
 
+   TAMPOCO lleva encabezado de página, igual que /gastos: se entra derecho
+   al módulo. El único `.pagina-header` es el del resumen, más abajo, que
+   marca dónde empieza esa mitad (mismo criterio que /resumen).
+
    Prefijo de clases propio: `per-`.
    ════════════════════════════════════════════════════════════════════════ #}
 
@@ -22,13 +26,9 @@
 
 {% block contenido %}
 
-<div class="pagina-header per-header">
-  <h2>👤 Mi cuenta personal</h2>
-  <p class="per-sub">
-    <span class="badge-persona badge-{{ persona }}">{{ persona_nombre }}</span>
-    Solo vos ves esta pantalla. Nada de acá toca el fondo familiar.
-  </p>
-</div>
+{# Sin encabezado de página: se entra derecho al módulo, igual que /gastos.
+   De quién es la cuenta ya lo dice el campo Persona del formulario
+   ("Elías · tu cuenta"), así que no se pierde nada. #}
 
 <div class="layout-desktop per-layout">
 
@@ -103,7 +103,9 @@
     </thead>
     <tbody>
       {% for mov in movimientos %}
-      <tr class="{{ 'per-fila-auto' if mov.sintetico }}">
+      {# data-tipo pinta el fondo de los ingresos (misma regla que /gastos):
+         en mobile el badge de tipo se esconde y el color lo reemplaza. #}
+      <tr data-tipo="{{ mov.tipo }}" class="{{ 'per-fila-auto' if mov.sintetico }}">
         <td data-label="Fecha">{{ mov.fecha | fmt_fecha }}</td>
         <td class="col-descripcion" data-label="Descripción">
           {{ mov.descripcion }}

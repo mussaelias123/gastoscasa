@@ -2110,8 +2110,13 @@ def personal():
     }
     cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
 
+    # "Personal" se pinta del color de la persona logueada (esa plata es suya),
+    # así que su clase de color ES la persona; "Núcleo" lleva el morado del
+    # acento, el color de la marca. En los relojes de AR$ y USD la porción
+    # propia toma en cambio el color de ESA moneda (`clase_ars`/`clase_usd`):
+    # así cada reloj se lee como "cuánto de este peso/dólar es mío".
     filas_saldos = [
-        {'clave': 'personal', 'etiqueta': 'Personal', 'clase': 'personal',
+        {'clave': 'personal', 'etiqueta': 'Personal', 'clase': persona,
          'ars': personal_saldos['ars'], 'usd': personal_saldos['usd']},
         {'clave': 'nucleo',   'etiqueta': 'Núcleo',   'clase': 'nucleo',
          'ars': nucleo_ars,   'usd': nucleo_usd},
@@ -2133,7 +2138,8 @@ def personal():
         persona_nombre=('Elías' if persona == 'elias' else 'Mari'),
         saldos=saldos_gauge,
         filas_saldos=filas_saldos,
-        saldos_a={'etiqueta': 'Personal', 'clase': 'personal'},
+        saldos_a={'etiqueta': 'Personal', 'clase': persona,
+                  'clase_ars': 'ars', 'clase_usd': 'usd'},
         saldos_b={'etiqueta': 'Núcleo',   'clase': 'nucleo'},
         saldos_fecha=False,
         gauges=_calcular_gauges(saldos_gauge, cotizacion_valor),

@@ -10,7 +10,10 @@
    Variables opcionales (sin ellas, todo queda como siempre):
    - `filas_saldos` → pasa derecho a _tarjeta_saldos_mini.html (ver ahí).
    - `saldos_a` / `saldos_b` → `{etiqueta, clase}` de las dos mitades de los
-     gauges ARS y USD. Default: Elías / Mari.
+     gauges ARS y USD. Default: Elías / Mari. Cada mitad acepta además
+     `clase_ars` / `clase_usd` para pintarse DISTINTO en cada reloj — lo usa
+     /personal, donde la porción propia toma el color de la moneda de ese
+     reloj (celeste en el de AR$, verde en el de USD).
    - `saldos_fecha` → en False saca el selector de fecha. Lo usa /personal:
      ese control pega a /api/saldos, que devuelve los saldos del FONDO y
      pisaría la tabla con números que no son los de esa pantalla. #}
@@ -43,18 +46,20 @@
    stroke-linecap:round con dasharray 0. #}
 <div class="gauges-saldos">
 
-  {# — Gauge ARS: Elías vs Mari — #}
+  {# — Gauge ARS: las dos mitades, con su color de este reloj — #}
   {% set ga = gauges.ars %}
+  {% set cls_a = saldos_a.clase_ars | default(saldos_a.clase, true) %}
+  {% set cls_b = saldos_b.clase_ars | default(saldos_b.clase, true) %}
   <div class="gauge-wrap gauge-wrap-ars">
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
       <circle id="gauge-arc-ars-elias"
-        class="gauge-arc gauge-arc-{{ saldos_a.clase }}{% if ga.elias <= 0 %} gauge-arc-oculto{% endif %}"
+        class="gauge-arc gauge-arc-{{ cls_a }}{% if ga.elias <= 0 %} gauge-arc-oculto{% endif %}"
         cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ ga.elias }} 100"
         transform="rotate(-90 18 18)"/>
       <circle id="gauge-arc-ars-mari"
-        class="gauge-arc gauge-arc-{{ saldos_b.clase }}{% if ga.mari <= 0 %} gauge-arc-oculto{% endif %}"
+        class="gauge-arc gauge-arc-{{ cls_b }}{% if ga.mari <= 0 %} gauge-arc-oculto{% endif %}"
         cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ ga.mari }} 100"
         stroke-dashoffset="-{{ ga.elias }}"
@@ -64,24 +69,26 @@
     </svg>
     <div class="gauge-info">
       <div class="gauge-legend">
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ saldos_a.clase }}"></span>{{ saldos_a.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-ars-elias">{{ ga.elias }}</span>%</span></span>
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ saldos_b.clase }}"></span>{{ saldos_b.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-ars-mari">{{ ga.mari }}</span>%</span></span>
+        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ cls_a }}"></span>{{ saldos_a.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-ars-elias">{{ ga.elias }}</span>%</span></span>
+        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ cls_b }}"></span>{{ saldos_b.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-ars-mari">{{ ga.mari }}</span>%</span></span>
       </div>
     </div>
   </div>
 
-  {# — Gauge USD: Elías vs Mari — #}
+  {# — Gauge USD: ídem, con el color de ESTE reloj — #}
   {% set gu = gauges.usd %}
+  {% set cls_a = saldos_a.clase_usd | default(saldos_a.clase, true) %}
+  {% set cls_b = saldos_b.clase_usd | default(saldos_b.clase, true) %}
   <div class="gauge-wrap gauge-wrap-usd">
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
       <circle id="gauge-arc-usd-elias"
-        class="gauge-arc gauge-arc-{{ saldos_a.clase }}{% if gu.elias <= 0 %} gauge-arc-oculto{% endif %}"
+        class="gauge-arc gauge-arc-{{ cls_a }}{% if gu.elias <= 0 %} gauge-arc-oculto{% endif %}"
         cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ gu.elias }} 100"
         transform="rotate(-90 18 18)"/>
       <circle id="gauge-arc-usd-mari"
-        class="gauge-arc gauge-arc-{{ saldos_b.clase }}{% if gu.mari <= 0 %} gauge-arc-oculto{% endif %}"
+        class="gauge-arc gauge-arc-{{ cls_b }}{% if gu.mari <= 0 %} gauge-arc-oculto{% endif %}"
         cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ gu.mari }} 100"
         stroke-dashoffset="-{{ gu.elias }}"
@@ -91,8 +98,8 @@
     </svg>
     <div class="gauge-info">
       <div class="gauge-legend">
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ saldos_a.clase }}"></span>{{ saldos_a.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-usd-elias">{{ gu.elias }}</span>%</span></span>
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ saldos_b.clase }}"></span>{{ saldos_b.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-usd-mari">{{ gu.mari }}</span>%</span></span>
+        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ cls_a }}"></span>{{ saldos_a.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-usd-elias">{{ gu.elias }}</span>%</span></span>
+        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ cls_b }}"></span>{{ saldos_b.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-usd-mari">{{ gu.mari }}</span>%</span></span>
       </div>
     </div>
   </div>

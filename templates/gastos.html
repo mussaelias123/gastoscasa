@@ -160,7 +160,7 @@
         <td data-label="Fecha">{{ mov['fecha'] | fmt_fecha }}</td>
         <td class="col-descripcion" data-label="Descripción">{{ mov['descripcion'] }}</td>
         <td class="col-info" data-label="Info">
-          <span class="badge-persona badge-{{ mov['persona'] }}">{{ 'Elías' if mov['persona'] == 'elias' else 'Mari' }}</span>
+          <span class="badge-persona badge-{{ mov['persona'] }}" data-corto="{{ 'E' if mov['persona'] == 'elias' else 'M' }}">{{ 'Elías' if mov['persona'] == 'elias' else 'Mari' }}</span>
           <span class="badge-moneda badge-moneda-{{ mov['moneda'] }}">{{ 'AR$' if mov['moneda'] == 'ars' else 'USD' }}</span>
           <span class="badge-tipo badge-{{ mov['tipo'] }}">{{ 'Ingreso' if mov['tipo'] == 'ingreso' else 'Gasto' }}</span>
         </td>

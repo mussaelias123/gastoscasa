@@ -44,20 +44,20 @@
       {% for fila in filas_saldos %}
       <tr>
         <th class="saldo-persona-label saldo-label-{{ fila.clase }}">{{ fila.etiqueta }}</th>
-        <td id="saldo-{{ fila.clave }}-ars" class="saldo-monto {{ 'saldo-negativo' if fila.ars < 0 else 'saldo-positivo' }}">
+        <td data-label="AR$" id="saldo-{{ fila.clave }}-ars" class="saldo-monto {{ 'saldo-negativo' if fila.ars < 0 else 'saldo-positivo' }}">
           {{ fila.ars | fmt_ars }}
         </td>
-        <td id="saldo-{{ fila.clave }}-usd" class="saldo-monto {{ 'saldo-negativo' if fila.usd < 0 else 'saldo-positivo' }}">
+        <td data-label="USD" id="saldo-{{ fila.clave }}-usd" class="saldo-monto {{ 'saldo-negativo' if fila.usd < 0 else 'saldo-positivo' }}">
           {{ fila.usd | fmt_usd }}
         </td>
       </tr>
       {% endfor %}
       <tr>
         <th class="saldo-persona-label saldo-label-total">Total</th>
-        <td id="saldo-total-ars" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_ars < 0 else 'saldo-positivo' }}">
+        <td data-label="AR$" id="saldo-total-ars" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_ars < 0 else 'saldo-positivo' }}">
           {{ total_ars | fmt_ars }}
         </td>
-        <td id="saldo-total-usd" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_usd < 0 else 'saldo-positivo' }}">
+        <td data-label="USD" id="saldo-total-usd" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_usd < 0 else 'saldo-positivo' }}">
           {{ total_usd | fmt_usd }}
         </td>
       </tr>

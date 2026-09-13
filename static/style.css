@@ -2301,7 +2301,123 @@ a.btn-filtro {
    ============================================================================ */
 @media (max-width: 767px) {
 
-  /* --- Tabla de movimientos → cards apiladas --- */
+  /* --- Saldos: en mobile DEJA de ser tabla ----------------------------
+     Con 3 columnas en 375px y `table-layout: fixed`, cada monto se quedaba
+     con ~150px y los números largos se cortaban con puntos suspensivos
+     ("$ -5.677.810.2…"). Un saldo cortado no sirve para nada.
+
+     Acá cada fila pasa a ser un bloque: la persona a la izquierda y sus dos
+     montos apilados a la derecha, con TODO el ancho restante (~280px) para
+     el número. No hace falta rótulo de moneda: el propio formato ya trae el
+     `$` o el `USD` adelante, así que se distinguen solos sin duplicar nada.
+     Vale para /gastos, /personal y el Inicio — los tres usan este partial. */
+  .tarjeta-saldos .tabla-saldos,
+  .tarjeta-saldos .tabla-saldos tbody {
+    display: block;
+    table-layout: auto;
+  }
+
+  .tarjeta-saldos .tabla-saldos thead,
+  .tarjeta-saldos .tabla-saldos colgroup {
+    display: none;
+  }
+
+  .tarjeta-saldos .tabla-saldos tbody tr {
+    display: grid;
+    grid-template-columns: 3.4rem minmax(0, 1fr);
+    grid-template-areas:
+      "label ars"
+      "label usd";
+    align-items: center;
+    column-gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .tarjeta-saldos .tabla-saldos tbody th.saldo-persona-label {
+    grid-area: label;
+    padding: 0;
+    font-size: 0.82rem;
+    /* El separador vertical entre la columna de nombres y la de valores era
+       de la tabla; sin tabla queda como una rayita suelta al lado del nombre. */
+    border-right: none;
+  }
+
+  .tarjeta-saldos .tabla-saldos tbody td.saldo-monto {
+    padding: 0.1rem 0;
+    border-left: none;
+    text-align: right;
+    /* Sin recorte: el número entero o nada. */
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+    font-size: 0.95rem;
+  }
+
+  .tarjeta-saldos .tabla-saldos tbody td[data-label="AR$"] { grid-area: ars; }
+  .tarjeta-saldos .tabla-saldos tbody td[data-label="USD"] { grid-area: usd; }
+
+  /* Separador entre personas: lo daba el borde de la tabla, que ya no existe */
+  .tarjeta-saldos .tabla-saldos tbody tr + tr {
+    border-top: 1px solid var(--color-borde);
+  }
+
+  /* El realce de la fila Total estaba en las CELDAS; sin tabla quedaban dos
+     recuadros grises sueltos (uno bajo el rótulo, otro bajo los montos).
+     Se lo pasa a la fila entera. */
+  .tarjeta-saldos .tabla-saldos tbody tr:last-child {
+    background: color-mix(in srgb, var(--color-texto) 4%, transparent);
+  }
+
+  .tarjeta-saldos .tabla-saldos tbody tr:last-child th,
+  .tarjeta-saldos .tabla-saldos tbody tr:last-child td {
+    background: transparent;
+  }
+
+  .tarjeta-saldos .tabla-saldos tbody tr + tr th,
+  .tarjeta-saldos .tabla-saldos tbody tr + tr td {
+    border-top: none;
+  }
+
+  /* --- Gauges: solo los relojes, repartidos en el ancho ---------------
+     En mobile la leyenda ("Personal 69.19% / Núcleo 30.81%") se mete al lado
+     de un reloj de 75px y termina superpuesta y pisada. El reloj ya dice el
+     reparto adentro (`69% / 30%`), así que la leyenda no agrega nada: se saca
+     y los tres relojes se reparten el ancho en partes iguales. */
+  .gauges-saldos {
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-inline: 0.2rem;
+  }
+
+  .gauges-saldos .gauge-info {
+    display: none;
+  }
+
+  .gauges-saldos .gauge-wrap {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  /* El reloj crece hasta llenar su tercio, con tope para que no se deforme
+     en tablets angostas. */
+  .gauges-saldos .gauge-wrap .gauge-svg {
+    width: 100%;
+    max-width: 96px;
+    height: auto;
+  }
+
+  /* --- Tabla de movimientos → tarjetas de DOS filas -------------------
+     Antes cada campo era un renglón con su rótulo ("FECHA", "DESCRIPCIÓN"…):
+     seis renglones por movimiento, tarjetas enormes y una lista imposible de
+     recorrer. Ahora cada movimiento entra en dos:
+
+       1) descripción                                    [✎ ✕]
+       2) fecha · tags · categoría ················ monto
+
+     Los rótulos se van (cada dato se reconoce solo), el badge de persona
+     queda en su inicial (el color ya dice quién es) y el de tipo desaparece:
+     lo dice el fondo de la tarjeta — los ingresos van en verde suave por
+     `tr[data-tipo="ingreso"]`. Vale para /gastos y /personal. */
   .tabla-gastos thead {
     display: none;
   }
@@ -2312,65 +2428,160 @@ a.btn-filtro {
     width: 100%;
   }
 
+  /* Flex con un salto forzado en vez de `grid-template-areas`: con grid, la
+     columna de acciones (dos botones) le fijaba el ancho a la 4a columna y la
+     categoria quedaba en 16px. Con flex cada celda pide lo suyo y la
+     categoria se come el sobrante. El `::after` de ancho 100% es el que
+     garantiza que sean DOS lineas y no las que entren. */
   .tabla-gastos tr {
-    display: block;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.4rem;
+    row-gap: 0.15rem;
     background: var(--color-superficie);
     border-radius: var(--radio-borde);
-    margin-bottom: 0.8rem;
-    padding: 0.6rem 0.9rem;
+    margin-bottom: 0.45rem;
+    padding: 0.45rem 0.6rem;
     box-shadow: var(--sombra-card);
     border: 1px solid var(--color-borde);
   }
 
   .tabla-gastos td {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.28rem 0;
+    display: block;
+    padding: 0;
     border: none;
-    font-size: 0.88rem;
-    min-height: 1.6rem;
+    font-size: 0.8rem;
+    /* Interlineado apretado: es lo que hace que la tarjeta mida dos renglones
+       de verdad y no dos renglones con aire de tres. */
+    line-height: 1.25;
+    min-height: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  /* Label de cada campo (via data-label) */
+  /* Los rótulos por campo ya no van: el layout los reemplaza */
   .tabla-gastos td::before {
-    content: attr(data-label);
-    font-weight: 600;
-    font-size: 0.73rem;
-    color: var(--color-texto-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    min-width: 85px;
-    flex-shrink: 0;
-  }
-
-  /* Descripción: texto completo, sin cortar */
-  .tabla-gastos .col-descripcion {
-    max-width: none;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-  }
-
-  /* Monto: alineado a la derecha */
-  .tabla-gastos .col-monto {
-    text-align: right;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
-  /* Acciones: al final, sin label, alineadas a la derecha */
-  .tabla-gastos td.col-acciones {
-    justify-content: flex-end;
-    gap: 0.5rem;
-    padding-top: 0.5rem;
-    margin-top: 0.15rem;
-    border-top: 1px solid var(--color-borde);
-  }
-
-  .tabla-gastos td.col-acciones::before {
     display: none;
+  }
+
+  /* Salto entre la linea 1 (descripcion + acciones) y la 2 (el resto) */
+  .tabla-gastos tr::after {
+    content: '';
+    order: 3;
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .tabla-gastos .col-descripcion {
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    max-width: none;
+  }
+
+  .tabla-gastos td[data-label="Fecha"] {
+    order: 4;
+    flex: 0 0 auto;
+    color: var(--color-texto-muted);
+    font-size: 0.74rem;
+  }
+
+  .tabla-gastos .col-info {
+    order: 5;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    overflow: visible;
+  }
+
+  /* La unica que cede: se queda con el sobrante y recorta si no entra */
+  .tabla-gastos td[data-label="Categoría"] {
+    order: 6;
+    flex: 1 1 0;
+    min-width: 0;
+    color: var(--color-texto-muted);
+    font-size: 0.74rem;
+  }
+
+  .tabla-gastos .col-monto {
+    order: 7;
+    flex: 0 0 auto;
+    /* Tope de ancho: sin esto el badge de sueldo ("Sueldo: $ 5.000.000 ×
+       0.85") le fijaba el ancho a la celda, la linea 2 no entraba y el monto
+       se iba a una tercera. El numero siempre entra en este tope; lo que se
+       recorta es el badge, que es informacion de segundo orden. */
+    max-width: 45%;
+    margin-left: auto;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.88rem;
+    overflow: visible;
+  }
+
+  /* El envío/cuota va abajo del monto, chiquito y en una sola línea */
+  .tabla-gastos .col-monto .badge-envio,
+  .tabla-gastos .col-monto .badge-cuota {
+    display: block;
+    line-height: 1.3;
+    padding-block: 0;
+    margin-top: 0.1rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.64rem;
+  }
+
+  .tabla-gastos td.col-acciones {
+    order: 2;
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0;
+    margin: 0;
+    border-top: none;
+    overflow: visible;
+  }
+
+  /* ── Tags reducidos ───────────────────────────────────────────────────
+     La persona se reduce a su inicial (`data-corto`), que con el color del
+     badge alcanza para reconocerla. El tipo se va: lo dice el fondo. */
+  /* Los tres selectores llevan `.col-info` a proposito: `.col-info .badge-*`
+     fija font-size mas abajo en el archivo con la misma especificidad y
+     ganaba por orden — el badge mostraba "EElias". */
+  .tabla-gastos .col-info .badge-persona {
+    font-size: 0;
+    padding-inline: 0.4rem;
+  }
+
+  .tabla-gastos .col-info .badge-persona::before {
+    content: attr(data-corto);
+    font-size: 0.68rem;
+  }
+
+  .tabla-gastos .col-info .badge-tipo {
+    display: none;
+  }
+
+  .tabla-gastos .col-info .badge-moneda,
+  .tabla-gastos .col-info .badge-auto {
+    font-size: 0.62rem;
+    padding-inline: 0.35rem;
+    margin-right: 0;
+  }
+
+  /* La subtítulo de la fila sintética del sueldo no entra en una línea: se
+     deja envolver, es la única celda de la tarjeta que puede crecer. */
+  .tabla-gastos .per-sub-fila {
+    white-space: normal;
+    font-size: 0.68rem;
   }
 
   /* Fila en edición inline: modo tabla normal para que sea usable */
@@ -2378,9 +2589,18 @@ a.btn-filtro {
     display: block;
   }
 
+  .tabla-gastos tr.fila-editando::after {
+    display: none;
+  }
+
   .tabla-gastos tr.fila-editando td {
     display: block;
     width: 100%;
+    /* Deshacer el recorte de una línea de las tarjetas: acá hay inputs */
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 0.88rem;
   }
 
   .tabla-gastos tr.fila-editando td::before {
@@ -2470,11 +2690,11 @@ a.btn-filtro {
 
 .tabla-saldos tbody th.saldo-label-elias { color: var(--color-persona-elias); }
 .tabla-saldos tbody th.saldo-label-mari  { color: var(--color-persona-mari);  }
-/* Modulo Personal: la misma tarjeta, con otras dos mitades. "Personal" es la
-   plata propia (acento, el color del checkbox que la genera) y "Nucleo" es el
-   fondo familiar entero (exito, el mismo verde de los ingresos del fondo). */
-.tabla-saldos tbody th.saldo-label-personal { color: var(--color-acento); }
-.tabla-saldos tbody th.saldo-label-nucleo   { color: var(--color-exito);  }
+/* Modulo Personal: la misma tarjeta, con otras dos mitades. "Nucleo" lleva el
+   morado del acento — es el color de la marca, el mismo de la "N" del logo.
+   "Personal" NO tiene clase propia: usa la de la persona logueada
+   (.saldo-label-elias / -mari), porque esa plata es suya. */
+.tabla-saldos tbody th.saldo-label-nucleo { color: var(--color-acento); }
 .tabla-saldos tbody th.saldo-label-total { color: var(--color-texto); }
 
 .tabla-saldos tbody td.saldo-monto {
@@ -3331,8 +3551,7 @@ a.btn-filtro {
 /* Colores de Elías y Mari (igual que sus badges) */
 .gauge-arc-elias { stroke: var(--color-persona-elias); }
 .gauge-arc-mari  { stroke: var(--color-persona-mari); }
-.gauge-arc-personal { stroke: var(--color-acento); }
-.gauge-arc-nucleo   { stroke: var(--color-exito); }
+.gauge-arc-nucleo { stroke: var(--color-acento); }
 
 /* Colores del gauge Total: ARS vs USD */
 .gauge-arc-ars   { stroke: var(--color-moneda-ars); }
@@ -3394,8 +3613,7 @@ a.btn-filtro {
 
 .gauge-dot-elias { background: var(--color-persona-elias); }
 .gauge-dot-mari  { background: var(--color-persona-mari); }
-.gauge-dot-personal { background: var(--color-acento); }
-.gauge-dot-nucleo   { background: var(--color-exito); }
+.gauge-dot-nucleo { background: var(--color-acento); }
 .gauge-dot-ars   { background: var(--color-moneda-ars); }
 .gauge-dot-usd   { background: var(--color-moneda-usd); }
 
