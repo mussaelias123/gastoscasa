@@ -1,13 +1,19 @@
 {# ════════════════════════════════════════════════════════════════════════════
    MÓDULO PERSONAL — la cuenta propia de quien está logueado.
 
-   UNA SOLA PÁGINA, CON SCROLL: arriba lo mismo que /gastos (saldos, form,
-   tabla) y abajo el resumen. A propósito NO usa `.layout-desktop`, que fija
-   el alto de la página al viewport (`body:has(.layout-desktop)`) — acá hace
-   falta scrollear para llegar al resumen, y por lo mismo la columna
-   izquierda no es sticky (ver el comentario del bloque `per-` en style.css).
+   MISMA ESTRUCTURA QUE /gastos, a propósito: `.layout-desktop` con
+   `.col-izquierda` (form arriba, tarjeta de saldos abajo) y `.col-derecha`
+   (movimientos). Los mismos partials, las mismas clases, el mismo orden.
+   Si algo hay que cambiar del look, se cambia en gastos.html y acá también —
+   NO se escribe una variante nueva.
 
-   Prefijo de clases: `per-`.
+   Lo único propio de esta hoja:
+   - la tarjeta de saldos muestra Personal / Núcleo en vez de Elías / Mari
+     (mismos partials, con `filas_saldos` y `saldos_a`/`saldos_b`);
+   - el resumen cuelga DEBAJO de todo, y por eso esta página SÍ scrollea
+     (ver la excepción al "sin scroll" en la sección `per-` de style.css).
+
+   Prefijo de clases propio: `per-`.
    ════════════════════════════════════════════════════════════════════════ #}
 
 {% extends 'base.html' %}
@@ -24,63 +30,40 @@
   </p>
 </div>
 
-<div class="per-layout">
+<div class="layout-desktop per-layout">
 
 {# ══════════════════════════════════════════════════════════════════════════ #}
-{# COLUMNA IZQUIERDA — Saldos + Formulario                                    #}
+{# COLUMNA IZQUIERDA — Formulario + Saldos  (mismo orden que /gastos)        #}
 {# ══════════════════════════════════════════════════════════════════════════ #}
-<div class="per-col-izq">
+<div class="col-izquierda">
 
-  {# ── SALDOS PERSONALES ─────────────────────────────────────────────────── #}
-  <div class="tarjeta-saldos per-saldos">
-    <h2 class="per-saldos-titulo">💰 Mis saldos</h2>
-    <table class="tabla-saldos per-tabla-saldos">
-      <tbody>
-        <tr>
-          <th scope="row"><span class="badge-moneda badge-moneda-ars">AR$</span></th>
-          <td class="saldo-monto {{ 'saldo-positivo' if saldos.ars >= 0 else 'saldo-negativo' }}">
-            {{ saldos.ars | fmt_ars }}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row"><span class="badge-moneda badge-moneda-usd">USD</span></th>
-          <td class="saldo-monto {{ 'saldo-positivo' if saldos.usd >= 0 else 'saldo-negativo' }}">
-            {{ saldos.usd | fmt_usd }}
-          </td>
-        </tr>
-        <tr class="per-fila-total">
-          <th scope="row">Total</th>
-          <td class="saldo-monto saldo-monto-total {{ 'saldo-positivo' if saldos.total_usd >= 0 else 'saldo-negativo' }}">
-            {{ saldos.total_usd | fmt_usd }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="per-nota">
-      El total usa la cotización del día en que se cargó cada movimiento,
-      igual que los saldos del fondo.
-    </p>
-  </div>
+{# ── FORMULARIO RÁPIDO (partial compartido; acá "Personal" viene tildado) ─── #}
+<div class="carga-rapida">
+  <h2 class="carga-rapida-titulo">➕ Nuevo movimiento</h2>
 
-  {# ── FORMULARIO (partial compartido; acá "Personal" viene tildado y fijo) ── #}
-  <div class="carga-rapida">
-    <h2 class="carga-rapida-titulo">➕ Nuevo movimiento personal</h2>
-    {% with form_personal=True, form_destino=url_for('personal'),
-            form_persona=persona, form_persona_nombre=persona_nombre %}
-      {% include '_form_movimiento.html' %}
-    {% endwith %}
-  </div>
+  {% with form_personal=True, form_destino=url_for('personal'),
+          form_persona=persona, form_persona_nombre=persona_nombre %}
+    {% include '_form_movimiento.html' %}
+  {% endwith %}
+</div>
 
-</div>{# /per-col-izq #}
+{# ── TARJETA DE SALDOS + GAUGES (el MISMO partial que /gastos) ─────────────
+   Dos diferencias, las dos por variable: las filas son Personal / Núcleo en
+   vez de Elías / Mari, y no va el selector de fecha — ese control pega a
+   /api/saldos, que devuelve los saldos del FONDO y pisaría esta tabla. #}
+{% include '_tarjeta_saldos.html' %}
+
+</div>{# /col-izquierda #}
 
 {# ══════════════════════════════════════════════════════════════════════════ #}
 {# COLUMNA DERECHA — Movimientos                                              #}
 {# ══════════════════════════════════════════════════════════════════════════ #}
-<div class="per-col-der">
+<div class="col-derecha">
 <div class="movimientos-card">
 
+  {# ── HEADER UNIFICADO: título + navegador de mes + contador ────────────── #}
   <div class="movimientos-card-header">
-    <span class="movimientos-card-titulo">📋 Mis movimientos</span>
+    <span class="movimientos-card-titulo">📋 Movimientos</span>
     <div class="mes-nav-inline">
       <a class="btn-mes-nav" href="{{ url_for('personal', mes=mes_prev, vista=vista) }}" title="Mes anterior">&#8592;</a>
       <span class="mes-titulo">{{ mes_nombre }}</span>
@@ -104,7 +87,7 @@
     </div>
   </div>
 
-  {# ── TABLA ─────────────────────────────────────────────────────────────── #}
+  {# ── TABLA DE MOVIMIENTOS (mismas columnas y clases que /gastos) ───────── #}
   {% if movimientos %}
   <div class="tabla-scroll-wrapper">
   <table class="tabla-gastos per-tabla">
@@ -177,9 +160,9 @@
   {% endif %}
 
 </div>{# /movimientos-card #}
-</div>{# /per-col-der #}
+</div>{# /col-derecha #}
 
-</div>{# /per-layout #}
+</div>{# /layout-desktop #}
 
 {# ══════════════════════════════════════════════════════════════════════════ #}
 {# RESUMEN — el MISMO dashboard que /resumen, con los movimientos personales. #}

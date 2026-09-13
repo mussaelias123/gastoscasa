@@ -2084,6 +2084,39 @@ def personal():
 
     movimientos, total = _personal_movimientos(persona, nav['mes'], vista)
 
+    # ── Saldos: la MISMA tarjeta de /gastos, con otras dos filas ──────────
+    # `_tarjeta_saldos.html` y sus gauges comparan dos mitades (A vs B) en
+    # cada moneda. Acá las mitades son "Personal" (la cuenta propia) y
+    # "Núcleo" (el fondo familiar entero), en vez de Elías vs Mari.
+    #
+    # Se le arma a `_calcular_gauges` un dict con la MISMA forma que el del
+    # fondo, poniendo lo personal donde va `elias` y el fondo donde va `mari`.
+    # Así los dos partials y el helper de gauges se reusan tal cual, sin una
+    # rama nueva adentro: lo único propio de esta pantalla son las etiquetas.
+    personal_saldos = database.calcular_saldos_personales(persona)
+    fondo           = database.calcular_saldos()
+    nucleo_ars      = fondo['elias_ars'] + fondo['mari_ars']
+    nucleo_usd      = fondo['elias_usd'] + fondo['mari_usd']
+
+    saldos_gauge = {
+        'elias_ars':       personal_saldos['ars'],
+        'elias_usd':       personal_saldos['usd'],
+        'mari_ars':        nucleo_ars,
+        'mari_usd':        nucleo_usd,
+        'elias_total_usd': personal_saldos['total_usd'],
+        'mari_total_usd':  fondo['elias_total_usd'] + fondo['mari_total_usd'],
+        'ars_total_usd':   fondo['ars_total_usd'],
+        'usd_total_usd':   fondo['usd_total_usd'],
+    }
+    cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
+
+    filas_saldos = [
+        {'clave': 'personal', 'etiqueta': 'Personal', 'clase': 'personal',
+         'ars': personal_saldos['ars'], 'usd': personal_saldos['usd']},
+        {'clave': 'nucleo',   'etiqueta': 'Núcleo',   'clase': 'nucleo',
+         'ars': nucleo_ars,   'usd': nucleo_usd},
+    ]
+
     # El resumen de abajo es el MISMO dashboard que /resumen (partial
     # `_dashboard_resumen.html` + `static/resumen.js`), alimentado con los
     # movimientos personales de TODA la base — no los del mes: el navegador
@@ -2098,8 +2131,13 @@ def personal():
         'personal.html',
         persona=persona,
         persona_nombre=('Elías' if persona == 'elias' else 'Mari'),
-        saldos=database.calcular_saldos_personales(persona),
-        cotizacion_valor=float(cfg.get('cotizacion_valor') or 1.0),
+        saldos=saldos_gauge,
+        filas_saldos=filas_saldos,
+        saldos_a={'etiqueta': 'Personal', 'clase': 'personal'},
+        saldos_b={'etiqueta': 'Núcleo',   'clase': 'nucleo'},
+        saldos_fecha=False,
+        gauges=_calcular_gauges(saldos_gauge, cotizacion_valor),
+        cotizacion_valor=cotizacion_valor,
         movimientos=movimientos,
         total_movimientos=total,
         vista=vista,

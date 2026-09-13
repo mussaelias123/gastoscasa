@@ -2470,6 +2470,11 @@ a.btn-filtro {
 
 .tabla-saldos tbody th.saldo-label-elias { color: var(--color-persona-elias); }
 .tabla-saldos tbody th.saldo-label-mari  { color: var(--color-persona-mari);  }
+/* Modulo Personal: la misma tarjeta, con otras dos mitades. "Personal" es la
+   plata propia (acento, el color del checkbox que la genera) y "Nucleo" es el
+   fondo familiar entero (exito, el mismo verde de los ingresos del fondo). */
+.tabla-saldos tbody th.saldo-label-personal { color: var(--color-acento); }
+.tabla-saldos tbody th.saldo-label-nucleo   { color: var(--color-exito);  }
 .tabla-saldos tbody th.saldo-label-total { color: var(--color-texto); }
 
 .tabla-saldos tbody td.saldo-monto {
@@ -2899,13 +2904,17 @@ a.btn-filtro {
    Mismo patrón que el Calendario (body.cal-body): el body fija su alto al
    viewport y la tabla de movimientos scrollea sola dentro de su card. */
 @media (min-width: 900px) {
-  body:has(.layout-desktop) {
+  /* EXCEPCION /personal: usa `.layout-desktop` para tener exactamente el
+     mismo look que /gastos, pero abajo de la grilla cuelga el resumen y a
+     esa pagina hay que poder scrollearla. Se la reconoce por `.per-resumen`,
+     que solo existe ahi. /gastos y el resto no cambian en nada. */
+  body:has(.layout-desktop):not(:has(.per-resumen)) {
     height: 100dvh;
     min-height: 0;
     overflow: hidden;
   }
 
-  body:has(.layout-desktop) .contenido-principal {
+  body:has(.layout-desktop):not(:has(.per-resumen)) .contenido-principal {
     display: flex;
     min-height: 0;
   }
@@ -3322,6 +3331,8 @@ a.btn-filtro {
 /* Colores de Elías y Mari (igual que sus badges) */
 .gauge-arc-elias { stroke: var(--color-persona-elias); }
 .gauge-arc-mari  { stroke: var(--color-persona-mari); }
+.gauge-arc-personal { stroke: var(--color-acento); }
+.gauge-arc-nucleo   { stroke: var(--color-exito); }
 
 /* Colores del gauge Total: ARS vs USD */
 .gauge-arc-ars   { stroke: var(--color-moneda-ars); }
@@ -3383,6 +3394,8 @@ a.btn-filtro {
 
 .gauge-dot-elias { background: var(--color-persona-elias); }
 .gauge-dot-mari  { background: var(--color-persona-mari); }
+.gauge-dot-personal { background: var(--color-acento); }
+.gauge-dot-nucleo   { background: var(--color-exito); }
 .gauge-dot-ars   { background: var(--color-moneda-ars); }
 .gauge-dot-usd   { background: var(--color-moneda-usd); }
 
@@ -10155,14 +10168,14 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
 /* ============================================================================
    MÓDULO PERSONAL (prefijo `per-`) — la cuenta propia de cada uno
    ============================================================================
-   UNA SOLA PÁGINA CON SCROLL: arriba lo mismo que /gastos (saldos, form,
-   tabla) y abajo el resumen. A propósito NO usa `.layout-desktop`: ese
-   selector fija el alto del body al viewport (`body:has(.layout-desktop)`) y
-   acá hace falta scrollear para llegar al resumen.
+   La pantalla usa la MISMA estructura que /gastos: `.layout-desktop` con
+   `.col-izquierda` (form + tarjeta de saldos) y `.col-derecha` (movimientos),
+   y los mismos partials. Por eso este bloque es corto: casi todo el look ya
+   existe. Acá van solo las tres cosas propias de esta hoja.
 
-   Reusa el chrome que ya existe — `.tarjeta-saldos`, `.carga-rapida`,
-   `.movimientos-card`, `.tabla-gastos`, badges — así que este bloque solo
-   agrega el layout propio y las dos marcas de la fila sintética del sueldo.
+   Lo que NO está acá y hay que saber: `/personal` es la excepción al "sin
+   scroll" de `body:has(.layout-desktop)` (sección LAYOUT DESKTOP), porque su
+   resumen cuelga debajo de la grilla. Se la reconoce por `.per-resumen`.
    ========================================================================= */
 
 /* El subtítulo es una frase larga; al lado del h2 en un teléfono el título
@@ -10183,88 +10196,15 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
   color: var(--color-texto-muted);
 }
 
-.per-layout {
-  display: block;              /* mobile: columna única */
-}
-
-.per-col-izq {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 0.6rem;
-  min-width: 0;
-}
-
-.per-col-izq .carga-rapida {
-  margin-bottom: 0;
-}
-
-.per-col-der {
-  min-width: 0;
-}
-
-@media (min-width: 900px) {
-  .per-layout {
-    display: grid;
-    grid-template-columns: 380px minmax(0, 1fr);
-    gap: 1rem;
-    align-items: start;
-  }
-  /* NO va `position: sticky` acá, aunque tiente: el bloque contenedor de un
-     sticky es su padre, y el padre es `.per-layout` — que mide lo que mide la
-     columna más alta (~695px) y TERMINA antes del resumen, que cuelga afuera.
-     O sea que la columna podría "pegarse" unas decenas de píxeles y se iría
-     igual: nunca acompañaría hasta el resumen, que es justo para lo que se
-     querría. Para que funcionara habría que meter el resumen adentro de la
-     grilla, y ahí los gráficos perderían el ancho completo. Se probó y se
-     sacó (2026-09); la página scrollea entera y listo. */
-  .per-col-izq {
-    margin-bottom: 0;
-  }
-}
-
-/* ── Tarjeta de saldos personales ─────────────────────────────────────────
-   Son 3 filas (AR$, USD, Total), no la grilla persona × moneda del fondo. */
-.per-saldos-titulo {
-  margin: 0 0 0.6rem;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.per-tabla-saldos th[scope="row"] {
-  text-align: left;
-  font-weight: 500;
-  /* Columna angosta a medida del badge: `.tabla-saldos` es `table-layout:
-     fixed` en mobile y con dos columnas partía 50/50 — el saldo entraba en
-     157px y se cortaba con puntos suspensivos. */
-  width: 5.5rem;
-  white-space: nowrap;
-}
-
-.per-tabla-saldos {
-  table-layout: auto;
-}
-
-.per-tabla-saldos td.saldo-monto {
-  text-align: right;
-}
-
-.per-tabla-saldos .per-fila-total th,
-.per-tabla-saldos .per-fila-total td {
-  border-top: 2px solid var(--color-borde);
-  font-weight: 700;
-}
-
-.per-nota {
-  margin: 0.6rem 0 0;
-  font-size: 0.76rem;
-  line-height: 1.4;
-  color: var(--color-texto-muted);
+/* Los filtros de /personal son links, no botones: sin esto se ven subrayados
+   y con el color de link. */
+.per-filtros .btn-filtro {
+  text-decoration: none;
 }
 
 /* ── La fila sintética del sueldo ─────────────────────────────────────────
    No es una fila de la base: es el resto que el factor deja afuera del
-   fondo, derivado al vuelo. Se marca de dos formas porque no se puede
+   fondo, derivado al vuelo. Se marca de tres formas porque no se puede
    editar ni borrar desde acá, y eso tiene que leerse de un vistazo. */
 .per-fila-auto,
 /* En mobile la tabla se vuelve tarjetas y `.tabla-gastos tr` pinta un fondo
@@ -10297,12 +10237,6 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
   font-weight: 700;
   color: var(--color-texto-muted);
   white-space: nowrap;
-}
-
-/* Los filtros de /personal son links, no botones: sin el reset de `.btn` se
-   ven subrayados y con el color de link. */
-.per-filtros .btn-filtro {
-  text-decoration: none;
 }
 
 /* El ↗ de una fila sintética: lleva al sueldo del fondo, que es donde se

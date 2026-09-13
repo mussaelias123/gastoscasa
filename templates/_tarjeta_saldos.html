@@ -5,7 +5,18 @@
    una sola vez por página). Lo usan /gastos (col izquierda) y / (Inicio,
    tarjeta .home-card--saldos). Requiere `saldos` y `gauges` en el contexto.
    JS (app.js, guard-based): inicializarSaldosFecha() + actualizarSaldos() +
-   actualizarGauges(). #}
+   actualizarGauges().
+
+   Variables opcionales (sin ellas, todo queda como siempre):
+   - `filas_saldos` → pasa derecho a _tarjeta_saldos_mini.html (ver ahí).
+   - `saldos_a` / `saldos_b` → `{etiqueta, clase}` de las dos mitades de los
+     gauges ARS y USD. Default: Elías / Mari.
+   - `saldos_fecha` → en False saca el selector de fecha. Lo usa /personal:
+     ese control pega a /api/saldos, que devuelve los saldos del FONDO y
+     pisaría la tabla con números que no son los de esa pantalla. #}
+
+{% if saldos_a is not defined %}{% set saldos_a = {'etiqueta': 'Elías', 'clase': 'elias'} %}{% endif %}
+{% if saldos_b is not defined %}{% set saldos_b = {'etiqueta': 'Mari',  'clase': 'mari'}  %}{% endif %}
 
 {# ── TARJETA DE SALDOS ────────────────────────────────────────────────────── #}
 <div class="tarjeta-saldos">
@@ -13,11 +24,13 @@
      (modo actual). Con fecha = saldos a esa fecha (inclusive), vía /api/saldos. #}
   <div class="saldos-header">
     <h3 id="saldos-titulo" class="carga-rapida-titulo">💰 Saldos actuales</h3>
+    {% if saldos_fecha is not defined or saldos_fecha %}
     <div class="saldos-fecha-control">
       <input type="text" id="saldos-fecha" class="saldos-fecha-input" placeholder="Toda la base" autocomplete="off">
       <button type="button" id="saldos-reset" class="saldos-reset"
               title="Volver a toda la base" hidden>↺ Todo</button>
     </div>
+    {% endif %}
   </div>
   {# Tabla de saldos: partial compartido con el Inicio (ids saldo-*) #}
   {% include '_tarjeta_saldos_mini.html' %}
@@ -36,12 +49,12 @@
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
       <circle id="gauge-arc-ars-elias"
-        class="gauge-arc gauge-arc-elias{% if ga.elias <= 0 %} gauge-arc-oculto{% endif %}"
+        class="gauge-arc gauge-arc-{{ saldos_a.clase }}{% if ga.elias <= 0 %} gauge-arc-oculto{% endif %}"
         cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ ga.elias }} 100"
         transform="rotate(-90 18 18)"/>
       <circle id="gauge-arc-ars-mari"
-        class="gauge-arc gauge-arc-mari{% if ga.mari <= 0 %} gauge-arc-oculto{% endif %}"
+        class="gauge-arc gauge-arc-{{ saldos_b.clase }}{% if ga.mari <= 0 %} gauge-arc-oculto{% endif %}"
         cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ ga.mari }} 100"
         stroke-dashoffset="-{{ ga.elias }}"
@@ -51,8 +64,8 @@
     </svg>
     <div class="gauge-info">
       <div class="gauge-legend">
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-elias"></span>Elías<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-ars-elias">{{ ga.elias }}</span>%</span></span>
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-mari"></span>Mari<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-ars-mari">{{ ga.mari }}</span>%</span></span>
+        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ saldos_a.clase }}"></span>{{ saldos_a.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-ars-elias">{{ ga.elias }}</span>%</span></span>
+        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ saldos_b.clase }}"></span>{{ saldos_b.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-ars-mari">{{ ga.mari }}</span>%</span></span>
       </div>
     </div>
   </div>
@@ -63,12 +76,12 @@
     <svg viewBox="0 0 36 36" class="gauge-svg">
       <circle class="gauge-track" cx="18" cy="18" r="15.9"/>
       <circle id="gauge-arc-usd-elias"
-        class="gauge-arc gauge-arc-elias{% if gu.elias <= 0 %} gauge-arc-oculto{% endif %}"
+        class="gauge-arc gauge-arc-{{ saldos_a.clase }}{% if gu.elias <= 0 %} gauge-arc-oculto{% endif %}"
         cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ gu.elias }} 100"
         transform="rotate(-90 18 18)"/>
       <circle id="gauge-arc-usd-mari"
-        class="gauge-arc gauge-arc-mari{% if gu.mari <= 0 %} gauge-arc-oculto{% endif %}"
+        class="gauge-arc gauge-arc-{{ saldos_b.clase }}{% if gu.mari <= 0 %} gauge-arc-oculto{% endif %}"
         cx="18" cy="18" r="15.9"
         stroke-dasharray="{{ gu.mari }} 100"
         stroke-dashoffset="-{{ gu.elias }}"
@@ -78,8 +91,8 @@
     </svg>
     <div class="gauge-info">
       <div class="gauge-legend">
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-elias"></span>Elías<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-usd-elias">{{ gu.elias }}</span>%</span></span>
-        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-mari"></span>Mari<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-usd-mari">{{ gu.mari }}</span>%</span></span>
+        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ saldos_a.clase }}"></span>{{ saldos_a.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-usd-elias">{{ gu.elias }}</span>%</span></span>
+        <span class="gauge-legend-item"><span class="gauge-dot gauge-dot-{{ saldos_b.clase }}"></span>{{ saldos_b.etiqueta }}<span class="gauge-legend-pct">&nbsp;<span id="gauge-leg-usd-mari">{{ gu.mari }}</span>%</span></span>
       </div>
     </div>
   </div>

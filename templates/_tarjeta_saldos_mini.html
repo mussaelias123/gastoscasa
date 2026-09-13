@@ -1,14 +1,32 @@
 {# ── PARTIAL: tabla de saldos ────────────────────────────────────────────────
-   SOLO la tabla traspuesta de saldos (6 celdas saldo-*: Elías/Mari/Total ×
-   AR$/USD) — sin date picker ni gauges (eso queda en gastos.html). Los ids
-   saldo-elias-ars etc. los actualiza actualizarSaldos() de app.js, así que se
-   incluye UNA sola vez por página. Lo usan /gastos y / (Inicio).
-   Requiere `saldos` en el contexto. #}
-  {# Tabla traspuesta: columnas = monedas (AR$, USD); filas = personas (Elías, Mari, Total).
+   SOLO la tabla traspuesta de saldos (6 celdas saldo-*: dos filas + Total ×
+   AR$/USD) — sin date picker ni gauges (eso queda en _tarjeta_saldos.html).
+   Los ids saldo-<clave>-ars etc. los actualiza actualizarSaldos() de app.js,
+   así que se incluye UNA sola vez por página.
+
+   POR DEFECTO son las dos personas del fondo (Elías / Mari) leídas de
+   `saldos` — es lo que usan /gastos y el Inicio, sin pasar nada.
+
+   `filas_saldos` (opcional) cambia las dos filas sin tocar nada más. Cada
+   fila es `{clave, etiqueta, clase, ars, usd}`: `clave` arma los ids,
+   `clase` el modificador de color. Lo usa /personal con Personal / Núcleo.
+   Requiere `saldos` en el contexto salvo que se pasen las filas. #}
+
+  {% if filas_saldos is not defined %}
+    {% set filas_saldos = [
+      {'clave': 'elias', 'etiqueta': 'Elías', 'clase': 'elias',
+       'ars': saldos.elias_ars, 'usd': saldos.elias_usd},
+      {'clave': 'mari',  'etiqueta': 'Mari',  'clase': 'mari',
+       'ars': saldos.mari_ars,  'usd': saldos.mari_usd},
+    ] %}
+  {% endif %}
+
+  {% set total_ars = filas_saldos | sum(attribute='ars') %}
+  {% set total_usd = filas_saldos | sum(attribute='usd') %}
+
+  {# Tabla traspuesta: columnas = monedas (AR$, USD); filas = las de arriba + Total.
      <colgroup> define los anchos fijos — indispensable con table-layout:fixed
      para que la columna de nombres sea angosta y las de valores agarren el resto. #}
-  {% set total_ars = saldos.elias_ars + saldos.mari_ars %}
-  {% set total_usd = saldos.elias_usd + saldos.mari_usd %}
   <table class="tabla-saldos">
     <colgroup>
       <col class="col-saldo-label">
@@ -23,24 +41,17 @@
       </tr>
     </thead>
     <tbody>
+      {% for fila in filas_saldos %}
       <tr>
-        <th class="saldo-persona-label saldo-label-elias">Elías</th>
-        <td id="saldo-elias-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_ars < 0 else 'saldo-positivo' }}">
-          {{ saldos.elias_ars | fmt_ars }}
+        <th class="saldo-persona-label saldo-label-{{ fila.clase }}">{{ fila.etiqueta }}</th>
+        <td id="saldo-{{ fila.clave }}-ars" class="saldo-monto {{ 'saldo-negativo' if fila.ars < 0 else 'saldo-positivo' }}">
+          {{ fila.ars | fmt_ars }}
         </td>
-        <td id="saldo-elias-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.elias_usd < 0 else 'saldo-positivo' }}">
-          {{ saldos.elias_usd | fmt_usd }}
+        <td id="saldo-{{ fila.clave }}-usd" class="saldo-monto {{ 'saldo-negativo' if fila.usd < 0 else 'saldo-positivo' }}">
+          {{ fila.usd | fmt_usd }}
         </td>
       </tr>
-      <tr>
-        <th class="saldo-persona-label saldo-label-mari">Mari</th>
-        <td id="saldo-mari-ars" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_ars < 0 else 'saldo-positivo' }}">
-          {{ saldos.mari_ars | fmt_ars }}
-        </td>
-        <td id="saldo-mari-usd" class="saldo-monto {{ 'saldo-negativo' if saldos.mari_usd < 0 else 'saldo-positivo' }}">
-          {{ saldos.mari_usd | fmt_usd }}
-        </td>
-      </tr>
+      {% endfor %}
       <tr>
         <th class="saldo-persona-label saldo-label-total">Total</th>
         <td id="saldo-total-ars" class="saldo-monto saldo-monto-total {{ 'saldo-negativo' if total_ars < 0 else 'saldo-positivo' }}">
