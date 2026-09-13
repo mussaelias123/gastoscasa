@@ -17,7 +17,7 @@
                    como siempre: checkbox destildado y persona elegible.
    - `form_persona` / `form_persona_nombre` → obligatorias si `form_personal`:
                    el valor ('elias'|'mari') y el nombre para el badge. #}
-  <form action="{{ url_for('agregar') }}" method="POST" class="form-rapido"{% if form_modo is defined %} data-modo="{{ form_modo }}"{% endif %}{% if form_destino is defined %} data-destino="{{ form_destino }}"{% endif %}>
+  <form action="{{ url_for('agregar') }}" method="POST" class="form-rapido"{% if form_modo is defined %} data-modo="{{ form_modo }}"{% endif %}{% if form_destino is defined %} data-destino="{{ form_destino }}"{% endif %} data-persona-actual="{{ persona_actual }}">
 
     {# Mes actual — se preserva al volver después del POST (el home no pasa mes) #}
     {% if mes is defined %}<input type="hidden" name="mes" value="{{ mes }}">{% endif %}

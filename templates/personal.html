@@ -1,12 +1,23 @@
 {# ════════════════════════════════════════════════════════════════════════════
    MÓDULO PERSONAL — la cuenta propia de quien está logueado.
 
-   UNA SOLA PÁGINA, CON SCROLL: arriba lo mismo que /gastos (saldos, form,
-   tabla) y abajo el resumen. A propósito NO usa `.layout-desktop`, que fija
-   el alto de la página al viewport (`body:has(.layout-desktop)`) — acá hace
-   falta scrollear para llegar al resumen.
+   MISMA ESTRUCTURA QUE /gastos, a propósito: `.layout-desktop` con
+   `.col-izquierda` (form arriba, tarjeta de saldos abajo) y `.col-derecha`
+   (movimientos). Los mismos partials, las mismas clases, el mismo orden.
+   Si algo hay que cambiar del look, se cambia en gastos.html y acá también —
+   NO se escribe una variante nueva.
 
-   Prefijo de clases: `per-`.
+   Lo único propio de esta hoja:
+   - la tarjeta de saldos muestra Personal / Núcleo en vez de Elías / Mari
+     (mismos partials, con `filas_saldos` y `saldos_a`/`saldos_b`);
+   - el resumen cuelga DEBAJO de todo, y por eso esta página SÍ scrollea
+     (ver la excepción al "sin scroll" en la sección `per-` de style.css).
+
+   TAMPOCO lleva encabezado de página, igual que /gastos: se entra derecho
+   al módulo. El único `.pagina-header` es el del resumen, más abajo, que
+   marca dónde empieza esa mitad (mismo criterio que /resumen).
+
+   Prefijo de clases propio: `per-`.
    ════════════════════════════════════════════════════════════════════════ #}
 
 {% extends 'base.html' %}
@@ -15,71 +26,44 @@
 
 {% block contenido %}
 
-<div class="pagina-header per-header">
-  <h2>👤 Mi cuenta personal</h2>
-  <p class="per-sub">
-    <span class="badge-persona badge-{{ persona }}">{{ persona_nombre }}</span>
-    Solo vos ves esta pantalla. Nada de acá toca el fondo familiar.
-  </p>
+{# Sin encabezado de página: se entra derecho al módulo, igual que /gastos.
+   De quién es la cuenta ya lo dice el campo Persona del formulario
+   ("Elías · tu cuenta"), así que no se pierde nada. #}
+
+<div class="layout-desktop per-layout">
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# COLUMNA IZQUIERDA — Formulario + Saldos  (mismo orden que /gastos)        #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="col-izquierda">
+
+{# ── FORMULARIO RÁPIDO (partial compartido; acá "Personal" viene tildado) ─── #}
+<div class="carga-rapida">
+  <h2 class="carga-rapida-titulo">➕ Nuevo movimiento</h2>
+
+  {% with form_personal=True, form_destino=url_for('personal'),
+          form_persona=persona, form_persona_nombre=persona_nombre %}
+    {% include '_form_movimiento.html' %}
+  {% endwith %}
 </div>
 
-<div class="per-layout">
+{# ── TARJETA DE SALDOS + GAUGES (el MISMO partial que /gastos) ─────────────
+   Dos diferencias, las dos por variable: las filas son Personal / Núcleo en
+   vez de Elías / Mari, y no va el selector de fecha — ese control pega a
+   /api/saldos, que devuelve los saldos del FONDO y pisaría esta tabla. #}
+{% include '_tarjeta_saldos.html' %}
 
-{# ══════════════════════════════════════════════════════════════════════════ #}
-{# COLUMNA IZQUIERDA — Saldos + Formulario                                    #}
-{# ══════════════════════════════════════════════════════════════════════════ #}
-<div class="per-col-izq">
-
-  {# ── SALDOS PERSONALES ─────────────────────────────────────────────────── #}
-  <div class="tarjeta-saldos per-saldos">
-    <h2 class="per-saldos-titulo">💰 Mis saldos</h2>
-    <table class="tabla-saldos per-tabla-saldos">
-      <tbody>
-        <tr>
-          <th scope="row"><span class="badge-moneda badge-moneda-ars">AR$</span></th>
-          <td class="saldo-monto {{ 'saldo-positivo' if saldos.ars >= 0 else 'saldo-negativo' }}">
-            {{ saldos.ars | fmt_ars }}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row"><span class="badge-moneda badge-moneda-usd">USD</span></th>
-          <td class="saldo-monto {{ 'saldo-positivo' if saldos.usd >= 0 else 'saldo-negativo' }}">
-            {{ saldos.usd | fmt_usd }}
-          </td>
-        </tr>
-        <tr class="per-fila-total">
-          <th scope="row">Total</th>
-          <td class="saldo-monto saldo-monto-total {{ 'saldo-positivo' if saldos.total_usd >= 0 else 'saldo-negativo' }}">
-            {{ saldos.total_usd | fmt_usd }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="per-nota">
-      El total usa la cotización del día en que se cargó cada movimiento,
-      igual que los saldos del fondo.
-    </p>
-  </div>
-
-  {# ── FORMULARIO (partial compartido; acá "Personal" viene tildado y fijo) ── #}
-  <div class="carga-rapida">
-    <h2 class="carga-rapida-titulo">➕ Nuevo movimiento personal</h2>
-    {% with form_personal=True, form_destino=url_for('personal'),
-            form_persona=persona, form_persona_nombre=persona_nombre %}
-      {% include '_form_movimiento.html' %}
-    {% endwith %}
-  </div>
-
-</div>{# /per-col-izq #}
+</div>{# /col-izquierda #}
 
 {# ══════════════════════════════════════════════════════════════════════════ #}
 {# COLUMNA DERECHA — Movimientos                                              #}
 {# ══════════════════════════════════════════════════════════════════════════ #}
-<div class="per-col-der">
+<div class="col-derecha">
 <div class="movimientos-card">
 
+  {# ── HEADER UNIFICADO: título + navegador de mes + contador ────────────── #}
   <div class="movimientos-card-header">
-    <span class="movimientos-card-titulo">📋 Mis movimientos</span>
+    <span class="movimientos-card-titulo">📋 Movimientos</span>
     <div class="mes-nav-inline">
       <a class="btn-mes-nav" href="{{ url_for('personal', mes=mes_prev, vista=vista) }}" title="Mes anterior">&#8592;</a>
       <span class="mes-titulo">{{ mes_nombre }}</span>
@@ -103,7 +87,7 @@
     </div>
   </div>
 
-  {# ── TABLA ─────────────────────────────────────────────────────────────── #}
+  {# ── TABLA DE MOVIMIENTOS (mismas columnas y clases que /gastos) ───────── #}
   {% if movimientos %}
   <div class="tabla-scroll-wrapper">
   <table class="tabla-gastos per-tabla">
@@ -119,7 +103,9 @@
     </thead>
     <tbody>
       {% for mov in movimientos %}
-      <tr class="{{ 'per-fila-auto' if mov.sintetico }}">
+      {# data-tipo pinta el fondo de los ingresos (misma regla que /gastos):
+         en mobile el badge de tipo se esconde y el color lo reemplaza. #}
+      <tr data-tipo="{{ mov.tipo }}" class="{{ 'per-fila-auto' if mov.sintetico }}">
         <td data-label="Fecha">{{ mov.fecha | fmt_fecha }}</td>
         <td class="col-descripcion" data-label="Descripción">
           {{ mov.descripcion }}
@@ -176,11 +162,47 @@
   {% endif %}
 
 </div>{# /movimientos-card #}
-</div>{# /per-col-der #}
+</div>{# /col-derecha #}
 
-</div>{# /per-layout #}
+</div>{# /layout-desktop #}
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# RESUMEN — el MISMO dashboard que /resumen, con los movimientos personales. #}
+{# Va acá abajo y no en una pestaña: se llega scrolleando (pedido del usuario).#}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="per-resumen">
+  <div class="pagina-header per-header">
+    <h2>📊 Mi resumen</h2>
+    <p class="per-sub">
+      Todo en USD, con la cotización del día en que se cargó cada movimiento.
+      Hoy: 1 USD = AR$ {{ cotizacion_valor | int }}.
+    </p>
+  </div>
+
+  {% if movimientos_json %}
+    {% include '_dashboard_resumen.html' %}
+  {% else %}
+  <div class="sin-datos">
+    <p>Todavía no hay nada para resumir. Cargá tu primer movimiento personal.</p>
+  </div>
+  {% endif %}
+</div>
 
 {# Contenedor de notificaciones toast — los agrega JS dinámicamente #}
 <div class="toast-container" id="toast-container"></div>
 
+{% endblock %}
+
+{% block scripts %}
+{% if movimientos_json %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+/* Los mismos nombres que espera static/resumen.js en /resumen. GASTOS_FIJOS
+   va vacío a propósito: son del fondo familiar, y su sección está escondida
+   con dash_fijos=False. */
+var MOVIMIENTOS  = {{ movimientos_json | tojson }};
+var GASTOS_FIJOS = [];
+</script>
+<script src="{{ url_for('static', filename='resumen.js') }}?v={{ static_version }}"></script>
+{% endif %}
 {% endblock %}
