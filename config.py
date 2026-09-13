@@ -97,6 +97,12 @@ DEFAULTS = {
     # (ver auth.py → require_login): auth_disabled + localhost + ngrok apagado.
     # En PROD: dejar SIEMPRE en False. Default seguro = False.
     "auth_disabled": False,
+    # Con el bypass de arriba la sesión es un usuario falso (`dev@local`), que
+    # no está en el mapa email→persona de auth.py. El módulo Personal necesita
+    # saber de quién es la cuenta que muestra, así que en DEV la define esta
+    # clave: cambiarla a "mari" permite probar la vista de Mari sin OAuth.
+    # En PROD no se lee nunca (ahí la persona sale del email de Google).
+    "persona_dev": "elias",
     # ── Backups de la base de datos ────────────────────────────────────────────
     # Ruta relativa a la carpeta del proyecto, o absoluta. Default: "backups".
     "backup_dir": "backups",

@@ -81,6 +81,9 @@
 - `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
 - `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `index`, `gastos` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
 - `_gastos_fijos_json()` → JSON (string) con los gastos fijos activos (`descripcion`, `es_cuota`, `cuota_actual`, `total_cuotas`) para `window.GASTOS_FIJOS` del form rápido. Compartido por `gastos` e `index`.
+- `_persona_actual(cfg=None)` → `'elias' | 'mari'`. Quién está mirando la app: sale del email de Google vía `auth.persona_de_email`. Con el bypass DEV (`dev@local`, sin mapear) decide la clave `persona_dev` de config; fallback `'elias'`. Es la ÚNICA fuente de identidad del módulo Personal — ahí la persona no se elige en un desplegable.
+- `_leer_personal_form(form, tipo, categoria)` → `bool`. Lee el checkbox "Personal" y valida la combinación; lanza `ValueError` con el texto que ve el usuario. Red de seguridad del servidor: el front ya deshabilita estas opciones, pero un POST sin JS tiene que fallar igual.
+- `CATEGORIAS_VEDADAS_PERSONAL`: `{'sueldo': …, 'fijo': …}` — categoría → motivo del rechazo. **Un sueldo siempre entra al fondo** (lo que el factor deja afuera se deriva como ingreso personal, ver `CONTEXT_DB.md`); los fijos y las cuotas cuelgan de `gastos_fijos`, que no tiene persona ni ámbito.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
 - `PALETA_META`: lista `(key, nombre, uso)` con las 23 variables de paleta (incluye `texto-invertido` y `persona-leon`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
@@ -198,6 +201,7 @@ tareas/ocultos = permanente (todos los días).
 4. **Cuotas**: si `cuotas_checkbox` y `total_cuotas`, se crea fila en `gastos_fijos` con `es_cuota=1`. Categoría `Fijo` con `gasto_fijo` existente avanza la cuota.
 5. **Cambio**: tipo `cambio` genera 2 inserts. Movimiento 1 = gasto en moneda origen. Movimiento 2 = ingreso en moneda destino. Categoría = `Cambio`.
 6. **backup_dir**: clave de config editable desde Settings. Default `"backups"` (relativo). `_get_backup_dir()` lo resuelve en caliente; un cambio aplica sin reiniciar.
+7. **Checkbox "Personal"**: leerlo SIEMPRE con `_leer_personal_form`, nunca `request.form.get('personal')` a mano — ahí vive la validación. Con `es_personal` en `True`: no se guarda `factor_aplicado`, no se crean ni se avanzan cuotas, y el JSON de respuesta lleva `personal` en la raíz para que el front sepa que esa fila NO va a la tabla del fondo. En `/editar` el form manda además `ambito_presente=1`: sin esa marca se pasa `personal=None` y la columna queda como estaba.
 
 ## Al modificar este dominio, actualizar:
 - Esta tabla de rutas (sección "Mapa de rutas").

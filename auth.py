@@ -45,6 +45,31 @@ EMAILS_PERMITIDOS = [
     'mossinomariana@gmail.com',
 ]
 
+# ── De qué email es cada persona ─────────────────────────────────────────────
+# Traduce la cuenta de Google con la que se entró al valor de la columna
+# `movimientos.persona` ('elias' | 'mari'). Lo usa el módulo Personal para
+# saber de quién es la cuenta que se está mirando: ahí la persona NO se elige
+# en un desplegable, sale de acá.
+#
+# Vive junto a EMAILS_PERMITIDOS a propósito: las dos listas son la misma
+# decisión (quién entra y quién es), y si alguna vez se suma un tercero hay
+# que tocar las dos.
+PERSONAS_POR_EMAIL = {
+    'mussaelias123@gmail.com':  'elias',
+    'mossinomariana@gmail.com': 'mari',
+}
+
+
+def persona_de_email(email, defecto=None):
+    """
+    'mussaelias123@gmail.com' → 'elias'. Case-insensitive.
+
+    Devuelve `defecto` si el email no está mapeado — pasa con el usuario
+    falso del bypass DEV (`dev@local`), donde quien decide es la clave
+    `persona_dev` de config.json.
+    """
+    return PERSONAS_POR_EMAIL.get((email or '').strip().lower(), defecto)
+
 
 def init_auth(app, config_file):
     """
