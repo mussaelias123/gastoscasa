@@ -7167,7 +7167,12 @@ details[open] > .rut-panel-summary::after { content: '▴'; }
   padding: 0.45rem 0.55rem;
   border: 1px solid var(--color-borde);
   border-radius: var(--radio-borde);
-  background: var(--color-fondo);
+  /* Sobre `--color-superficie` y no `--color-fondo`: adentro de una tarjeta
+     translúcida el fondo de página se lee como un agujero. Misma receta que
+     .rut-miembro — un tinte mínimo sobre la superficie para despegar la fila
+     sin cortar el paisaje. */
+  background: var(--color-superficie);
+  background: color-mix(in srgb, var(--color-texto) 4%, var(--color-superficie));
   color: var(--color-texto);
   font: inherit;
   font-size: 0.88rem;
@@ -10045,6 +10050,7 @@ body.rut-body .rut-panel,
 body.rut-body .rut-tips-card,
 body.rut-body .rut-tl-head,
 body.rut-body .rut-cal-card,
+body.rut-body .rut-pend-panel,
 body.rut-body .rut-dia-btn,
 body.rut-body .rut-header,
 body.rut-body .rut-chips-nav {
