@@ -504,6 +504,75 @@ def inicializar_db():
         )
     ''')
 
+    # -------------------------------------------------------------------
+    # Tabla rutina_pendientes: la lista de TAREAS del módulo Rutina (los
+    # mandados del día: "ir a la verdulería", "preparar la mochila").
+    #
+    # ⚠ NO confundir con rutina_tareas, que es OTRA COSA y sigue viva:
+    # aquellas son las tareas sueltas CON HORARIO que se agregan a la línea
+    # de tiempo desde "✎ Editar". Estas no tienen hora, no se dibujan en la
+    # rutina y se tildan cuando están hechas. La UI llama "Tareas" a ESTA
+    # tabla; el nombre interno es `pendientes` para no pisar la anterior.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_pendientes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo      TEXT    NOT NULL,
+            dibujo      TEXT    NOT NULL DEFAULT '',
+            repite      INTEGER NOT NULL DEFAULT 0,
+            dias        TEXT    NOT NULL DEFAULT '0000000',
+            fecha       TEXT    NOT NULL DEFAULT '',
+            desde       TEXT    NOT NULL DEFAULT '',
+            hasta       TEXT    NOT NULL DEFAULT '',
+            activo      INTEGER NOT NULL DEFAULT 1,
+            creado      TEXT,
+            actualizado TEXT
+        )
+    ''')
+    # repite: 0 = tarea suelta (vale `fecha`), 1 = repetitiva (vale `dias`).
+    # dias:  7 chars '0'/'1', LUNES primero, igual que rutina_actividades.
+    #        Con repite = 0 queda '0000000'.
+    # fecha: YYYY-MM-DD, solo con repite = 0. Con repite = 1 queda ''.
+    # desde: fecha de ALTA, no es opcional. Sin ella, una tarea cargada el
+    #        jueves figuraría como "no hecha" el lunes de la misma semana
+    #        (el selector L-D deja mirar atrás) y el barrido de vencidas le
+    #        inventaría ocurrencias que nunca existieron.
+    # hasta: '' = abierta. Sin UI todavía; existe para archivar sin borrar.
+    # Sin miembro_id: a diferencia de una actividad, una tarea no tiene
+    #        dueño, tiene cero o más responsables (tabla puente de abajo).
+    #        Cero responsables = tarea de la casa, la ve todo el mundo.
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_pendiente_miembros (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            pendiente_id INTEGER NOT NULL,
+            miembro_id   INTEGER NOT NULL,
+            UNIQUE (pendiente_id, miembro_id)
+        )
+    ''')
+
+    # -------------------------------------------------------------------
+    # Tabla rutina_pendientes_hechas: una fila por OCURRENCIA cerrada.
+    # `fecha` es el día que la tarea VENCÍA, no el día en que se tildó (eso
+    # va en `hecha_en`): así el arrastre y el barrido hablan el mismo
+    # idioma. El UNIQUE es lo que hace idempotente el tildado.
+    # auto = 1 → la cerró el barrido por vencimiento, no una persona.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rutina_pendientes_hechas (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            pendiente_id INTEGER NOT NULL,
+            fecha        TEXT    NOT NULL,
+            auto         INTEGER NOT NULL DEFAULT 0,
+            hecha_en     TEXT,
+            UNIQUE (pendiente_id, fecha)
+        )
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS ix_pend_hechas_fecha
+        ON rutina_pendientes_hechas (fecha)
+    ''')
+
     conn.commit()   # Confirma los cambios (como un "guardar")
     conn.close()    # Cierra la conexión
 
@@ -1802,3 +1871,232 @@ def borrar_pausa_rutina(pausa_id):
     conn.execute('DELETE FROM rutina_pausas WHERE id = ?', (pausa_id,))
     conn.commit()
     conn.close()
+
+
+# =============================================================================
+# FUNCIONES: Tareas (módulo Rutina)
+# =============================================================================
+#
+# ⚠ Estas son las TAREAS de la UI, la tabla `rutina_pendientes`. Las funciones
+# *_tarea_rutina() de más arriba son OTRA COSA (las tareas sueltas con horario
+# de la línea de tiempo, tabla `rutina_tareas`). Ver el comentario del
+# CREATE TABLE en crear_tablas().
+#
+# Igual que con las actividades, qué día cae cada tarea NO se resuelve acá: la
+# regla vive en pendienteDebe() de static/rutina.js, porque el que sabe qué día
+# está mirando el usuario es el cliente. La ÚNICA excepción es
+# cerrar_pendientes_vencidas(), que escribe y por eso no puede depender de que
+# alguien abra el navegador el día justo: ahí la regla está escrita de nuevo en
+# Python. Si cambiás una, cambiá la otra.
+
+def obtener_pendientes_rutina():
+    """Tareas activas con sus responsables. Devuelve dicts (no sqlite3.Row)
+    porque llevan una lista anidada."""
+    conn = conectar()
+    filas = conn.execute('''
+        SELECT id, titulo, dibujo, repite, dias, fecha, desde, hasta, activo
+        FROM rutina_pendientes
+        WHERE activo = 1
+        ORDER BY id
+    ''').fetchall()
+
+    responsables = {}
+    for fila in conn.execute(
+        'SELECT pendiente_id, miembro_id FROM rutina_pendiente_miembros'
+    ).fetchall():
+        responsables.setdefault(fila['pendiente_id'], []).append(fila['miembro_id'])
+
+    salida = []
+    for fila in filas:
+        p = dict(fila)
+        p['repite'] = bool(p['repite'])
+        p['activo'] = bool(p['activo'])
+        p['responsables'] = responsables.get(p['id'], [])
+        salida.append(p)
+    conn.close()
+    return salida
+
+
+def obtener_pendientes_hechas(desde, hasta):
+    """Ocurrencias cerradas cuya FECHA DE VENCIMIENTO cae en [desde, hasta].
+
+    ⚠ Quien llama tiene que pedir un día ANTES del primero que se va a mostrar:
+    el arrastre necesita saber si la ocurrencia de ayer está cerrada. Lo hace
+    _rut_payload() en app.py."""
+    conn = conectar()
+    filas = conn.execute('''
+        SELECT pendiente_id, fecha, auto
+        FROM rutina_pendientes_hechas
+        WHERE fecha BETWEEN ? AND ?
+    ''', (desde, hasta)).fetchall()
+    conn.close()
+    return filas
+
+
+def _escribir_responsables(conn, pendiente_id, responsables):
+    """Reescribe la tabla puente de una tarea EN LA MISMA CONEXIÓN (borra lo
+    que había y vuelve a insertar). Lista vacía es válida: es una tarea de la
+    casa, sin dueño, y la ve todo el mundo."""
+    conn.execute('DELETE FROM rutina_pendiente_miembros WHERE pendiente_id = ?',
+                 (pendiente_id,))
+    for miembro_id in responsables or ():
+        conn.execute('''
+            INSERT INTO rutina_pendiente_miembros (pendiente_id, miembro_id)
+            VALUES (?, ?) ON CONFLICT (pendiente_id, miembro_id) DO NOTHING
+        ''', (pendiente_id, miembro_id))
+
+
+def crear_pendiente_rutina(titulo, dibujo, repite, dias, fecha, desde,
+                           responsables=()):
+    """Alta de tarea. Devuelve el id."""
+    conn = conectar()
+    ahora = _ahora_iso()
+    cur = conn.execute('''
+        INSERT INTO rutina_pendientes
+            (titulo, dibujo, repite, dias, fecha, desde, hasta, activo,
+             creado, actualizado)
+        VALUES (?, ?, ?, ?, ?, ?, '', 1, ?, ?)
+    ''', (titulo, dibujo, repite, dias, fecha, desde, ahora, ahora))
+    pendiente_id = cur.lastrowid
+    _escribir_responsables(conn, pendiente_id, responsables)
+    conn.commit()
+    conn.close()
+    return pendiente_id
+
+
+def editar_pendiente_rutina(pendiente_id, titulo, dibujo, repite, dias, fecha,
+                            responsables, activo):
+    """Pisa los campos editables de una tarea, incluidos los responsables.
+    NO toca `desde`: la fecha de alta es histórica, moverla reescribiría el
+    pasado (el barrido de vencidas la usa como piso)."""
+    conn = conectar()
+    conn.execute('''
+        UPDATE rutina_pendientes
+        SET titulo = ?, dibujo = ?, repite = ?, dias = ?, fecha = ?,
+            activo = ?, actualizado = ?
+        WHERE id = ?
+    ''', (titulo, dibujo, repite, dias, fecha, activo, _ahora_iso(),
+          pendiente_id))
+    _escribir_responsables(conn, pendiente_id, responsables)
+    conn.commit()
+    conn.close()
+
+
+def borrar_pendiente_rutina(pendiente_id):
+    """Baja definitiva de una tarea: se lleva sus responsables y todo su
+    historial de tildados. La cascada es a mano porque este esquema no declara
+    foreign keys — mismo criterio que borrar_actividad_rutina()."""
+    conn = conectar()
+    conn.execute('DELETE FROM rutina_pendientes_hechas WHERE pendiente_id = ?',
+                 (pendiente_id,))
+    conn.execute('DELETE FROM rutina_pendiente_miembros WHERE pendiente_id = ?',
+                 (pendiente_id,))
+    conn.execute('DELETE FROM rutina_pendientes WHERE id = ?', (pendiente_id,))
+    conn.commit()
+    conn.close()
+
+
+def pendiente_rutina_existe(pendiente_id):
+    """True si la tarea existe (activa o no). Lo usan las rutas para validar el
+    id antes de escribir."""
+    conn = conectar()
+    fila = conn.execute(
+        'SELECT 1 FROM rutina_pendientes WHERE id = ?', (pendiente_id,)
+    ).fetchone()
+    conn.close()
+    return fila is not None
+
+
+def marcar_pendiente_rutina(pendiente_id, fechas, hecha):
+    """Tilda o destilda ocurrencias de una tarea, todo en una transacción.
+
+    `fechas` es una LISTA porque un solo toque puede estar cerrando dos
+    ocurrencias: la de ayer (que se arrastró) y la de hoy. Si cerrara solo una,
+    una tarea de todos los días no desaparecería al tildarla.
+
+    Es idempotente en los dos sentidos (el UNIQUE lo garantiza): tildar algo ya
+    tildado no hace nada, destildar algo que no estaba tampoco. Si la ocurrencia
+    la había cerrado el barrido (auto = 1), tildarla a mano la pasa a auto = 0:
+    la marcó una persona."""
+    conn = conectar()
+    ahora = _ahora_iso()
+    for fecha in fechas or ():
+        if hecha:
+            conn.execute('''
+                INSERT INTO rutina_pendientes_hechas
+                    (pendiente_id, fecha, auto, hecha_en)
+                VALUES (?, ?, 0, ?)
+                ON CONFLICT (pendiente_id, fecha)
+                DO UPDATE SET auto = 0, hecha_en = excluded.hecha_en
+            ''', (pendiente_id, fecha, ahora))
+        else:
+            conn.execute('''
+                DELETE FROM rutina_pendientes_hechas
+                WHERE pendiente_id = ? AND fecha = ?
+            ''', (pendiente_id, fecha))
+    conn.commit()
+    conn.close()
+
+
+def _pendiente_vence(p, fecha):
+    """¿La tarea `p` vence el día `fecha` (YYYY-MM-DD)? Espejo en Python de
+    pendienteDebe() de static/rutina.js. Si tocás una, tocá la otra."""
+    if not p['activo']:
+        return False
+    if not p['repite']:
+        # La suelta tiene UNA fecha explícita y manda ella: `desde`/`hasta`
+        # existen para acotar a las repetitivas, que si no reclamarían días
+        # anteriores a su propia alta.
+        return fecha == p['fecha']
+    if p['desde'] and fecha < p['desde']:
+        return False
+    if p['hasta'] and fecha > p['hasta']:
+        return False
+    dias = p['dias'] or ''
+    if len(dias) != 7:
+        return False
+    # weekday(): lunes = 0, que es justo el orden en que se guarda `dias`.
+    return dias[datetime.date.fromisoformat(fecha).weekday()] == '1'
+
+
+def cerrar_pendientes_vencidas(hoy, lookback_dias=45):
+    """La tarea del día D se ve D y D+1. Si al llegar a D+2 sigue sin tildar,
+    se da por realizada sola (fila con auto = 1) y deja de arrastrarse.
+
+    Idempotente: se puede llamar mil veces por día sin efecto (el UNIQUE de
+    rutina_pendientes_hechas). Devuelve cuántas cerró, para el log.
+
+    El `lookback` está acotado a propósito: sin tope, una base con meses de
+    historia dispararía miles de INSERT la primera vez que corre, y una tarea
+    de hace tres meses ya no le importa a nadie."""
+    tope = (datetime.date.fromisoformat(hoy) - datetime.timedelta(days=2)).isoformat()
+    piso = (datetime.date.fromisoformat(hoy) - datetime.timedelta(days=lookback_dias)).isoformat()
+    if tope < piso:
+        return 0
+
+    pendientes = obtener_pendientes_rutina()
+    if not pendientes:
+        return 0
+
+    conn = conectar()
+    ahora = _ahora_iso()
+    cerradas = 0
+    dia = datetime.date.fromisoformat(piso)
+    fin = datetime.date.fromisoformat(tope)
+    while dia <= fin:
+        fecha = dia.isoformat()
+        for p in pendientes:
+            if not _pendiente_vence(p, fecha):
+                continue
+            cur = conn.execute('''
+                INSERT INTO rutina_pendientes_hechas
+                    (pendiente_id, fecha, auto, hecha_en)
+                VALUES (?, ?, 1, ?)
+                ON CONFLICT (pendiente_id, fecha) DO NOTHING
+            ''', (p['id'], fecha, ahora))
+            if cur.rowcount > 0:
+                cerradas += cur.rowcount
+        dia += datetime.timedelta(days=1)
+    conn.commit()
+    conn.close()
+    return cerradas
