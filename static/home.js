@@ -21,6 +21,11 @@
    del server (horas_restantes/dias_restantes): acá solo se formatean.
    En el Inicio lactancia.js NO se carga: los helpers de formato y la config
    de flatpickr son copias mínimas de ese archivo.
+   (4) Tarjeta Tareas (initPendientes): la lista del día que se tilda de un
+   toque + alta rápida desde el sheet. Fuente window.Rutina.tareasHoy(); las
+   mutaciones van por window.Rutina.marcarTarea/crearTarea, que reusan el
+   postAccion() de rutina.js con un callback propio (el de allá termina en
+   renderTodo(), que acá no corre). Mismo tick de 30 s.
    (3) Tarjeta Rutina (initRutina): qué está haciendo AHORA cada uno
    (León/Mamá/Papá) y qué viene después. Los datos los da
    window.Rutina.hoyAhora() (rutina.js SÍ se carga en el Inicio, con
@@ -86,6 +91,233 @@
 
         initLactancia();
         initRutina();
+        initPendientes();
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       TARJETA TAREAS — la lista del día + alta rápida
+       Fuente: window.Rutina.tareasHoy() (rutina.js), que fuerza "hoy real".
+       ⚠ Son las TAREAS que se tildan (rutina_pendientes), no las sueltas con
+       horario de la línea de tiempo.
+       Las mutaciones van por window.Rutina.marcarTarea/crearTarea, que usan el
+       postAccion() de rutina.js con un callback propio: el de allá termina en
+       renderTodo(), que acá explota porque no existe ni #rut-filas ni
+       #rut-chips.
+       Solo createElement/textContent: los títulos son texto libre del usuario.
+       ════════════════════════════════════════════════════════════════════════ */
+
+    function initPendientes() {
+        var cont = document.getElementById('home-pend-lista');
+        if (!cont) return;
+
+        if (!window.Rutina || !window.Rutina.tareasHoy) {
+            console.warn('home.js: window.Rutina.tareasHoy no está — ¿cambió el ' +
+                         'orden de los <script> en index.html?');
+            var sin = document.createElement('p');
+            sin.className = 'home-rut-vacio';
+            sin.textContent = 'No se pudieron cargar las tareas.';
+            cont.appendChild(sin);
+            return;
+        }
+
+        var cuenta = document.getElementById('home-pend-cuenta');
+        var DIAS_CORTOS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+        var DIAS_LARGOS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes',
+                           'sábado', 'domingo'];
+        // Estado del form del sheet. `dias` arranca en todos, como el de /rutina.
+        var alta = { dias: '1111111', responsables: [], verResp: false };
+
+        function filaPend(t) {
+            var el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'rut-pend-item' + (t.hecha ? ' is-hecha' : '') +
+                           (t.auto ? ' is-auto' : '');
+            el.setAttribute('aria-pressed', String(t.hecha));
+
+            var check = document.createElement('span');
+            check.className = 'rut-pend-check';
+            check.setAttribute('aria-hidden', 'true');
+            el.appendChild(check);
+
+            var titulo = document.createElement('span');
+            titulo.className = 'rut-pend-titulo';
+            titulo.textContent = t.titulo;
+            el.appendChild(titulo);
+
+            if (t.arrastrada) {
+                var ayer = document.createElement('span');
+                ayer.className = 'rut-pend-ayer';
+                ayer.textContent = 'de ayer';
+                el.appendChild(ayer);
+            }
+
+            t.colores.forEach(function (r) {
+                var punto = document.createElement('span');
+                punto.className = 'rut-pend-punto';
+                punto.style.setProperty('--rut-color', 'var(--color-' + r.color + ')');
+                punto.title = r.nombre;
+                el.appendChild(punto);
+            });
+
+            el.addEventListener('click', function () {
+                var hecha = !t.hecha;
+                // Pintado optimista: esperar al POST deja 200 ms sin respuesta y
+                // se vuelve a tocar. El render de la respuesta manda igual.
+                el.classList.toggle('is-hecha', hecha);
+                el.setAttribute('aria-pressed', String(hecha));
+                window.Rutina.marcarTarea(t.id, t.fechas, hecha, renderPend);
+            });
+            return el;
+        }
+
+        function renderPend() {
+            var lista;
+            try { lista = window.Rutina.tareasHoy(); }
+            catch (e) {
+                console.error('Error tareas (home):', e);
+                lista = [];
+            }
+            cont.textContent = '';
+            var faltan = 0;
+            lista.forEach(function (t) {
+                if (!t.hecha) faltan++;
+                cont.appendChild(filaPend(t));
+            });
+            if (!lista.length) {
+                var v = document.createElement('p');
+                v.className = 'home-rut-vacio';
+                v.textContent = 'No hay tareas para hoy.';
+                cont.appendChild(v);
+            }
+            if (cuenta) {
+                cuenta.textContent = faltan ? String(faltan) : '';
+                cuenta.hidden = !faltan;
+            }
+        }
+
+        // ── El form del sheet ───────────────────────────────────────────────
+        var form = document.getElementById('home-pend-form');
+        var inpTitulo = document.getElementById('home-pend-titulo');
+        var chkRepite = document.getElementById('home-pend-repite');
+        var cajaDias = document.getElementById('home-pend-dias-caja');
+        var contDias = document.getElementById('home-pend-dias');
+        var contResp = document.getElementById('home-pend-resp');
+        var btnResp = document.getElementById('home-pend-resp-mas');
+        var error = document.getElementById('home-pend-error');
+
+        function pintarDias() {
+            if (!contDias) return;
+            contDias.textContent = '';
+            alta.dias.split('').forEach(function (bit, i) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'rut-circ' + (bit === '1' ? ' activo' : '');
+                b.setAttribute('aria-pressed', bit === '1');
+                b.title = DIAS_LARGOS[i];
+                b.textContent = DIAS_CORTOS[i];
+                b.addEventListener('click', function () {
+                    alta.dias = alta.dias.substring(0, i) +
+                                (alta.dias.charAt(i) === '1' ? '0' : '1') +
+                                alta.dias.substring(i + 1);
+                    pintarDias();
+                });
+                contDias.appendChild(b);
+            });
+        }
+
+        // Cerrado se ven solo los elegidos; el ＋ abre la familia entera.
+        function pintarResp() {
+            if (!contResp) return;
+            contResp.textContent = '';
+            var familia = window.Rutina.familia ? window.Rutina.familia() : [];
+            familia.forEach(function (m) {
+                var on = alta.responsables.indexOf(String(m.id)) >= 0;
+                if (!on && !alta.verResp) return;
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'rut-add-pill' + (on ? ' activo' : '');
+                b.style.setProperty('--rut-color', 'var(--color-' + m.color + ')');
+                b.setAttribute('aria-pressed', String(on));
+                b.textContent = m.nombre;
+                b.addEventListener('click', function () {
+                    var i = alta.responsables.indexOf(String(m.id));
+                    if (i >= 0) alta.responsables.splice(i, 1);
+                    else alta.responsables.push(String(m.id));
+                    pintarResp();
+                });
+                contResp.appendChild(b);
+            });
+            if (btnResp) {
+                btnResp.textContent = alta.verResp ? '✓' : '＋';
+                btnResp.setAttribute('aria-expanded', String(alta.verResp));
+                btnResp.setAttribute('aria-label',
+                                     alta.verResp ? 'Listo' : 'Añadir responsable');
+            }
+        }
+
+        if (btnResp) {
+            btnResp.addEventListener('click', function () {
+                alta.verResp = !alta.verResp;
+                pintarResp();
+            });
+        }
+
+        if (chkRepite && cajaDias) {
+            chkRepite.addEventListener('change', function () {
+                cajaDias.hidden = !chkRepite.checked;
+            });
+        }
+
+        if (form) {
+            form.addEventListener('submit', function (ev) {
+                ev.preventDefault();
+                var titulo = (inpTitulo.value || '').trim();
+                if (error) { error.hidden = true; error.textContent = ''; }
+                if (!titulo) {
+                    if (error) {
+                        error.textContent = 'Poné un nombre para la tarea.';
+                        error.hidden = false;
+                    }
+                    return;
+                }
+                var repite = !!(chkRepite && chkRepite.checked);
+                if (repite && alta.dias.indexOf('1') < 0) {
+                    if (error) {
+                        error.textContent = 'Elegí al menos un día.';
+                        error.hidden = false;
+                    }
+                    return;
+                }
+                window.Rutina.crearTarea({
+                    titulo: titulo,
+                    repite: repite ? '1' : '0',
+                    dias: alta.dias,
+                    fecha: '',                       // vacío → hoy, lo pone el server
+                    responsables: alta.responsables.join(',')
+                }, function () {
+                    renderPend();
+                    // Dejar el form limpio para la próxima
+                    inpTitulo.value = '';
+                    if (chkRepite) chkRepite.checked = false;
+                    if (cajaDias) cajaDias.hidden = true;
+                    alta.dias = '1111111';
+                    alta.responsables = [];
+                    alta.verResp = false;
+                    pintarDias();
+                    pintarResp();
+                    window.cerrarHomeSheet('tareas');
+                });
+            });
+        }
+
+        pintarDias();
+        pintarResp();
+        renderPend();
+        // Se suma al mismo ritmo de 30 s que la tarjeta Rutina (ver initRutina),
+        // para que lo que tilda el otro teléfono aparezca solo.
+        setInterval(function () {
+            if (!document.hidden) renderPend();
+        }, 30000);
     }
 
     /* ════════════════════════════════════════════════════════════════════════

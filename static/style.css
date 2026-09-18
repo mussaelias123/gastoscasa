@@ -153,6 +153,28 @@ body.has-dev-banner {
      Esto hace los cálculos de tamaño mucho más predecibles. */
 }
 
+/* Nada de zoom por doble toque en lo que se toca.
+   El celular espera ~300 ms después de cada toque por si viene un segundo, y
+   si viene hace zoom. En un botón eso está mal siempre: hay botones que se
+   tocan dos veces seguidas a propósito (un − o un ＋, los circulitos de los
+   días, tildar y destildar una tarea) y la página se agrandaba sola.
+   `touch-action: manipulation` deja el zoom por pellizco y el scroll intactos
+   —el <meta viewport> NO lleva maximum-scale, y así tiene que quedar por
+   accesibilidad—, solo apaga el doble-tap y de paso saca el retardo.
+   ⚠ Apunta a botones y controles, no a divs: las dos zonas de arrastre del
+   módulo Rutina (.rut-barra-mueve y el grip de los ítems) necesitan
+   `touch-action: none` y quedan fuera de este selector. */
+button,
+summary,
+label,
+[role="button"],
+.btn,
+a.btn,
+input[type="checkbox"],
+input[type="radio"] {
+  touch-action: manipulation;
+}
+
 body {
   font-family: var(--fuente-principal);
   font-size: 16px;
@@ -6927,6 +6949,10 @@ body.lac-body .lac-item { border-radius: 12px; }
    Los circulitos que se pintan al tocarlos. Cada uno es un bit del string que
    guarda la base: 7 para los días (LUNES primero) y 12 para los meses. */
 .rut-circs {
+  /* Color por defecto: las TAREAS no tienen dueño (pueden tener varios
+     responsables o ninguno), así que sus círculos no reciben el --rut-color
+     inline que sí traen los de una actividad. El inline, cuando está, gana. */
+  --rut-color: var(--color-acento);
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
@@ -6982,25 +7008,6 @@ body.lac-body .lac-item { border-radius: 12px; }
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-}
-
-.rut-fa-presets { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-
-.rut-fa-preset {
-  padding: 0.2rem 0.5rem;
-  border: 1px solid var(--color-borde);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-texto-muted);
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.rut-fa-preset.activo {
-  border-color: var(--color-acento);
-  color: var(--color-acento);
 }
 
 /* Paleta de dibujos: se elige el de la actividad. Alto acotado y con scroll
@@ -7084,6 +7091,183 @@ body.lac-body .lac-item { border-radius: 12px; }
 .rut-frec-mas > summary::-webkit-details-marker { display: none; }
 .rut-frec-mas > summary::after { content: ' ▾'; }
 .rut-frec-mas[open] > summary::after { content: ' ▴'; }
+
+/* ============================================================================
+   TAREAS (lista que se tilda) — el desplegable de arriba de todo en "Hoy", el
+   panel de la solapa Actividades y las fichas de la tarjeta del Inicio.
+   ⚠ No son las tareas sueltas con horario de la línea de tiempo: esas usan las
+   clases del editor (.rut-add-*). Estas no tienen hora y no se dibujan.
+   ============================================================================ */
+.rut-pend-panel {
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  box-shadow: var(--sombra-card);
+  padding: 0.5rem 0.7rem;
+}
+
+.rut-pend-summary,
+.rut-panel-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--color-texto);
+  /* Se toca seguido y es el caso del comentario de .lac-stepper-btn: sin esto
+     dos toques rápidos los toma el celular como doble-tap y hace zoom. */
+  touch-action: manipulation;
+}
+
+.rut-pend-summary::-webkit-details-marker,
+.rut-panel-summary::-webkit-details-marker { display: none; }
+
+.rut-pend-summary::after,
+.rut-panel-summary::after {
+  content: '▾';
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--color-texto-muted);
+}
+
+details[open] > .rut-pend-summary::after,
+details[open] > .rut-panel-summary::after { content: '▴'; }
+
+/* Cuántas quedan sin hacer. Al lado del título, no al final: con el ▾ pegado
+   al borde derecho, un número ahí se lee como parte del botón de abrir. */
+.rut-pend-cuenta {
+  min-width: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--color-acento);
+  color: var(--color-superficie);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.35rem;
+  text-align: center;
+}
+
+.rut-pend-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+/* Cada tarea es UN botón entero: se tilda de un toque en cualquier parte, no
+   hay que apuntarle al cuadradito. */
+.rut-pend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  /* Color por defecto: una tarea puede tener varios responsables o ninguno,
+     así que no hay un `--rut-color` de dueño como en una actividad. Lo consume
+     el tinte de `body.rut-body` que la despega del paisaje. */
+  --rut-color: var(--color-acento);
+  /* Fondo simple. Adentro de /rutina el bloque de fichas translúcidas de
+     `body.rut-body` la pasa a vidrio con tinte, como a las de Familia y a las
+     tarjetas "Ahora"; en el Inicio, donde no hay paisaje detrás, queda la
+     superficie plena. */
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.rut-pend-check {
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 2px solid var(--color-texto-muted);
+  border-radius: 0.3rem;
+}
+
+.rut-pend-item.is-hecha .rut-pend-check {
+  border-color: var(--color-acento);
+  background: var(--color-acento);
+}
+
+.rut-pend-item.is-hecha .rut-pend-check::after {
+  content: '✓';
+  display: block;
+  color: var(--color-superficie);
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 0.85rem;
+  text-align: center;
+}
+
+.rut-pend-titulo {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rut-pend-item.is-hecha .rut-pend-titulo {
+  color: var(--color-texto-muted);
+  text-decoration: line-through;
+}
+
+/* "de ayer" (se arrastró) y "se cerró sola" (venció sin marcarse) */
+.rut-pend-ayer {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 999px;
+  color: var(--color-texto-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+/* De quién es: un puntito por responsable, con su color. Sin responsable no
+   hay ninguno — es una tarea de la casa. */
+.rut-pend-punto {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--rut-color);
+}
+
+/* El ＋ de "Responsable": abre la familia entera, y con la lista abierta pasa
+   a ✓ para cerrarla. */
+.rut-pend-mas {
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 1px dashed var(--color-borde);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-texto-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Los dos bloques plegables de la solapa Actividades (Actividades y Tareas).
+   display:block y no el flex que trae .rut-panel: un <details> que es
+   contenedor flex aplica su `gap` TAMBIÉN entre el <summary> y el contenido
+   escondido, así que cerrado arrastra ese espacio de más (medido: 61.5px vs
+   51.9px). El aire entre bloques va por margen. */
+.rut-panel-plegable {
+  display: block;
+}
+
+.rut-panel-plegable > :not(summary) { margin-top: 0.6rem; }
+.rut-panel-plegable + .rut-panel-plegable { margin-top: 0.55rem; }
 
 /* ── Tarjeta de cumpleaños ───────────────────────────────────────────────── */
 .rut-cumple { display: flex; flex-direction: column; gap: 0.4rem; }
@@ -8304,9 +8488,10 @@ span.rut-ahora-emoji { cursor: default; }
     max-width: none;
     display: grid;
     grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
-    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
     grid-template-areas:
       'top     tl'
+      'pend    tl'
       'sel     tl'
       'ahora   tl'
       'paneles tl';
@@ -8334,6 +8519,11 @@ span.rut-ahora-emoji { cursor: default; }
 
   /* El topbar deja de ser sticky: la columna izquierda ya no scrollea */
   .rut-topbar { grid-area: top; position: static; top: auto !important; }
+  /* ⚠ .rut-sec--hoy es display:contents, así que sus hijos directos son ítems
+     de ESTA grilla y cada uno necesita su grid-area. Sin esto el desplegable
+     de tareas se va a una fila implícita y desordena la columna entera — y
+     solo se nota en escritorio. */
+  .rut-pend-panel { grid-area: pend; }
   .rut-selectores { grid-area: sel; }
 
   .rut-ahora {
@@ -8368,9 +8558,10 @@ span.rut-ahora-emoji { cursor: default; }
 @media (min-width: 1280px) {
   .rut-wrap {
     grid-template-columns: minmax(340px, 400px) minmax(0, 1fr) minmax(320px, 400px);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     grid-template-areas:
       'top   tl paneles'
+      'pend  tl paneles'
       'sel   tl paneles'
       'ahora tl paneles';
   }
@@ -8675,11 +8866,17 @@ body:has(.home-page) .contenido-principal {
   min-width: 0;
   min-height: 0;
   display: grid;
-  gap: 0.75rem;
+  /* 0.6rem y no 0.75: con la fila de Tareas son cinco filas y cuatro
+     separaciones, y en un iPhone SE de 375×667 cada píxel cuenta. */
+  gap: 0.6rem;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: max-content max-content minmax(110px, 1fr) minmax(150px, 1.35fr);
+  /* Fila 1 = Tareas, plegada (~38px). Las otras cuatro se recalibraron para
+     que el conjunto siga entrando en 375×667 sin scroll: los pisos de las dos
+     últimas bajaron lo justo para hacerle lugar. */
+  grid-template-rows: max-content max-content max-content minmax(96px, 1fr) minmax(138px, 1.35fr);
 }
 
+.home-card--tareas { grid-column: span 2; }
 .home-card--gastos { grid-column: span 2; }
 .home-card--saldos { grid-column: span 2; }
 .home-card--rutina { grid-column: span 2; }
@@ -8795,6 +8992,137 @@ body:has(.home-page) .contenido-principal {
 .home-placeholder {
   color: var(--color-texto-muted);
   font-size: 0.85rem;
+}
+
+/* ── Tarjeta TAREAS ─────────────────────────────────────────────────────────
+   La lista del día que se tilda (rutina_pendientes). Plegada por defecto: el
+   Inicio no scrollea, así que cerrada tiene que ser una línea. El ＋ vive
+   afuera del <details> para poder cargar una tarea sin desplegar la lista. */
+.home-card--tareas {
+  flex-direction: row;
+  flex-wrap: wrap;     /* el form del alta baja a su propia línea */
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+}
+
+/* El form del alta ocupa el ancho entero, debajo del título y del ＋ */
+.home-card--tareas .home-sheet { flex: 1 0 100%; }
+
+.home-pend {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.home-pend-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  list-style: none;
+  touch-action: manipulation;
+}
+
+.home-pend-summary::-webkit-details-marker { display: none; }
+
+.home-pend-summary::after {
+  content: '▾';
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--color-texto-muted);
+}
+
+.home-pend[open] > .home-pend-summary::after { content: '▴'; }
+
+.home-pend-cuenta {
+  min-width: 1.3rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--color-acento);
+  color: var(--color-superficie);
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1.3rem;
+  text-align: center;
+}
+
+.home-pend-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 40vh;
+  margin-top: 0.45rem;
+  overflow-y: auto;
+}
+
+/* El ＋ de la tarjeta. Cerrada, la tarjeta es una barra fina: el botón manda
+   el alto, así que 1.85rem es el techo que deja la fila en ~38px. */
+.home-pend-mas {
+  flex: 0 0 auto;
+  width: 1.85rem;
+  height: 1.85rem;
+  border: 1px solid var(--color-acento);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-acento);
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* ── Form del alta (dentro del sheet) ── */
+.home-pend-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem;
+}
+
+.home-pend-input {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio-borde);
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font: inherit;
+}
+
+.home-pend-campo[hidden] { display: none; }
+
+.home-pend-campo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.home-pend-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-texto-muted);
+}
+
+.home-pend-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.home-pend-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+}
+
+.home-pend-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-peligro);
 }
 
 /* ── Botones mobile ＋ (abren el bottom-sheet de su tarjeta) ── */
@@ -9195,12 +9523,14 @@ body:has(.home-page) .contenido-principal {
        la reparte .home-col-rutcal en flex-column (ver esa sección) para que
        Rutina no se estire a la altura de la fila 1 (dejaba espacio en
        blanco bajo las tarjetas "ahora") y Calendario se lleve el resto. */
-    grid-template-rows: minmax(0, max-content) minmax(180px, 1fr);
+    grid-template-rows: max-content minmax(0, max-content) minmax(180px, 1fr);
     grid-template-areas:
+      "tareas tareas    tareas"
       "gastos lactancia rutinacal"
       "saldos lactancia rutinacal";
   }
 
+  .home-card--tareas     { grid-area: tareas; }
   .home-card--gastos     { grid-area: gastos; }
   .home-card--saldos     { grid-area: saldos; }
   .home-card--lactancia  { grid-area: lactancia; }
@@ -9244,6 +9574,14 @@ body:has(.home-page) .contenido-principal {
 
   /* El ✕ solo tiene sentido como bottom-sheet */
   .home-sheet-cerrar { display: none; }
+
+  /* Excepción: el alta de TAREAS sigue detrás del ＋ también en escritorio.
+     La tarjeta es una barra fina de una línea; un form siempre abierto ahí
+     ocuparía más que todas las tareas juntas. Inline sí (no es bottom-sheet),
+     pero recién cuando se toca el ＋. */
+  #home-sheet-tareas { display: none; }
+  #home-sheet-tareas.is-abierta { display: block; }
+  #home-sheet-tareas .home-sheet-cerrar { display: inline-flex; }
 
   /* El sheet ya no viene después de otro contenido: abre la tarjeta pegado
      al head (Gastos: único contenido; Lactancia: arriba de las listas) →
@@ -9715,6 +10053,7 @@ body.rut-body .rut-panel,
 body.rut-body .rut-tips-card,
 body.rut-body .rut-tl-head,
 body.rut-body .rut-cal-card,
+body.rut-body .rut-pend-panel,
 body.rut-body .rut-dia-btn,
 body.rut-body .rut-header,
 body.rut-body .rut-chips-nav {
@@ -9749,8 +10088,27 @@ body.rut-body .rut-chip.activo {
 body.rut-body .rut-chips-leyenda,
 body.rut-body .rut-chips-vacio { color: var(--color-texto-muted); }
 
-/* Estas dos llevan tinte de persona: se conserva y se le agrega la
-   translucidez encima (color-mix anidado), en vez de pisarlo con superficie. */
+/* La fila de una tarea es la única ficha que vive DENTRO de otra tarjeta
+   translúcida, y eso cambia las cuentas:
+     - Más opaca (55% contra 20%): con el vidrio flojo las dos capas se funden
+       y la fila se pierde contra el cielo. Manda la regla del módulo — ante la
+       duda se sube la opacidad de la tarjeta, no se apaga el fondo.
+     - Aclarada con `--color-texto` y no con `--color-superficie` a secas: en
+       modo noche la superficie ES azul oscuro, así que subirle opacidad la
+       hacía MÁS oscura que la tarjeta que la contiene — un agujero, no una
+       ficha. Mezclar texto la despega en los dos temas sin reglas por tema: de
+       noche el texto es claro y la levanta; de día es oscuro y la asienta.
+   Alcanza con tocarla acá: en el Inicio no hay paisaje y va con superficie
+   plena. */
+body.rut-body .rut-pend-item {
+  background: color-mix(in srgb,
+              color-mix(in srgb, var(--color-texto) 10%, var(--color-superficie)) 55%,
+              transparent);
+  backdrop-filter: blur(var(--rut-blur));
+}
+
+/* Estas llevan tinte de persona: se conserva y se le agrega la translucidez
+   encima (color-mix anidado), en vez de pisarlo con superficie. */
 body.rut-body .rut-card-ahora,
 body.rut-body .rut-miembro {
   background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio), transparent);
