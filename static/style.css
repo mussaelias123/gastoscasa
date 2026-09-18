@@ -7167,9 +7167,14 @@ details[open] > .rut-panel-summary::after { content: '▴'; }
   padding: 0.45rem 0.55rem;
   border: 1px solid var(--color-borde);
   border-radius: var(--radio-borde);
-  /* Fondo simple. Adentro de /rutina el bloque de tarjetas translúcidas de
-     `body.rut-body` la pasa a vidrio, como a todas las demás; en el Inicio,
-     donde no hay paisaje detrás, queda la superficie plena. */
+  /* Color por defecto: una tarea puede tener varios responsables o ninguno,
+     así que no hay un `--rut-color` de dueño como en una actividad. Lo consume
+     el tinte de `body.rut-body` que la despega del paisaje. */
+  --rut-color: var(--color-acento);
+  /* Fondo simple. Adentro de /rutina el bloque de fichas translúcidas de
+     `body.rut-body` la pasa a vidrio con tinte, como a las de Familia y a las
+     tarjetas "Ahora"; en el Inicio, donde no hay paisaje detrás, queda la
+     superficie plena. */
   background: var(--color-superficie);
   color: var(--color-texto);
   font: inherit;
@@ -10049,7 +10054,6 @@ body.rut-body .rut-tips-card,
 body.rut-body .rut-tl-head,
 body.rut-body .rut-cal-card,
 body.rut-body .rut-pend-panel,
-body.rut-body .rut-pend-item,
 body.rut-body .rut-dia-btn,
 body.rut-body .rut-header,
 body.rut-body .rut-chips-nav {
@@ -10084,8 +10088,27 @@ body.rut-body .rut-chip.activo {
 body.rut-body .rut-chips-leyenda,
 body.rut-body .rut-chips-vacio { color: var(--color-texto-muted); }
 
-/* Estas dos llevan tinte de persona: se conserva y se le agrega la
-   translucidez encima (color-mix anidado), en vez de pisarlo con superficie. */
+/* La fila de una tarea es la única ficha que vive DENTRO de otra tarjeta
+   translúcida, y eso cambia las cuentas:
+     - Más opaca (55% contra 20%): con el vidrio flojo las dos capas se funden
+       y la fila se pierde contra el cielo. Manda la regla del módulo — ante la
+       duda se sube la opacidad de la tarjeta, no se apaga el fondo.
+     - Aclarada con `--color-texto` y no con `--color-superficie` a secas: en
+       modo noche la superficie ES azul oscuro, así que subirle opacidad la
+       hacía MÁS oscura que la tarjeta que la contiene — un agujero, no una
+       ficha. Mezclar texto la despega en los dos temas sin reglas por tema: de
+       noche el texto es claro y la levanta; de día es oscuro y la asienta.
+   Alcanza con tocarla acá: en el Inicio no hay paisaje y va con superficie
+   plena. */
+body.rut-body .rut-pend-item {
+  background: color-mix(in srgb,
+              color-mix(in srgb, var(--color-texto) 10%, var(--color-superficie)) 55%,
+              transparent);
+  backdrop-filter: blur(var(--rut-blur));
+}
+
+/* Estas llevan tinte de persona: se conserva y se le agrega la translucidez
+   encima (color-mix anidado), en vez de pisarlo con superficie. */
 body.rut-body .rut-card-ahora,
 body.rut-body .rut-miembro {
   background: color-mix(in srgb, var(--color-superficie) var(--rut-vidrio), transparent);
