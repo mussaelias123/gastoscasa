@@ -150,10 +150,17 @@ def inicializar_db():
     # monto_usd: equivalente del movimiento en dólares, guardado al insertar/editar.
     # cotizacion_usd_aplicada: cotización ARS→USD usada al calcular monto_usd.
     #                          NULL para movimientos en USD (no hay conversión).
+    # personal: 0 = movimiento del FONDO FAMILIAR (todo lo que existía hasta
+    #           2026-09), 1 = cuenta personal de `persona`. El DEFAULT 0 hace
+    #           que las filas viejas queden en el fondo sin backfill.
+    #           NUNCA lleva factor_aplicado: un sueldo siempre entra al fondo
+    #           (lo que el factor deja afuera se DERIVA, no se guarda — ver
+    #           calcular_saldos_personales()).
     for columna, definicion in [
         ('categoria', 'TEXT'), ('costo_envio', 'REAL'), ('factor_aplicado', 'REAL'),
         ('cuota_numero', 'INTEGER'), ('cuota_total', 'INTEGER'),
         ('monto_usd', 'REAL'), ('cotizacion_usd_aplicada', 'REAL'),
+        ('personal', 'INTEGER NOT NULL DEFAULT 0'),
     ]:
         try:
             cursor.execute(f'ALTER TABLE movimientos ADD COLUMN {columna} {definicion}')
@@ -615,10 +622,15 @@ def calcular_saldos(hasta=None):
     # (comportamiento original intacto).
     # NOTA: filtro_fecha es un literal fijo (no dato de usuario); el valor
     # 'hasta' viaja por '?' parametrizado, así que no hay riesgo de inyección.
-    filtro_fecha = ''
+    # El fondo familiar son SOLO las filas con personal = 0. Las de la cuenta
+    # personal de cada uno (personal = 1) no lo tocan nunca: por eso el filtro
+    # es fijo y no un parámetro. Los saldos personales tienen su propia
+    # función (calcular_saldos_personales), que además deriva el resto del
+    # sueldo que el factor deja afuera del fondo.
+    filtro_fecha = 'WHERE personal = 0'
     params = []
     if hasta and re.match(r'^\d{4}-\d{2}-\d{2}$', hasta):
-        filtro_fecha = 'WHERE fecha <= ?'
+        filtro_fecha += ' AND fecha <= ?'
         params = [hasta]
 
     # Query 1: saldos por persona y moneda en moneda nativa (interfaz original).
@@ -714,11 +726,27 @@ def calcular_saldos(hasta=None):
 #
 # Retorna: (lista_de_filas, total_de_registros)
 #
-def obtener_movimientos(persona=None, moneda=None, pagina=None, por_pagina=20, mes=None, limite=None):
+def obtener_movimientos(persona=None, moneda=None, pagina=None, por_pagina=20, mes=None, limite=None,
+                        ambito='fondo'):
+    """
+    `ambito` decide de qué bolsillo se leen los movimientos:
+      - 'fondo'    (default) → solo el fondo familiar (personal = 0). Es el
+                    comportamiento de siempre: ninguna llamada existente cambia.
+      - 'personal' → solo la cuenta personal (personal = 1). Combinar con
+                    `persona` para ver la de uno solo.
+      - 'todos'    → sin filtro (hoy nadie lo usa; queda para reportes).
+    """
     conn = conectar()
 
     condiciones = []
     parametros  = []
+
+    if ambito == 'fondo':
+        condiciones.append('personal = 0')
+    elif ambito == 'personal':
+        condiciones.append('personal = 1')
+    elif ambito != 'todos':
+        raise ValueError(f"ambito inválido: {ambito}")
 
     if persona:
         condiciones.append('persona = ?')
@@ -740,7 +768,7 @@ def obtener_movimientos(persona=None, moneda=None, pagina=None, por_pagina=20, m
     ).fetchone()[0]
 
     query = f'''
-        SELECT id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada
+        SELECT id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada, personal
         FROM movimientos
         {where}
         ORDER BY fecha DESC, id DESC
@@ -766,7 +794,7 @@ def obtener_movimientos(persona=None, moneda=None, pagina=None, por_pagina=20, m
 #   INSERT INTO movimientos (fecha, descripcion, persona, moneda, tipo, monto)
 #   VALUES ('2024-03-15', 'Sueldo', 'elias', 'ars', 'ingreso', 500000.0)
 #
-def agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categoria=None, costo_envio=None, factor_aplicado=None, cuota_numero=None, cuota_total=None, monto_usd=None, cotizacion_usd_aplicada=None):
+def agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categoria=None, costo_envio=None, factor_aplicado=None, cuota_numero=None, cuota_total=None, monto_usd=None, cotizacion_usd_aplicada=None, personal=0):
     """
     Inserta un nuevo movimiento en la base de datos.
 
@@ -774,14 +802,18 @@ def agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categor
     antes de llamar a esta función (ver lógica en /agregar y /editar).
       - Si moneda=='usd' → monto_usd=monto, cotizacion_usd_aplicada=None.
       - Si moneda=='ars' → monto_usd=monto/cotizacion, cotizacion_usd_aplicada=cotizacion.
+
+    personal: 0 = fondo familiar (default, comportamiento de siempre),
+              1 = cuenta personal de `persona`. La validación de qué combina
+              con qué (un personal nunca lleva factor ni cuotas) vive en app.py.
     """
     conn = conectar()
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT INTO movimientos (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada))
+        INSERT INTO movimientos (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada, personal)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_usd_aplicada, 1 if personal else 0))
     # Los ? se reemplazan en orden con los valores de la tupla.
     # Esto evita SQL Injection: nunca armar el string SQL con format() o +
 
@@ -836,22 +868,171 @@ def obtener_movimiento(id):
 #   UPDATE movimientos SET fecha=?, descripcion=?, ... WHERE id=?
 #
 
-def editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria=None, costo_envio=None, monto_usd=None, cotizacion_usd_aplicada=None):
+def editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria=None, costo_envio=None, monto_usd=None, cotizacion_usd_aplicada=None, personal=None):
     """
     Actualiza un movimiento existente. Recalcula siempre monto_usd y
     cotizacion_usd_aplicada según la moneda/monto nuevos (pasados por app.py).
+
+    personal=None (default) NO toca la columna: un formulario viejo que no
+    manda el campo deja el movimiento donde estaba. Con 0/1 lo mueve de
+    bolsillo (del fondo a la cuenta personal y viceversa).
     """
     conn = conectar()
     cursor = conn.cursor()
 
-    cursor.execute('''
-        UPDATE movimientos
-        SET fecha=?, descripcion=?, persona=?, moneda=?, tipo=?, monto=?, categoria=?, costo_envio=?, monto_usd=?, cotizacion_usd_aplicada=?
-        WHERE id=?
-    ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_usd_aplicada, id))
+    if personal is None:
+        cursor.execute('''
+            UPDATE movimientos
+            SET fecha=?, descripcion=?, persona=?, moneda=?, tipo=?, monto=?, categoria=?, costo_envio=?, monto_usd=?, cotizacion_usd_aplicada=?
+            WHERE id=?
+        ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_usd_aplicada, id))
+    else:
+        cursor.execute('''
+            UPDATE movimientos
+            SET fecha=?, descripcion=?, persona=?, moneda=?, tipo=?, monto=?, categoria=?, costo_envio=?, monto_usd=?, cotizacion_usd_aplicada=?, personal=?
+            WHERE id=?
+        ''', (fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_usd_aplicada, 1 if personal else 0, id))
 
     conn.commit()
     conn.close()
+
+
+# =============================================================================
+# FUNCIONES: Cuenta personal (módulo Personal)
+# =============================================================================
+#
+# La cuenta personal de cada uno se alimenta de DOS fuentes:
+#
+#   1. Movimientos cargados con el checkbox "Personal" tildado
+#      (personal = 1). Plata que entra o sale de su bolsillo y NO toca el
+#      fondo familiar.
+#
+#   2. El RESTO DEL SUELDO. Un sueldo siempre entra al fondo (no se puede
+#      cargar un sueldo personal), pero el fondo se queda con
+#      `monto * factor_aplicado`; el resto — `monto * (1 - factor_aplicado)` —
+#      es plata de esa persona. NO se guarda como fila: se DERIVA acá.
+#
+#      Por qué derivado y no una segunda fila: la regla del proyecto es que
+#      los saldos nunca se almacenan. Editar el sueldo actualiza las dos
+#      cuentas solo, borrarlo lo saca de las dos, y el `factor_aplicado` que
+#      ya está congelado en la fila hace que cambiar el factor en Settings no
+#      reescriba la historia. Con una fila espejo habría que mantener a mano
+#      una cascada de alta/edición/borrado y convivir con filas huérfanas.
+#
+#      Se excluyen los factores fuera de [0, 1): con factor = 1 el fondo se
+#      queda con todo y el resto es cero (no hay nada que mostrar).
+
+
+def calcular_saldos_personales(persona, hasta=None):
+    """
+    Saldos de la cuenta personal de UNA persona.
+
+    Retorna `{'ars', 'usd', 'total_usd'}`. `total_usd` usa el `monto_usd`
+    congelado en cada fila (cotización del día de carga), igual que los
+    saldos del fondo — no revalúa a la cotización de hoy.
+
+    `hasta='YYYY-MM-DD'` limita a los movimientos de esa fecha o anteriores.
+    """
+    conn = conectar()
+    cursor = conn.cursor()
+
+    filtro_fecha = ''
+    extra = []
+    if hasta and re.match(r'^\d{4}-\d{2}-\d{2}$', hasta):
+        filtro_fecha = 'AND fecha <= ?'
+        extra = [hasta]
+
+    # ── Fuente 1: lo cargado como personal ────────────────────────────────
+    # Mismo criterio que calcular_saldos() para gastos y prorrateo de envío.
+    # Sin rama de sueldo: un movimiento personal nunca lleva factor_aplicado.
+    cursor.execute(f'''
+        SELECT moneda,
+               SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) AS ingresos,
+               SUM(CASE WHEN tipo = 'gasto'
+                        THEN monto + COALESCE(costo_envio, 0) ELSE 0 END) AS gastos,
+               SUM(CASE WHEN tipo = 'ingreso'
+                        THEN COALESCE(monto_usd, 0) ELSE 0 END) AS ingresos_usd,
+               SUM(CASE WHEN tipo = 'gasto'
+                        THEN COALESCE(monto_usd, 0)
+                             + (COALESCE(costo_envio, 0) *
+                                CASE WHEN monto > 0 AND monto_usd IS NOT NULL
+                                     THEN monto_usd / monto ELSE 0 END)
+                        ELSE 0 END) AS gastos_usd
+        FROM movimientos
+        WHERE personal = 1 AND persona = ? {filtro_fecha}
+        GROUP BY moneda
+    ''', [persona] + extra)
+    filas = cursor.fetchall()
+
+    # ── Fuente 2: el resto del sueldo que el factor deja fuera del fondo ──
+    cursor.execute(f'''
+        SELECT moneda,
+               SUM(monto * (1 - factor_aplicado))                 AS resto,
+               SUM(COALESCE(monto_usd, 0) * (1 - factor_aplicado)) AS resto_usd
+        FROM movimientos
+        WHERE personal = 0 AND persona = ?
+          AND tipo = 'ingreso'
+          AND LOWER(COALESCE(categoria, '')) = 'sueldo'
+          AND factor_aplicado IS NOT NULL
+          AND factor_aplicado >= 0 AND factor_aplicado < 1
+          {filtro_fecha}
+        GROUP BY moneda
+    ''', [persona] + extra)
+    filas_sueldo = cursor.fetchall()
+
+    conn.close()
+
+    saldos = {'ars': 0.0, 'usd': 0.0, 'total_usd': 0.0}
+
+    for fila in filas:
+        if fila['moneda'] in ('ars', 'usd'):
+            saldos[fila['moneda']] += (fila['ingresos'] or 0.0) - (fila['gastos'] or 0.0)
+        saldos['total_usd'] += (fila['ingresos_usd'] or 0.0) - (fila['gastos_usd'] or 0.0)
+
+    for fila in filas_sueldo:
+        if fila['moneda'] in ('ars', 'usd'):
+            saldos[fila['moneda']] += (fila['resto'] or 0.0)
+        saldos['total_usd'] += (fila['resto_usd'] or 0.0)
+
+    return saldos
+
+
+def obtener_sueldos_resto(persona, mes=None, limite=None):
+    """
+    Los sueldos del FONDO de una persona que dejaron un resto personal, con
+    ese resto ya calculado por fila (`resto`, `resto_usd`).
+
+    Materia prima de las filas sintéticas que el módulo Personal muestra en
+    la lista de movimientos: no son filas reales, no se editan ni se borran
+    desde ahí (se toca el sueldo, en Gastos). `id` es el del sueldo real.
+    """
+    conn = conectar()
+
+    condiciones = ["personal = 0", "persona = ?", "tipo = 'ingreso'",
+                   "LOWER(COALESCE(categoria, '')) = 'sueldo'",
+                   "factor_aplicado IS NOT NULL",
+                   "factor_aplicado >= 0", "factor_aplicado < 1"]
+    parametros = [persona]
+
+    if mes:
+        condiciones.append("strftime('%Y-%m', fecha) = ?")
+        parametros.append(mes)
+
+    query = f'''
+        SELECT id, fecha, descripcion, persona, moneda, monto, factor_aplicado,
+               monto_usd, cotizacion_usd_aplicada,
+               monto * (1 - factor_aplicado)                  AS resto,
+               COALESCE(monto_usd, 0) * (1 - factor_aplicado) AS resto_usd
+        FROM movimientos
+        WHERE {' AND '.join(condiciones)}
+        ORDER BY fecha DESC, id DESC
+    '''
+    if limite is not None:
+        query += f' LIMIT {int(limite)}'
+
+    filas = conn.execute(query, parametros).fetchall()
+    conn.close()
+    return filas
 
 
 # =============================================================================
@@ -964,6 +1145,7 @@ def verificar_gastos_fijos(mes):
                 SELECT monto, persona, moneda FROM movimientos
                 WHERE LOWER(descripcion) = LOWER(?)
                   AND cuota_numero IS NOT NULL
+                  AND personal = 0
                   AND strftime('%Y-%m', fecha) = ?
                 LIMIT 1
             ''', (fijo['descripcion'], mes)).fetchone()
@@ -972,6 +1154,7 @@ def verificar_gastos_fijos(mes):
                 SELECT monto, persona, moneda FROM movimientos
                 WHERE LOWER(categoria) = 'fijo'
                   AND LOWER(descripcion) = LOWER(?)
+                  AND personal = 0
                   AND strftime('%Y-%m', fecha) = ?
                 LIMIT 1
             ''', (fijo['descripcion'], mes)).fetchone()

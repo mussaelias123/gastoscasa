@@ -1126,6 +1126,81 @@ def _calcular_monto_usd(monto, moneda, cfg):
         cot = 1.0  # Guardia defensiva: evita división por cero si algo salió mal.
     return float(monto) / cot, cot
 
+
+# =============================================================================
+# MÓDULO PERSONAL — identidad y validación del checkbox "Personal"
+# =============================================================================
+#
+# QUÉ ES: cada uno tiene, además del fondo familiar, una cuenta propia. Un
+# movimiento cargado con el checkbox "Personal" tildado (columna
+# `movimientos.personal = 1`) NO toca el fondo: no mueve sus saldos, no sale
+# en su tabla ni en su Resumen.
+#
+# DE QUIÉN ES LA CUENTA: la define la cuenta de Google con la que se entró
+# (`auth.PERSONAS_POR_EMAIL`), NO un desplegable. Cada uno ve solo la suya.
+#
+# EL SUELDO: no se puede cargar un sueldo personal. Un sueldo siempre entra
+# al fondo y se le aplica el factor; lo que el factor deja afuera se DERIVA
+# como ingreso de la cuenta personal (ver database.calcular_saldos_personales).
+# Por eso un movimiento personal nunca lleva `factor_aplicado`.
+#
+# TAMPOCO cuotas ni categoría "Fijo": las dos cuelgan de la tabla
+# `gastos_fijos`, que es del fondo familiar y no tiene persona ni ámbito.
+# Queda para una versión siguiente.
+
+# Categorías que NO existen en la cuenta personal, con el motivo para el aviso.
+CATEGORIAS_VEDADAS_PERSONAL = {
+    'sueldo': 'Un sueldo siempre entra al fondo familiar. La parte que el '
+              'factor deja afuera aparece sola en tu cuenta personal.',
+    'fijo':   'Los gastos fijos son del fondo familiar.',
+}
+
+
+def _persona_actual(cfg=None):
+    """
+    Qué persona ('elias' | 'mari') está mirando la app, según su sesión.
+
+    En PROD sale del email de Google. Con el bypass DEV la sesión es
+    `dev@local`, que no está mapeado: ahí manda la clave `persona_dev` de
+    config.json (cambiarla permite probar la vista de Mari sin OAuth).
+    """
+    from flask import session as flask_session
+    from auth import persona_de_email
+
+    persona = persona_de_email(flask_session.get('user_email'))
+    if persona:
+        return persona
+
+    if cfg is None:
+        cfg = config.cargar_config(CONFIG_FILE)
+    persona_dev = (cfg.get('persona_dev') or '').strip().lower()
+    return persona_dev if persona_dev in ('elias', 'mari') else 'elias'
+
+
+def _leer_personal_form(form, tipo, categoria):
+    """
+    Lee el checkbox "Personal" del formulario y valida que la combinación
+    tenga sentido. Retorna `bool`. Lanza ValueError con un mensaje para el
+    usuario si se pidió algo que la cuenta personal no admite.
+
+    El front ya deshabilita estas opciones al tildar "Personal"; esto es la
+    red de seguridad del servidor (un POST sin JS tiene que fallar igual).
+    """
+    if form.get('personal') != '1':
+        return False
+
+    motivo = CATEGORIAS_VEDADAS_PERSONAL.get((categoria or '').strip().lower())
+    if motivo:
+        raise ValueError(motivo)
+
+    # "Cambio" mueve plata entre monedas de la MISMA cuenta: es válido en
+    # personal. Lo que no puede pasar es que arrastre cuotas.
+    if tipo not in ('gasto', 'ingreso', 'cambio'):
+        raise ValueError(f'Tipo no válido para un movimiento personal: {tipo}')
+
+    return True
+
+
 app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
             static_folder=os.path.join(BASE_DIR, 'static'))
@@ -1568,6 +1643,15 @@ def agregar():
         tipo        = request.form['tipo']      # 'ingreso', 'gasto' o 'cambio'
         monto       = float(request.form['monto'])
 
+        # ── Checkbox "Personal" ──────────────────────────────────────────
+        # Tildado → el movimiento va a la cuenta personal de `persona` y no
+        # toca el fondo familiar. Destildado (default) → todo como siempre.
+        # En un "cambio" la categoría la fija el server ('Cambio'), así que
+        # para validar se mira la del form solo cuando no es cambio.
+        es_personal = _leer_personal_form(
+            request.form, tipo,
+            None if tipo == 'cambio' else request.form.get('categoria'))
+
         # Cotización vigente para calcular monto_usd. Se carga una sola vez por
         # request, pero cada movimiento usa la suya según su propia moneda.
         cfg_actual = config.cargar_config(CONFIG_FILE)
@@ -1587,18 +1671,21 @@ def agregar():
             id1 = database.agregar_movimiento(
                 fecha, descripcion, persona, moneda, 'gasto', monto,
                 categoria='Cambio',
-                monto_usd=monto_usd_1, cotizacion_usd_aplicada=cot_1)
+                monto_usd=monto_usd_1, cotizacion_usd_aplicada=cot_1,
+                personal=es_personal)
 
             # Movimiento 2: entrada (ingreso al destino)
             id2 = database.agregar_movimiento(
                 fecha, descripcion, persona_final, moneda_final, 'ingreso', monto_final,
                 categoria='Cambio',
-                monto_usd=monto_usd_2, cotizacion_usd_aplicada=cot_2)
+                monto_usd=monto_usd_2, cotizacion_usd_aplicada=cot_2,
+                personal=es_personal)
 
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 saldos = database.calcular_saldos()
                 return jsonify({
                     'ok': True,
+                    'personal': es_personal,
                     'movimiento': {
                         'id':              id1,
                         'fecha':           fecha,
@@ -1612,6 +1699,7 @@ def agregar():
                         'factor_aplicado': None,
                         'cuota_numero':    None,
                         'cuota_total':     None,
+                        'personal':        es_personal,
                     },
                     'movimiento2': {
                         'id':              id2,
@@ -1630,13 +1718,17 @@ def agregar():
         costo_envio_str = request.form.get('costo_envio', '').strip()
         costo_envio = float(costo_envio_str) if costo_envio_str else None
 
+        # Factor de sueldo: solo en el fondo. Un sueldo personal no existe
+        # (_leer_personal_form lo rechaza), así que acá nunca se da el caso;
+        # la condición queda explícita igual porque es la regla de negocio.
         factor_aplicado = None
-        if tipo == 'ingreso' and (categoria or '').lower() == 'sueldo':
+        if not es_personal and tipo == 'ingreso' and (categoria or '').lower() == 'sueldo':
             _cfg_factor = config.cargar_config(CONFIG_FILE)
             factor_aplicado = _cfg_factor.get('factor_sueldo', 0.7)
 
-        # Lógica de cuotas
-        cuotas_checkbox = request.form.get('cuotas_checkbox') == '1'
+        # Lógica de cuotas — solo en el fondo: `gastos_fijos` no tiene persona
+        # ni ámbito, así que una cuota personal ensuciaría el checklist familiar.
+        cuotas_checkbox = (not es_personal) and request.form.get('cuotas_checkbox') == '1'
         total_cuotas_str = request.form.get('total_cuotas', '').strip()
         total_cuotas = int(total_cuotas_str) if total_cuotas_str else None
 
@@ -1649,7 +1741,7 @@ def agregar():
             cuota_numero = 1
             cuota_total = total_cuotas
             crear_fijo_cuotas = True
-        elif (categoria or '').lower() == 'fijo':
+        elif not es_personal and (categoria or '').lower() == 'fijo':
             fijo = database.obtener_gasto_fijo_por_descripcion(descripcion)
             if fijo and fijo['es_cuota']:
                 cuota_numero = (fijo['cuota_actual'] or 0) + 1
@@ -1659,7 +1751,7 @@ def agregar():
         # Cálculo de equivalente en USD (ARS/USD según la moneda del movimiento).
         monto_usd, cotizacion_aplicada = _calcular_monto_usd(monto, moneda, cfg_actual)
 
-        nuevo_id = database.agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_aplicada)
+        nuevo_id = database.agregar_movimiento(fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, factor_aplicado, cuota_numero, cuota_total, monto_usd, cotizacion_aplicada, personal=es_personal)
 
         # Acciones post-insert de cuotas
         if crear_fijo_cuotas:
@@ -1671,6 +1763,9 @@ def agregar():
             saldos = database.calcular_saldos()
             return jsonify({
                 'ok': True,
+                # `personal` arriba de todo para que el front decida rápido:
+                # una fila personal NO se agrega a la tabla del fondo.
+                'personal': es_personal,
                 'movimiento': {
                     'id':              nuevo_id,
                     'fecha':           fecha,
@@ -1684,6 +1779,7 @@ def agregar():
                     'factor_aplicado': factor_aplicado,
                     'cuota_numero':    cuota_numero,
                     'cuota_total':     cuota_total,
+                    'personal':        es_personal,
                 },
                 'saldos': {k: float(v) for k, v in saldos.items()},
             })
@@ -1730,11 +1826,20 @@ def editar(id):
         costo_envio_str = request.form.get('costo_envio', '').strip()
         costo_envio = float(costo_envio_str) if costo_envio_str else None
 
+        # Ámbito: el form de edición manda `ambito_presente=1` para distinguir
+        # "el usuario dejó el checkbox destildado" de "este form ni sabe que
+        # existe". Sin esa marca, `personal=None` deja el movimiento donde
+        # estaba (editar_movimiento no toca la columna).
+        es_personal = None
+        if request.form.get('ambito_presente') == '1':
+            es_personal = _leer_personal_form(request.form, tipo, categoria)
+
         # Recalculamos monto_usd con la cotización actual cada vez que se edita.
         cfg_actual = config.cargar_config(CONFIG_FILE)
         monto_usd, cotizacion_aplicada = _calcular_monto_usd(monto, moneda, cfg_actual)
 
-        database.editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_aplicada)
+        database.editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_aplicada, personal=es_personal)
+
         mes = request.form.get('mes', '') or request.args.get('mes', '')
         return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
     else:

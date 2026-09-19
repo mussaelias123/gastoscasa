@@ -31,6 +31,29 @@
 | `cuota_total`            | INTEGER | NULL si no es cuota                                     |
 | `monto_usd`              | REAL    | Equivalente USD al insertar. NULL en filas pre-backfill |
 | `cotizacion_usd_aplicada`| REAL    | Cotización ARS→USD usada. NULL si moneda='usd'          |
+| `personal`               | INTEGER | `0` = fondo familiar (todo lo previo a 2026-09; el `DEFAULT 0` evitó backfill), `1` = cuenta personal de `persona`. Ver "Cuenta personal" abajo |
+
+### La columna `personal` — el filtro que no se puede olvidar
+El módulo Personal NO agregó una tabla: agregó esta columna. **Toda query sobre
+`movimientos` tiene que declarar de qué bolsillo lee**, o el fondo empieza a
+sumar plata que no es suya. Hoy son seis queries en tres funciones:
+`calcular_saldos` (2, filtro fijo `personal = 0`), `obtener_movimientos` (2, vía
+el parámetro `ambito`) y `verificar_gastos_fijos` (2, filtro fijo). Cubierto por
+`tests/test_personal.py`, que corre el mismo escenario con y sin movimientos
+personales y exige que el fondo dé idéntico.
+
+Un movimiento `personal = 1` **nunca lleva `factor_aplicado`, `cuota_numero` ni
+`cuota_total`**: no existe el sueldo personal (siempre entra al fondo) y las
+cuotas cuelgan de `gastos_fijos`, que no tiene persona ni ámbito.
+
+**El resto del sueldo no es una fila.** El fondo se queda con
+`monto * factor_aplicado`; lo que sobra es plata de esa persona y se DERIVA
+(`calcular_saldos_personales`, `obtener_sueldos_resto`), no se guarda. Coherente
+con la regla 1 de este doc (saldos siempre derivados): editar el sueldo actualiza
+las dos cuentas solo, borrarlo lo saca de las dos, y el `factor_aplicado`
+congelado por fila hace que cambiar el factor en Settings no reescriba la
+historia. Se ignoran los factores fuera de `[0, 1)`: con factor 1 el resto es
+cero, y una fila vieja sin factor no permite saber qué parte era personal.
 
 ### Tabla `gastos_fijos`
 | Columna        | Tipo    | Notas                                       |
@@ -276,12 +299,14 @@ Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 |----------------------------------|------------------------------------|------------------------------------|
 | `conectar()`                     | `Connection` (row_factory=Row)     | Caller debe cerrar                 |
 | `inicializar_db()`               | None                               | Idempotente. Llamar al boot        |
-| `calcular_saldos(hasta=None)`    | `dict` con 8 claves                | `hasta='YYYY-MM-DD'` → saldos ≤ esa fecha (inclusive). `None` = toda la DB |
-| `obtener_movimientos(...)`       | `(filas, total)`                   | Filtros: persona, moneda, mes      |
-| `agregar_movimiento(...)`        | `id` nuevo                         | 13 parámetros — ver firma          |
+| `calcular_saldos(hasta=None)`    | `dict` con 8 claves                | **Solo el fondo** (`personal = 0`, filtro fijo). `hasta='YYYY-MM-DD'` → saldos ≤ esa fecha (inclusive). `None` = toda la DB |
+| `obtener_movimientos(..., ambito='fondo')` | `(filas, total)`         | Filtros: persona, moneda, mes. `ambito`: `fondo` (default, `personal=0`) \| `personal` \| `todos`; otro valor → ValueError. El SELECT devuelve también `personal` |
+| `agregar_movimiento(..., personal=0)` | `id` nuevo                    | 14 parámetros — ver firma          |
 | `eliminar_movimiento(id)`        | None                               |                                    |
-| `obtener_movimiento(id)`         | `Row` o None                       |                                    |
-| `editar_movimiento(...)`         | None                               |                                    |
+| `obtener_movimiento(id)`         | `Row` o None                       | Sin filtro de ámbito: es por id    |
+| `editar_movimiento(..., personal=None)` | None                        | `personal=None` **no toca la columna** (un form viejo no mueve el movimiento de bolsillo); `0`/`1` lo mueve |
+| `calcular_saldos_personales(persona, hasta=None)` | `{'ars','usd','total_usd'}` | Cuenta personal de UNA persona: lo cargado como `personal=1` **+ el resto del sueldo derivado**. `total_usd` usa el `monto_usd` congelado (no revalúa a hoy) |
+| `obtener_sueldos_resto(persona, mes=None, limite=None)` | `list[Row]` | Los sueldos del FONDO que dejaron resto personal, con `resto` y `resto_usd` ya calculados por fila. Materia prima de las filas sintéticas del módulo Personal (`id` = el del sueldo real). Excluye factor NULL, `<0` o `>=1` |
 | `obtener_gastos_fijos(solo_activos=True)` | `list[Row]`              |                                    |
 | `agregar_gasto_fijo(desc)`       | id                                 |                                    |
 | `editar_gasto_fijo(id, ...)`     | None                               |                                    |

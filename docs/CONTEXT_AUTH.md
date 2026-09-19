@@ -14,6 +14,20 @@ Hardcoded en `auth.py → EMAILS_PERMITIDOS`:
 
 Para agregar usuario: editar la lista en `auth.py`. **No hay UI para esto** (decisión deliberada).
 
+## Email → persona (módulo Personal)
+`auth.py → PERSONAS_POR_EMAIL` traduce la cuenta de Google al valor de
+`movimientos.persona`: `mussaelias123@gmail.com → elias`,
+`mossinomariana@gmail.com → mari`. Helper `persona_de_email(email, defecto=None)`
+(case-insensitive). Lo consume `_persona_actual()` de `app.py`: en el módulo
+Personal la persona NO se elige en un desplegable, sale de la sesión, y cada uno
+ve solo su propia cuenta.
+
+Vive junto a `EMAILS_PERMITIDOS` a propósito: son la misma decisión (quién entra
+y quién es). **Sumar un tercero obliga a tocar las dos listas.**
+
+Con el bypass DEV la sesión es `dev@local`, que no está mapeado: ahí decide la
+clave `persona_dev` de `config.json` (ver `CONTEXT_CONFIG.md`).
+
 ## Rutas
 | Método | URL                       | Función         |
 |--------|---------------------------|-----------------|
