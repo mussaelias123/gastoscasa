@@ -1265,7 +1265,10 @@ a.btn-filtro {
 /* Grid de 2 gráficos lado a lado */
 .dash-graficos-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* `minmax(0, 1fr)` y no `1fr`: el default de una pista de grid es
+     `min-width: auto`, o sea "no me achiques por debajo de mi contenido".
+     Con un canvas adentro eso se traduce en "no me achiques nunca". */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1.2rem;
   margin-bottom: 1.4rem;
 }
@@ -1286,9 +1289,24 @@ a.btn-filtro {
 }
 
 /* Contenedor de canvas con altura fija para Chart.js responsive */
+/* ⚠ `min-width: 0` acá y en `.dash-chart-card` NO es cosmético: es lo que
+   permite que el contenedor se achique al angostar la ventana. Chart.js con
+   `responsive: true` mide el contenedor y dibuja el canvas de ese ancho; si el
+   contenedor no puede achicarse por debajo del canvas, y el canvas no achica
+   porque el contenedor no achicó, quedan trabados. El canvas se congela con
+   el ancho que tenía (p. ej. 1514px de una pantalla Full HD) y le da a TODA
+   la página un scroll horizontal con una franja blanca al costado.
+   Pasó en /personal el 2026-09-19. Vale para /resumen igual. */
 .dash-chart-contenedor {
   position: relative;
   height: 230px;
+  min-width: 0;
+}
+
+/* Cinturón y tiradores: aunque un chart quede desincronizado, el canvas no
+   desborda su tarjeta. */
+.dash-chart-contenedor > canvas {
+  max-width: 100%;
 }
 
 /* Contenedor del donut con texto central superpuesto */
@@ -1555,6 +1573,7 @@ a.btn-filtro {
   padding: 1.2rem;
   box-shadow: var(--sombra-card);
   margin-bottom: 1.2rem;
+  min-width: 0;   /* ver el comentario de .dash-chart-contenedor */
 }
 
 .dash-chart-wide {
@@ -3132,6 +3151,13 @@ a.btn-filtro {
     height: 100dvh;
     min-height: 0;
     overflow: hidden;
+  }
+
+  /* /personal scrollea en vertical (el resumen esta abajo) pero en horizontal
+     se comporta como /gastos: nada de barra lateral. Es una red — la causa de
+     que algo desbordara se arregla donde nace, no tapandola aca. */
+  body:has(.layout-desktop):has(.per-resumen) {
+    overflow-x: hidden;
   }
 
   body:has(.layout-desktop):not(:has(.per-resumen)) .contenido-principal {
@@ -10457,12 +10483,6 @@ body.rut-quieto .app-ico * { animation-play-state: paused; }
   white-space: nowrap;
 }
 
-/* El ↗ de una fila sintética: lleva al sueldo del fondo, que es donde se
-   edita. Se distingue del ✎ de una fila real — punteado, como su badge. */
-.per-btn-ir {
-  border-style: dashed;
-  color: var(--color-acento);
-}
 
 /* Persona fija (solo en /personal): ocupa el lugar del desplegable, con el
    alto de un input para que la fila no se descuadre. */

@@ -134,13 +134,10 @@
           {% endif %}
         </td>
         <td class="col-acciones">
-          {% if mov.sintetico %}
-            {# No es una fila real: no se edita ni se borra desde acá. El link
-               lleva al sueldo del fondo, que es donde se toca de verdad. #}
-            <a class="btn btn-editar per-btn-ir" href="{{ url_for('editar', id=mov.id) }}"
-               title="Se edita en el sueldo, dentro de Gastos"
-               aria-label="Ver el sueldo del que sale esta fila">↗</a>
-          {% else %}
+          {# La fila del sueldo no es una fila de la base: no se edita ni se
+             borra, y no lleva ningún botón. El badge "automático" ya dice de
+             dónde sale; el sueldo real se toca en Gastos, como cualquier otro. #}
+          {% if not mov.sintetico %}
             <a class="btn btn-editar" href="{{ url_for('editar', id=mov.id) }}" title="Editar">✎</a>
             <form action="{{ url_for('eliminar', id=mov.id) }}?mes={{ mes }}"
                   method="POST" class="form-inline">
