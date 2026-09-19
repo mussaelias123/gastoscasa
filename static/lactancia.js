@@ -151,7 +151,6 @@
     // traslado heladera → freezer). Las claves son las del backend.
     var ESTADO_LABEL = {
         disponible:   'Disponible',
-        en_jardin:    'En el jardín',
         vence_pronto: 'Vence pronto',
         vencida:      'Vencida',
         en_heladera:  'En heladera',
@@ -601,13 +600,15 @@
         return '<span class="lac-tipo lac-tipo--fresca" title="' + T('Extraída y puesta directo en la heladera') + '">🥛 ' + T('Fresca') + '</span>';
     }
 
-    // Back up en el freezer del jardín maternal: la bolsita sigue en el freezer
-    // y sigue contando como stock, pero no la tenemos en casa.
+    // La leche que está en el jardín maternal: sigue contando como stock, pero
+    // no la tenemos en casa. Puede estar congelada allá (el back up) o ya
+    // descongelada en la heladera del jardín.
     function jardinTag(p) {
-        // Cuando la pastilla ya dice "En el jardín" alcanza con eso. La etiqueta
-        // aparece cuando la pastilla la tapó un aviso de vencimiento o un cierre
-        // (historial): justo cuando hace falta saber dónde ir a buscarla.
-        if (!p.en_jardin || p.estado === 'en_jardin') return '';
+        // SIEMPRE que la bolsita esté marcada, en las tres listas y sin importar
+        // el estado. El jardín es el DÓNDE y la pastilla es el CUÁNDO SE VENCE:
+        // son dos preguntas distintas y cada una tiene su lugar fijo, así la
+        // misma bolsita se ve igual todos los días.
+        if (!p.en_jardin) return '';
         return '<span class="lac-tipo lac-tipo--jardin" title="' +
             T('Back up guardado en el freezer del jardín') + '">🏫 ' + T('Jardín') + '</span>';
     }
