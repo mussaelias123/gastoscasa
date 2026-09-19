@@ -1,0 +1,186 @@
+{# ════════════════════════════════════════════════════════════════════════════
+   MÓDULO PERSONAL — la cuenta propia de quien está logueado.
+
+   UNA SOLA PÁGINA, CON SCROLL: arriba lo mismo que /gastos (saldos, form,
+   tabla) y abajo el resumen. A propósito NO usa `.layout-desktop`, que fija
+   el alto de la página al viewport (`body:has(.layout-desktop)`) — acá hace
+   falta scrollear para llegar al resumen.
+
+   Prefijo de clases: `per-`.
+   ════════════════════════════════════════════════════════════════════════ #}
+
+{% extends 'base.html' %}
+
+{% block titulo %}Personal{% endblock %}
+
+{% block contenido %}
+
+<div class="pagina-header per-header">
+  <h2>👤 Mi cuenta personal</h2>
+  <p class="per-sub">
+    <span class="badge-persona badge-{{ persona }}">{{ persona_nombre }}</span>
+    Solo vos ves esta pantalla. Nada de acá toca el fondo familiar.
+  </p>
+</div>
+
+<div class="per-layout">
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# COLUMNA IZQUIERDA — Saldos + Formulario                                    #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="per-col-izq">
+
+  {# ── SALDOS PERSONALES ─────────────────────────────────────────────────── #}
+  <div class="tarjeta-saldos per-saldos">
+    <h2 class="per-saldos-titulo">💰 Mis saldos</h2>
+    <table class="tabla-saldos per-tabla-saldos">
+      <tbody>
+        <tr>
+          <th scope="row"><span class="badge-moneda badge-moneda-ars">AR$</span></th>
+          <td class="saldo-monto {{ 'saldo-positivo' if saldos.ars >= 0 else 'saldo-negativo' }}">
+            {{ saldos.ars | fmt_ars }}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><span class="badge-moneda badge-moneda-usd">USD</span></th>
+          <td class="saldo-monto {{ 'saldo-positivo' if saldos.usd >= 0 else 'saldo-negativo' }}">
+            {{ saldos.usd | fmt_usd }}
+          </td>
+        </tr>
+        <tr class="per-fila-total">
+          <th scope="row">Total</th>
+          <td class="saldo-monto saldo-monto-total {{ 'saldo-positivo' if saldos.total_usd >= 0 else 'saldo-negativo' }}">
+            {{ saldos.total_usd | fmt_usd }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="per-nota">
+      El total usa la cotización del día en que se cargó cada movimiento,
+      igual que los saldos del fondo.
+    </p>
+  </div>
+
+  {# ── FORMULARIO (partial compartido; acá "Personal" viene tildado y fijo) ── #}
+  <div class="carga-rapida">
+    <h2 class="carga-rapida-titulo">➕ Nuevo movimiento personal</h2>
+    {% with form_personal=True, form_destino=url_for('personal'),
+            form_persona=persona, form_persona_nombre=persona_nombre %}
+      {% include '_form_movimiento.html' %}
+    {% endwith %}
+  </div>
+
+</div>{# /per-col-izq #}
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# COLUMNA DERECHA — Movimientos                                              #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="per-col-der">
+<div class="movimientos-card">
+
+  <div class="movimientos-card-header">
+    <span class="movimientos-card-titulo">📋 Mis movimientos</span>
+    <div class="mes-nav-inline">
+      <a class="btn-mes-nav" href="{{ url_for('personal', mes=mes_prev, vista=vista) }}" title="Mes anterior">&#8592;</a>
+      <span class="mes-titulo">{{ mes_nombre }}</span>
+      <a class="btn-mes-nav" href="{{ url_for('personal', mes=mes_next, vista=vista) }}" title="Mes siguiente">&#8594;</a>
+    </div>
+    <span class="movimientos-card-contador">{{ total_movimientos }} movimiento{% if total_movimientos != 1 %}s{% endif %}</span>
+  </div>
+
+  {# ── FILTROS ───────────────────────────────────────────────────────────── #}
+  <div class="filtros-tabla per-filtros">
+    <div class="filtros-fila">
+      <div class="filtros-grupo">
+        <span class="filtros-label">Ver:</span>
+        <a class="btn-filtro {{ 'filtro-activo' if vista == 'mes' }}"
+           href="{{ url_for('personal', mes=mes) }}">Mes actual</a>
+        <a class="btn-filtro {{ 'filtro-activo' if vista == 'ultimos100' }}"
+           href="{{ url_for('personal', vista='ultimos100') }}">Últimos 100</a>
+        <a class="btn-filtro {{ 'filtro-activo' if vista == 'todos' }}"
+           href="{{ url_for('personal', vista='todos') }}">Todos</a>
+      </div>
+    </div>
+  </div>
+
+  {# ── TABLA ─────────────────────────────────────────────────────────────── #}
+  {% if movimientos %}
+  <div class="tabla-scroll-wrapper">
+  <table class="tabla-gastos per-tabla">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Descripción</th>
+        <th class="col-info"></th>
+        <th>Categoría</th>
+        <th class="col-monto">Monto</th>
+        <th class="col-acciones"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for mov in movimientos %}
+      <tr class="{{ 'per-fila-auto' if mov.sintetico }}">
+        <td data-label="Fecha">{{ mov.fecha | fmt_fecha }}</td>
+        <td class="col-descripcion" data-label="Descripción">
+          {{ mov.descripcion }}
+          {% if mov.sintetico %}
+          <span class="per-sub-fila">
+            {{ mov.resto_pct }} % de
+            {{ mov.sueldo_monto | fmt_ars if mov.moneda == 'ars' else mov.sueldo_monto | fmt_usd }}
+            — el resto fue al fondo
+          </span>
+          {% endif %}
+        </td>
+        <td class="col-info" data-label="Info">
+          <span class="badge-moneda badge-moneda-{{ mov.moneda }}">{{ 'AR$' if mov.moneda == 'ars' else 'USD' }}</span>
+          <span class="badge-tipo badge-{{ mov.tipo }}">{{ 'Ingreso' if mov.tipo == 'ingreso' else 'Gasto' }}</span>
+          {% if mov.sintetico %}
+          <span class="badge-auto" title="Sale del sueldo del fondo. Se edita allá.">automático</span>
+          {% endif %}
+        </td>
+        <td data-label="Categoría">{{ mov.categoria or '—' }}</td>
+        <td class="col-monto" data-label="Monto">
+          {{ mov.monto | fmt_ars if mov.moneda == 'ars' else mov.monto | fmt_usd }}
+          {% if mov.costo_envio %}
+          <span class="badge-envio">
+            📦 {{ mov.costo_envio | fmt_ars if mov.moneda == 'ars' else mov.costo_envio | fmt_usd }}
+          </span>
+          {% endif %}
+        </td>
+        <td class="col-acciones">
+          {% if mov.sintetico %}
+            {# No es una fila real: no se edita ni se borra desde acá. El link
+               lleva al sueldo del fondo, que es donde se toca de verdad. #}
+            <a class="btn btn-editar per-btn-ir" href="{{ url_for('editar', id=mov.id) }}"
+               title="Se edita en el sueldo, dentro de Gastos"
+               aria-label="Ver el sueldo del que sale esta fila">↗</a>
+          {% else %}
+            <a class="btn btn-editar" href="{{ url_for('editar', id=mov.id) }}" title="Editar">✎</a>
+            <form action="{{ url_for('eliminar', id=mov.id) }}?mes={{ mes }}"
+                  method="POST" class="form-inline">
+              <button type="button" class="btn btn-borrar" title="Eliminar"
+                      onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>{# /tabla-scroll-wrapper #}
+
+  {% else %}
+  <div class="sin-datos">
+    <p>📭 Todavía no hay movimientos personales{% if vista == 'mes' %} en {{ mes_nombre }}{% endif %}.</p>
+  </div>
+  {% endif %}
+
+</div>{# /movimientos-card #}
+</div>{# /per-col-der #}
+
+</div>{# /per-layout #}
+
+{# Contenedor de notificaciones toast — los agrega JS dinámicamente #}
+<div class="toast-container" id="toast-container"></div>
+
+{% endblock %}

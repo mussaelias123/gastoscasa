@@ -22,6 +22,7 @@
 | POST   | `/eliminar/<id>`          | `eliminar`            | Borra movimiento por id.                         |
 | GET/POST | `/editar/<id>`          | `editar`              | Edición completa de movimiento.                  |
 | GET    | `/resumen`                | `resumen`             | Dashboard con métricas mensuales.                |
+| GET    | `/personal`               | `personal`            | Módulo Personal: la cuenta propia de quien está logueado (`_persona_actual`). **Una sola página con scroll** — saldos + form + tabla arriba, resumen abajo; a propósito NO usa `.layout-desktop`, que fija el alto al viewport. Query `mes` (`YYYY-MM`) y `vista` (`mes` \| `ultimos100` \| `todos`). **No hay parámetro de persona**: la identidad sale de la sesión y cada uno ve solo lo suyo. |
 | POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD.               |
 | GET    | `/api/metrics`            | `metrics`             | JSON con métricas (CPU, RAM, etc.).              |
 | GET    | `/api/notificaciones`     | `api_notificaciones`  | JSON `{ok, total, items}`. Agrega todos los `NOTIF_PROVIDERS`. Ver `docs/CONTEXT_NOTIFICATIONS.md`. |
@@ -88,6 +89,9 @@
 - `_persona_actual(cfg=None)` → `'elias' | 'mari'`. Quién está mirando la app: sale del email de Google vía `auth.persona_de_email`. Con el bypass DEV (`dev@local`, sin mapear) decide la clave `persona_dev` de config; fallback `'elias'`. Es la ÚNICA fuente de identidad del módulo Personal — ahí la persona no se elige en un desplegable.
 - `_leer_personal_form(form, tipo, categoria)` → `bool`. Lee el checkbox "Personal" y valida la combinación; lanza `ValueError` con el texto que ve el usuario. Red de seguridad del servidor: el front ya deshabilita estas opciones, pero un POST sin JS tiene que fallar igual.
 - `CATEGORIAS_VEDADAS_PERSONAL`: `{'sueldo': …, 'fijo': …}` — categoría → motivo del rechazo. **Un sueldo siempre entra al fondo** (lo que el factor deja afuera se deriva como ingreso personal, ver `CONTEXT_DB.md`); los fijos y las cuotas cuelgan de `gastos_fijos`, que no tiene persona ni ámbito.
+- `_nav_mes(valor)` → `{'mes', 'mes_prev', 'mes_next', 'mes_nombre'}`. La barra de navegación de mes; valor vacío o con formato raro cae al mes actual. Extraído de `gastos()` cuando `/personal` necesitó la misma barra — misma cuenta, sin cambio de comportamiento. Constante `MESES_ES` a nivel módulo.
+- `_personal_fila(mov)` / `_personal_fila_sueldo(fila)` / `_personal_movimientos(persona, mes, vista)`: la lista del módulo Personal = movimientos `personal=1` de esa persona **+ los restos de sueldo como filas sintéticas** (`sintetico: True`), mezclados y ordenados por `(fecha, id)` descendente. El `id` de una sintética es el del SUELDO REAL: el template lo usa para linkear a `/editar`, único lugar donde se toca. No se borran ni se editan desde `/personal`.
+- `_pct_texto(valor)` → `'15'` / `'33,3'`. Porcentaje con coma decimal para el subtítulo de la fila sintética ("15 % de AR$ 1.000.000").
 - `inject_config()`: context_processor, expone `cfg` a todos los templates.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
 - `PALETA_META`: lista `(key, nombre, uso)` con las 23 variables de paleta (incluye `texto-invertido` y `persona-leon`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.

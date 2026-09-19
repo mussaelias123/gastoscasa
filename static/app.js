@@ -1776,9 +1776,12 @@ function initFormAjax() {
                 return;
             }
 
-            // Redirigir a /gastos preservando el mes activo
+            // Redirigir preservando el mes activo. El destino por defecto es
+            // /gastos; /personal manda el suyo con data-destino, si no un
+            // alta personal terminaba en la tabla del fondo, donde no aparece.
+            var destino = form.dataset.destino || '/gastos';
             var mes = new URLSearchParams(window.location.search).get('mes') || '';
-            window.location.href = mes ? '/gastos?mes=' + mes : '/gastos';
+            window.location.href = mes ? destino + '?mes=' + mes : destino;
         })
         .catch(function(err) {
             console.error('Error AJAX al agregar:', err);
