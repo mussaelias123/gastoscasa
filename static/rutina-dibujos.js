@@ -284,6 +284,17 @@ CÓMO SE USA
             '<path d="M2.6 8.4h18.8"/>'
         ),
 
+        // Cuadradito con el tilde — la lista de TAREAS (las que se marcan).
+        // No se reusa `lista` (el portapapeles) porque ese ya es Actividades:
+        // los dos bloques conviven en la misma solapa y tienen que distinguirse
+        // de un vistazo. Tampoco `tareas` (el canasto de ropa), que significa
+        // "tareas de la casa" como ACTIVIDAD, no como pendiente a tildar.
+        checklist: svg(
+            '<path class="relleno" d="M5.4 3.6h13.2a1.8 1.8 0 0 1 1.8 1.8v13.2a1.8 1.8 0 0 1-1.8 1.8H5.4a1.8 1.8 0 0 1-1.8-1.8V5.4a1.8 1.8 0 0 1 1.8-1.8Z"/>' +
+            '<path d="M5.4 3.6h13.2a1.8 1.8 0 0 1 1.8 1.8v13.2a1.8 1.8 0 0 1-1.8 1.8H5.4a1.8 1.8 0 0 1-1.8-1.8V5.4a1.8 1.8 0 0 1 1.8-1.8Z"/>' +
+            '<path d="m8 12.2 2.8 2.8L16.4 9.4"/>'
+        ),
+
         // Torta con la velita titilando — el cumpleaños
         cumple: svg(
             '<path d="M4 20.4h16"/>' +
