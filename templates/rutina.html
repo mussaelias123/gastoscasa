@@ -150,6 +150,21 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
 
     <!-- ══ 3. Sección HOY ═════════════════════════════════════════════════ -->
     <section class="rut-sec rut-sec--hoy">
+      {# Las TAREAS del día, arriba de todo. Desplegable nativo (<details>): no
+         hace falta JS para abrirlo, y rutina.js solo escribe adentro de
+         #rut-pend-lista — si reescribiera el <details> entero, el tick de 30 s
+         lo cerraría solo. Sigue al selector L-D y a los chips de la familia.
+         Las tareas NO se dibujan en la línea de tiempo: viven acá y en la
+         tarjeta del Inicio, nada más. #}
+      <details class="rut-pend-panel" id="rut-pend-panel" open>
+        <summary class="rut-pend-summary">
+          <span class="rut-ico" data-dib="checklist" aria-hidden="true"></span>
+          <span>Tareas</span>
+          <span class="rut-pend-cuenta" id="rut-pend-cuenta" hidden></span>
+        </summary>
+        <div class="rut-pend-lista" id="rut-pend-lista"></div>
+      </details>
+
       <div class="rut-selectores">
         <div class="rut-dias" id="rut-dias"></div>
         <div class="rut-cal" id="rut-cal" hidden></div>
@@ -196,10 +211,16 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
       </div>
     </section>
 
-    <!-- ══ 5. Sección ACTIVIDADES ═════════════════════════════════════════ -->
+    {# ══ 5. Sección ACTIVIDADES Y TAREAS ═════════════════════════════════
+       Dos listas distintas que se administran juntas, cada una plegable con un
+       <details> nativo. Las ACTIVIDADES tienen hora y se dibujan en la rutina;
+       las TAREAS no tienen hora, se tildan y solo salen en el desplegable de
+       Hoy y en la tarjeta del Inicio. #}
     <section class="rut-sec rut-sec--actividades">
-      <div class="rut-panel">
-        <div class="rut-panel-titulo"><span class="rut-ico" data-dib="lista" aria-hidden="true"></span> Actividades</div>
+      <details class="rut-panel rut-panel-plegable" open>
+        <summary class="rut-panel-summary">
+          <span class="rut-ico" data-dib="lista" aria-hidden="true"></span> Actividades
+        </summary>
         <p class="rut-panel-ayuda">Lo que se <strong>repite</strong>: la escuela, el
           trabajo, la gimnasia. Elegís de quién es, a qué hora y pintás los días de
           la semana; en <strong>Más opciones</strong> están los meses (para los que
@@ -208,7 +229,21 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
           <strong>✎ Editar</strong> en la línea de tiempo de Hoy, que agrega una
           tarea suelta.</p>
         <div id="rut-actividades"></div>
-      </div>
+      </details>
+
+      <details class="rut-panel rut-panel-plegable">
+        <summary class="rut-panel-summary">
+          <span class="rut-ico" data-dib="checklist" aria-hidden="true"></span> Tareas
+        </summary>
+        <p class="rut-panel-ayuda">Lo que hay que <strong>hacer y tildar</strong>: los
+          mandados, lo que hay que dejar listo. No tienen hora y no aparecen en la
+          rutina dibujada: salen arriba de todo en <strong>Hoy</strong> y en la
+          pantalla de Inicio. Poner responsable y repetición es opcional; sin
+          repetición la tarea es para un día solo. Lo que no se marca el día que
+          toca pasa solo al día siguiente, y si tampoco se marca ahí se da por
+          hecho.</p>
+        <div id="rut-pendientes"></div>
+      </details>
     </section>
 
     <!-- ══ 6. Sección AJUSTES ═════════════════════════════════════════════ -->

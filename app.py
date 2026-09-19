@@ -2900,14 +2900,51 @@ def _rut_config(cfg=None):
     }
 
 
+# Marcador del barrido de tareas vencidas: corre una sola vez por día por
+# proceso (NSSM levanta uno solo). Va en memoria y no en config.json porque
+# perderlo no cuesta nada: cerrar_pendientes_vencidas() es idempotente.
+_RUT_BARRIDO = {'fecha': None}
+
+
+def _rut_barrer_pendientes(hoy):
+    """Cierra las tareas que ya vencieron (ver cerrar_pendientes_vencidas()).
+
+    ⚠ Es una ESCRITURA en un camino de lectura: lo llama _rut_payload(), que
+    también atiende GETs. Por eso es idempotente, está acotado por lookback y
+    va envuelto en try/except que nunca propaga: si el barrido falla, la rutina
+    se tiene que ver igual."""
+    if _RUT_BARRIDO['fecha'] == hoy:
+        return
+    _RUT_BARRIDO['fecha'] = hoy
+    try:
+        n = database.cerrar_pendientes_vencidas(hoy)
+        if n:
+            log(f"OK: {n} tarea(s) de rutina cerrada(s) sola(s) por vencimiento.")
+    except Exception as e:
+        log(f"AVISO: el barrido de tareas de rutina falló: {e}")
+
+
 def _rut_payload(desde, hasta):
     """Ajustes del rango como dict anidado: fecha → etapa → item_id → minutos.
     Incluye también la familia (con edades), las preferencias de la hoja, las
     tareas añadidas, los ítems quitados (modo edición) y las actividades del
     Calendario cuya próxima fecha es HOY (para la tarjeta "Hoy por calendario",
-    que ofrece añadirlas a la rutina)."""
-    from datetime import date
+    que ofrece añadirlas a la rutina).
+
+    ⚠ Dos claves hablan de cosas distintas que la UI llama igual:
+      - `tareas`     → rutina_tareas: las sueltas CON HORARIO de la línea de
+                       tiempo (botón "✎ Editar").
+      - `pendientes` → rutina_pendientes: la LISTA DE TAREAS que se tilda, la
+                       que el usuario ve como "Tareas". No lleva hora.
+
+    ⚠ `pendientes_hechas` arranca un día ANTES de `desde`: una tarea que no se
+    hizo ayer se arrastra a hoy, así que para saber si hay que mostrarla hace
+    falta el estado de ayer. Sin eso el arrastre miente en el Inicio, que pide
+    el payload con un rango de UN día (desde == hasta == hoy)."""
+    from datetime import date, timedelta
     hoy = date.today().isoformat()
+    _rut_barrer_pendientes(hoy)
+    ayer_del_rango = (date.fromisoformat(desde) - timedelta(days=1)).isoformat()
     ajustes = {}
     for fila in database.obtener_ajustes_rutina(desde, hasta):
         ajustes.setdefault(fila['fecha'], {}) \
@@ -2928,6 +2965,11 @@ def _rut_payload(desde, hasta):
             'actividades': database.obtener_actividades_rutina(),
             'config': _rut_config(),
             'tareas': [dict(f) for f in database.obtener_tareas_rutina(desde, hasta)],
+            'pendientes': database.obtener_pendientes_rutina(),
+            'pendientes_hechas': [
+                dict(f) for f in
+                database.obtener_pendientes_hechas(ayer_del_rango, hasta)
+            ],
             'ocultos': [dict(f) for f in database.obtener_ocultos_rutina(desde, hasta)],
             'calendario': calendario}
 
@@ -3628,6 +3670,176 @@ def api_rutina_pausa_borrar():
             raise ValueError("id debe ser el id de un receso.")
         rango = _rut_parsear_rango(request.form)   # antes de escribir, ver /crear
         database.borrar_pausa_rutina(pausa_id)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+# =============================================================================
+# RUTAS: Tareas del módulo Rutina (tabla rutina_pendientes)
+# =============================================================================
+#
+# ⚠ Son las "Tareas" de la UI: la lista que se tilda, sin horario. NO confundir
+# con /api/rutina/tarea/crear y /borrar de más arriba, que son las tareas
+# sueltas CON horario de la línea de tiempo (tabla rutina_tareas).
+#
+# Mismo contrato que las actividades: POST con request.form, el rango de la
+# semana visible se parsea ANTES de escribir, y la respuesta AJAX es el payload
+# completo para que el cliente no tenga que pedirlo de nuevo.
+
+def _rut_leer_form_pendiente(form):
+    """Valida el form de alta/edición de una tarea. Devuelve la tupla que
+    consume database.crear_pendiente_rutina()."""
+    titulo = (form.get('titulo') or '').strip()
+    if not 1 <= len(titulo) <= 60:
+        raise ValueError("El título debe tener entre 1 y 60 caracteres.")
+
+    # Igual que en actividades: acá solo se guarda la clave del dibujo (o el
+    # emoji suelto), la librería vive en el front.
+    dibujo = (form.get('dibujo') or '').strip()[:30]
+
+    repite = 1 if (form.get('repite') or '').strip() in ('1', 'true', 'on') else 0
+    if repite:
+        # _rut_bits rechaza el todo-ceros, que es justo lo que queremos: una
+        # tarea que se repite pero sin ningún día no aparecería nunca.
+        dias = _rut_bits(form.get('dias'), _RUT_DIAS_RE, 'día de la semana', '1111111')
+        fecha = ''
+    else:
+        # Sin repetición es para un día solo: el que venga, o hoy.
+        dias = '0000000'
+        fecha = _rut_parsear_fecha_opcional(form.get('fecha'), 'fecha') \
+            or date.today().isoformat()
+
+    # Cero responsables es válido: es una tarea de la casa y la ve todo el
+    # mundo, incluso con el filtro de la familia puesto.
+    responsables = _rut_ids_lista(form.get('responsables'), 'responsables')
+
+    return (titulo, dibujo, repite, dias, fecha, responsables)
+
+
+def _rut_fechas_lista(valor, campo, tope=3):
+    """'2026-09-16,2026-09-17' → ['2026-09-16', '2026-09-17']: las ocurrencias
+    que cierra (o reabre) un solo toque. Sin repetidos y sin futuro más allá de
+    mañana — el reloj del teléfono puede estar corrido, pero de ahí a dejar
+    cerrar febrero entero hay un trecho."""
+    crudo = (valor or '').strip()
+    if not crudo:
+        raise ValueError(f"{campo}: hace falta al menos una fecha.")
+    limite = (date.today() + timedelta(days=1)).isoformat()
+    fechas = []
+    for parte in crudo.split(','):
+        parte = parte.strip()
+        if not parte:
+            continue
+        fecha = _rut_parsear_fecha(parte, campo)
+        if fecha > limite:
+            raise ValueError(f"{campo}: {fecha} todavía no llegó.")
+        if fecha not in fechas:
+            fechas.append(fecha)
+    if not fechas:
+        raise ValueError(f"{campo}: hace falta al menos una fecha.")
+    if len(fechas) > tope:
+        raise ValueError(f"{campo}: demasiadas fechas (máximo {tope}).")
+    return fechas
+
+
+@app.route('/api/rutina/pendiente/crear', methods=['POST'])
+def api_rutina_pendiente_crear():
+    try:
+        rango = _rut_parsear_rango(request.form)   # antes de escribir, ver actividad/crear
+        titulo, dibujo, repite, dias, fecha, responsables = \
+            _rut_leer_form_pendiente(request.form)
+        # `desde` es la fecha de ALTA y la pone el servidor: el cliente no la
+        # puede mandar con ese nombre porque postAccion() ya usa desde/hasta
+        # para el rango de la semana visible (ver _rut_leer_rango_anual).
+        database.crear_pendiente_rutina(titulo, dibujo, repite, dias, fecha,
+                                        date.today().isoformat(), responsables)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/pendiente/editar', methods=['POST'])
+def api_rutina_pendiente_editar():
+    try:
+        try:
+            pendiente_id = int(str(request.form.get('id') or '').strip())
+        except ValueError:
+            raise ValueError("id debe ser el id de una tarea.")
+        if not database.pendiente_rutina_existe(pendiente_id):
+            raise ValueError(f"No existe una tarea con id {pendiente_id}.")
+        rango = _rut_parsear_rango(request.form)   # antes de escribir
+        titulo, dibujo, repite, dias, fecha, responsables = \
+            _rut_leer_form_pendiente(request.form)
+        activo = 0 if (request.form.get('activo') or '1').strip() in ('0', 'false') else 1
+        database.editar_pendiente_rutina(pendiente_id, titulo, dibujo, repite,
+                                         dias, fecha, responsables, activo)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/pendiente/borrar', methods=['POST'])
+def api_rutina_pendiente_borrar():
+    try:
+        try:
+            pendiente_id = int(str(request.form.get('id') or '').strip())
+        except ValueError:
+            raise ValueError("id debe ser el id de una tarea.")
+        rango = _rut_parsear_rango(request.form)   # antes de escribir
+        database.borrar_pendiente_rutina(pendiente_id)
+        if _es_ajax():
+            return jsonify({'ok': True, **_rut_payload(*rango)})
+        return redirect(url_for('rutina'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('rutina'))
+    except Exception as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('rutina'))
+
+
+@app.route('/api/rutina/pendiente/marcar', methods=['POST'])
+def api_rutina_pendiente_marcar():
+    """Tilda o destilda una tarea. `fechas` puede traer DOS días: la ocurrencia
+    de ayer que se arrastró y la de hoy. Un solo toque cierra las dos."""
+    try:
+        try:
+            pendiente_id = int(str(request.form.get('id') or '').strip())
+        except ValueError:
+            raise ValueError("id debe ser el id de una tarea.")
+        if not database.pendiente_rutina_existe(pendiente_id):
+            raise ValueError(f"No existe una tarea con id {pendiente_id}.")
+        fechas = _rut_fechas_lista(request.form.get('fechas'), 'fechas')
+        hecha = (request.form.get('hecha') or '').strip() in ('1', 'true', 'on')
+        rango = _rut_parsear_rango(request.form)   # antes de escribir
+        database.marcar_pendiente_rutina(pendiente_id, fechas, hecha)
         if _es_ajax():
             return jsonify({'ok': True, **_rut_payload(*rango)})
         return redirect(url_for('rutina'))
