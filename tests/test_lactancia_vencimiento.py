@@ -102,9 +102,9 @@ class TestBackUpDelJardin(unittest.TestCase):
     """La bolsita que dejamos en el freezer del jardín maternal.
 
     Sigue estando bien y sigue siendo stock: lo único que cambia es que no la
-    tenemos en casa. Por eso la marca reemplaza solo a "disponible" y JAMÁS
-    puede tapar un aviso de vencimiento: si se está por vencer, hay que ir a
-    buscarla."""
+    tenemos en casa. Por eso el jardín NO es un estado —no reemplaza a nada—
+    sino una marca aparte: el estado sigue diciendo cuánto tiempo le queda a esa
+    leche, todos los días igual, y la pantalla dibuja el 🏫 al lado."""
 
     def _bolsita(self, en_jardin):
         # Con freezer_meses=6, vence el 1/7/2026 a las 23:59:59.
@@ -112,11 +112,11 @@ class TestBackUpDelJardin(unittest.TestCase):
                 'hora_extraccion': '10:00', 'motivo_cierre': None,
                 'en_jardin': en_jardin}
 
-    def test_marcada_y_sana_dice_que_esta_en_el_jardin(self):
+    def test_la_marca_no_le_cambia_el_estado(self):
         self.assertEqual(_lac_estado(self._bolsita(1), PARAMS,
-                                     datetime(2026, 2, 1, 10, 0)), 'en_jardin')
+                                     datetime(2026, 2, 1, 10, 0)), 'disponible')
 
-    def test_el_aviso_de_vencimiento_le_gana_a_la_marca(self):
+    def test_el_aviso_de_vencimiento_se_ve_igual_este_o_no_en_el_jardin(self):
         p = self._bolsita(1)
         self.assertEqual(_lac_estado(p, PARAMS, datetime(2026, 6, 28, 10, 0)),
                          'vence_pronto')
@@ -137,7 +137,8 @@ class TestBackUpDelJardin(unittest.TestCase):
 
 class TestBackUpDelJardinEnLaHeladera(unittest.TestCase):
     """La bolsita que se fue con León ya descongelada: está en la heladera del
-    jardín, no en la de casa. Misma marca, misma prioridad."""
+    jardín, no en la de casa. Misma marca, y tampoco acá pisa al estado: sigue
+    diciendo "en heladera", que es lo que le importa al reloj."""
 
     def _bolsita(self, en_jardin):
         # Con heladera_horas=48, vence el 3/7/2026 a las 08:00.
@@ -145,11 +146,11 @@ class TestBackUpDelJardinEnLaHeladera(unittest.TestCase):
                 'fecha_extraccion': '2026-07-01', 'hora_extraccion': '08:00',
                 'en_jardin': en_jardin}
 
-    def test_marcada_y_sana_dice_que_esta_en_el_jardin(self):
+    def test_la_marca_tampoco_le_cambia_el_estado(self):
         self.assertEqual(_lac_estado(self._bolsita(1), PARAMS,
-                                     datetime(2026, 7, 2, 10, 0)), 'en_jardin')
+                                     datetime(2026, 7, 2, 10, 0)), 'en_heladera')
 
-    def test_el_aviso_le_gana_a_la_marca(self):
+    def test_el_aviso_se_ve_igual_este_o_no_en_el_jardin(self):
         # Acá importa más todavía: el reloj de la heladera corre en horas.
         p = self._bolsita(1)
         self.assertEqual(_lac_estado(p, PARAMS, datetime(2026, 7, 2, 20, 0)),
