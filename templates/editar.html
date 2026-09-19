@@ -11,6 +11,10 @@
   <a href="{{ url_for('gastos') }}" class="btn btn-secundario">← Volver</a>
 </div>
 
+{% if error %}
+<div class="banner-primer-inicio" role="alert">⚠ {{ error }}</div>
+{% endif %}
+
 <form method="POST"
       action="{{ url_for('editar', id=mov['id']) }}"
       class="formulario-gasto">

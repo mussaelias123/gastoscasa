@@ -1177,6 +1177,25 @@ def _persona_actual(cfg=None):
     return persona_dev if persona_dev in ('elias', 'mari') else 'elias'
 
 
+def _es_ajeno(mov):
+    """
+    True si `mov` es un movimiento PERSONAL de la otra persona.
+
+    Existe porque `/editar/<id>` y `/eliminar/<id>` trabajan por id, sin
+    ámbito. Los ids son una sola secuencia compartida con el fondo, y /gastos
+    imprime los del fondo en el HTML: los huecos de la secuencia son
+    justamente los personales, así que alcanzaba con escribir `/editar/102` a
+    mano para leer el gasto personal del otro. El fondo es compartido y ahí no
+    aplica (cualquiera edita cualquier cosa, es la idea); la cuenta personal es
+    lo contrario, y `/personal` promete "solo vos ves esta pantalla".
+
+    Acepta None (movimiento inexistente) para poder llamarla sin guardas.
+    """
+    if mov is None:
+        return False
+    return bool(mov['personal']) and mov['persona'] != _persona_actual()
+
+
 def _leer_personal_form(form, tipo, categoria):
     """
     Lee el checkbox "Personal" del formulario y valida que la combinación
@@ -1232,6 +1251,10 @@ def inject_config():
         'user_email': flask_session.get('user_email', ''),
         'user_name': flask_session.get('user_name', ''),
         'user_photo': flask_session.get('user_photo', ''),
+        # Quién está mirando ('elias' | 'mari'). Lo usa el form de movimiento
+        # para saber, tras un alta personal, si mandar a /personal (es la
+        # cuenta propia) o quedarse donde está (se cargó en la del otro).
+        'persona_actual': _persona_actual(),
         # mtime de los estáticos → cache-busting automático: el navegador
         # recarga style.css/app.js cuando cambian, sin Ctrl+F5.
         'static_version': _static_version(),
@@ -1259,6 +1282,7 @@ def _static_version():
             os.path.join(app.static_folder, 'calendario.js'),
             os.path.join(app.static_folder, 'lactancia.js'),
             os.path.join(app.static_folder, 'grafico.js'),
+            os.path.join(app.static_folder, 'resumen.js'),
             os.path.join(app.static_folder, 'rutina.js'),
             os.path.join(app.static_folder, 'rutina-actividades.js'),
             os.path.join(app.static_folder, 'rutina-sueno.js'),
@@ -1830,6 +1854,11 @@ def eliminar(id):
     # borrar algo desde /personal (el form sin JS hace POST y redirect) dejaba
     # al usuario en /gastos, donde ese movimiento ni aparece.
     mov = database.obtener_movimiento(id)
+
+    # La cuenta personal del otro tampoco se borra desde acá (ver _es_ajeno).
+    if _es_ajeno(mov):
+        return redirect(url_for('personal'))
+
     era_personal = bool(mov['personal']) if mov is not None else False
 
     database.eliminar_movimiento(id)
@@ -1848,24 +1877,38 @@ def eliminar(id):
 
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
 def editar(id):
-    if request.method == 'POST':
-        fecha       = request.form['fecha']
-        descripcion = request.form['descripcion']
-        persona     = request.form['persona']
-        moneda      = request.form['moneda']
-        tipo        = request.form['tipo']
-        monto       = float(request.form['monto'])
-        categoria   = request.form.get('categoria') or None
-        costo_envio_str = request.form.get('costo_envio', '').strip()
-        costo_envio = float(costo_envio_str) if costo_envio_str else None
+    # La cuenta personal del otro no se mira ni se toca desde acá (ver
+    # _es_ajeno). El fondo sigue igual: ahí `personal` es 0 y nunca entra.
+    if _es_ajeno(database.obtener_movimiento(id)):
+        return redirect(url_for('personal'))
 
-        # Ámbito: el form de edición manda `ambito_presente=1` para distinguir
-        # "el usuario dejó el checkbox destildado" de "este form ni sabe que
-        # existe". Sin esa marca, `personal=None` deja el movimiento donde
-        # estaba (editar_movimiento no toca la columna).
-        es_personal = None
-        if request.form.get('ambito_presente') == '1':
-            es_personal = _leer_personal_form(request.form, tipo, categoria)
+    if request.method == 'POST':
+        try:
+            fecha       = request.form['fecha']
+            descripcion = request.form['descripcion']
+            persona     = request.form['persona']
+            moneda      = request.form['moneda']
+            tipo        = request.form['tipo']
+            monto       = float(request.form['monto'])
+            categoria   = request.form.get('categoria') or None
+            costo_envio_str = request.form.get('costo_envio', '').strip()
+            costo_envio = float(costo_envio_str) if costo_envio_str else None
+
+            # Ámbito: el form de edición manda `ambito_presente=1` para
+            # distinguir "el usuario dejó el checkbox destildado" de "este
+            # form ni sabe que existe". Sin esa marca, `personal=None` deja el
+            # movimiento donde estaba (editar_movimiento no toca la columna).
+            es_personal = None
+            if request.form.get('ambito_presente') == '1':
+                es_personal = _leer_personal_form(request.form, tipo, categoria)
+        except ValueError as e:
+            # Validación (un sueldo marcado como personal, un monto que no es
+            # número). Se vuelve al formulario con el motivo en vez de tirar un
+            # 500: el doc promete que este mensaje lo lee el usuario.
+            mov = database.obtener_movimiento(id)
+            if mov is None:
+                return redirect(url_for('gastos'))
+            return render_template('editar.html', mov=mov, error=str(e)), 400
 
         # Recalculamos monto_usd con la cotización actual cada vez que se edita.
         cfg_actual = config.cargar_config(CONFIG_FILE)
@@ -2041,15 +2084,72 @@ def personal():
 
     movimientos, total = _personal_movimientos(persona, nav['mes'], vista)
 
+    # ── Saldos: la MISMA tarjeta de /gastos, con otras dos filas ──────────
+    # `_tarjeta_saldos.html` y sus gauges comparan dos mitades (A vs B) en
+    # cada moneda. Acá las mitades son "Personal" (la cuenta propia) y
+    # "Núcleo" (el fondo familiar entero), en vez de Elías vs Mari.
+    #
+    # Se le arma a `_calcular_gauges` un dict con la MISMA forma que el del
+    # fondo, poniendo lo personal donde va `elias` y el fondo donde va `mari`.
+    # Así los dos partials y el helper de gauges se reusan tal cual, sin una
+    # rama nueva adentro: lo único propio de esta pantalla son las etiquetas.
+    personal_saldos = database.calcular_saldos_personales(persona)
+    fondo           = database.calcular_saldos()
+    nucleo_ars      = fondo['elias_ars'] + fondo['mari_ars']
+    nucleo_usd      = fondo['elias_usd'] + fondo['mari_usd']
+
+    saldos_gauge = {
+        'elias_ars':       personal_saldos['ars'],
+        'elias_usd':       personal_saldos['usd'],
+        'mari_ars':        nucleo_ars,
+        'mari_usd':        nucleo_usd,
+        'elias_total_usd': personal_saldos['total_usd'],
+        'mari_total_usd':  fondo['elias_total_usd'] + fondo['mari_total_usd'],
+        'ars_total_usd':   fondo['ars_total_usd'],
+        'usd_total_usd':   fondo['usd_total_usd'],
+    }
+    cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
+
+    # "Personal" se pinta del color de la persona logueada (esa plata es suya),
+    # así que su clase de color ES la persona; "Núcleo" lleva el morado del
+    # acento, el color de la marca. En los relojes de AR$ y USD la porción
+    # propia toma en cambio el color de ESA moneda (`clase_ars`/`clase_usd`):
+    # así cada reloj se lee como "cuánto de este peso/dólar es mío".
+    filas_saldos = [
+        {'clave': 'personal', 'etiqueta': 'Personal', 'clase': persona,
+         'ars': personal_saldos['ars'], 'usd': personal_saldos['usd']},
+        {'clave': 'nucleo',   'etiqueta': 'Núcleo',   'clase': 'nucleo',
+         'ars': nucleo_ars,   'usd': nucleo_usd},
+    ]
+
+    # El resumen de abajo es el MISMO dashboard que /resumen (partial
+    # `_dashboard_resumen.html` + `static/resumen.js`), alimentado con los
+    # movimientos personales de TODA la base — no los del mes: el navegador
+    # de mes del dashboard es del cliente y necesita el historial completo
+    # para dibujar los "últimos 6 meses".
+    #
+    # `gastos_fijos` va vacío y la sección se esconde (`dash_fijos=False`):
+    # los fijos cuelgan de la tabla `gastos_fijos`, que es del fondo familiar.
+    historial, _ = _personal_movimientos(persona, vista='todos')
+
     return render_template(
         'personal.html',
         persona=persona,
         persona_nombre=('Elías' if persona == 'elias' else 'Mari'),
-        saldos=database.calcular_saldos_personales(persona),
-        cotizacion_valor=float(cfg.get('cotizacion_valor') or 1.0),
+        saldos=saldos_gauge,
+        filas_saldos=filas_saldos,
+        saldos_a={'etiqueta': 'Personal', 'clase': persona,
+                  'clase_ars': 'ars', 'clase_usd': 'usd'},
+        saldos_b={'etiqueta': 'Núcleo',   'clase': 'nucleo'},
+        saldos_fecha=False,
+        gauges=_calcular_gauges(saldos_gauge, cotizacion_valor),
+        cotizacion_valor=cotizacion_valor,
         movimientos=movimientos,
         total_movimientos=total,
         vista=vista,
+        movimientos_json=historial,
+        gastos_fijos_json=[],
+        dash_fijos=False,
         **nav)
 
 
