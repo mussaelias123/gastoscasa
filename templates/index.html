@@ -26,6 +26,54 @@
 
 <div class="home-page">
 
+  {# ── TAREAS — la lista del día, arriba de todo ──────────────────────────── #}
+  {# Arranca PLEGADA a propósito: el Inicio no scrollea (body con 100dvh y
+     overflow:hidden) y las filas están calibradas para un iPhone SE. Cerrada
+     ocupa una línea y muestra cuántas faltan; el ＋ carga una sin desplegarla.
+     La llena home.js con window.Rutina.tareasHoy(). #}
+  <section class="home-card home-card--tareas">
+    <details class="home-pend" id="home-pend">
+      <summary class="home-pend-summary">
+        <span class="home-card-titulo">✓ Tareas de hoy</span>
+        <span class="home-pend-cuenta" id="home-pend-cuenta" hidden></span>
+      </summary>
+      <div class="home-pend-lista" id="home-pend-lista"></div>
+    </details>
+    <button type="button" class="home-pend-mas" data-sheet="tareas"
+            aria-label="Nueva tarea">＋</button>
+
+    {# Sheet del alta: bloque normal en desktop, bottom-sheet en mobile #}
+    <div class="home-sheet" id="home-sheet-tareas">
+      <div class="home-sheet-head">
+        <span class="home-sheet-titulo">➕ Nueva tarea</span>
+        <button type="button" class="home-sheet-cerrar" data-sheet-cerrar aria-label="Cerrar">✕</button>
+      </div>
+      <form id="home-pend-form" class="home-pend-form">
+        <input type="text" class="home-pend-input" id="home-pend-titulo"
+               maxlength="60" placeholder="Ir a la verdulería" required>
+
+        <div class="home-pend-campo">
+          <span class="home-pend-label">Responsable</span>
+          <div class="home-pend-pills" id="home-pend-resp"></div>
+          <button type="button" class="rut-pend-mas" id="home-pend-resp-mas"
+                  aria-expanded="false" aria-label="Añadir responsable">＋</button>
+        </div>
+
+        <label class="home-pend-check">
+          <input type="checkbox" id="home-pend-repite">
+          <span>Repetir</span>
+        </label>
+        <div class="home-pend-campo" id="home-pend-dias-caja" hidden>
+          <span class="home-pend-label">Qué días</span>
+          <div class="rut-circs" id="home-pend-dias"></div>
+        </div>
+
+        <p class="home-pend-error" id="home-pend-error" hidden></p>
+        <button type="submit" class="btn btn-acento">Guardar tarea</button>
+      </form>
+    </div>
+  </section>
+
   {# ── GASTOS — funcional: form de movimiento ─────────────────────────────── #}
   {# En mobile la tarjeta queda como barra fina: solo el botón ＋ (el head se
      oculta por CSS; el form vive en el bottom-sheet). #}
