@@ -100,6 +100,13 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var AJUSTES = RUT.ajustes || {};       // fecha → etapa → item_id → min (server)
     var DURACIONES = RUT.duraciones || {}; // fecha → etapa → item_id → dur (drag Teams)
     var TAREAS = RUT.tareas || [];         // tareas añadidas (rutina_tareas, server)
+    // ⚠ TAREAS (arriba) y PENDIENTES (acá) son cosas distintas que la UI llama
+    // igual. TAREAS son las sueltas CON HORARIO que se agregan a la línea de
+    // tiempo desde "✎ Editar". PENDIENTES es la LISTA DE TAREAS que se tilda,
+    // no tiene hora y no se dibuja en la rutina: es lo que el usuario ve como
+    // "Tareas" en el desplegable de arriba y en la tarjeta del Inicio.
+    var PENDIENTES = RUT.pendientes || [];          // rutina_pendientes (server)
+    var PEND_HECHAS = RUT.pendientes_hechas || [];  // ocurrencias ya cerradas
     var OCULTOS = RUT.ocultos || [];       // ítems quitados (rutina_ocultos, server)
     var CALHOY = RUT.calendario || [];     // actividades del Calendario que vencen HOY
     var MIEMBROS = RUT.miembros || [];     // la familia (rutina_miembros, con edad)
@@ -116,7 +123,9 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var formAdd = null;                    // estado del form "＋ Añadir tarea" (null = cerrado)
     var formMiembro = null;                // estado del form de familia (null = cerrado)
     var formActividad = null;              // estado del form de actividades (null = cerrado)
+    var formPend = null;                   // estado del form de tareas (null = cerrado)
     var enfocarFormAct = false;            // traer el editor a la vista en el PRÓXIMO render
+    var enfocarFormPend = false;           // ídem para el form de tareas
     var drag = null;                       // drag en curso (mover/estirar, estilo Teams)
     var seArrastro = false;                // suprime el click fantasma tras un drag
     var ahoraHora = null;                  // item_id con el editor "empezó a las…" abierto
@@ -139,7 +148,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         return {
             sel: sel || {},
             dia: new Date().getDay(),
-            sec: 'hoy'          // sección visible del menú (mobile)
+            sec: 'hoy',         // sección visible del menú (mobile)
+            // Desplegable de Tareas: abierto salvo que lo hayan cerrado a mano.
+            // Tolera el objeto viejo sin la clave (usuarios que ya tenían UI
+            // guardada antes de que existieran las tareas).
+            pendAbierto: g.pendAbierto !== false
         };
     }
 
@@ -976,13 +989,17 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
     // POST con el contrato del backend: responde el payload completo del rango.
     // Si falla (offline), el valor local queda y se avisa discreto (sin toasts).
-    function postAccion(url, campos) {
+    // `alVolver` (opcional) reemplaza a renderTodo() cuando el POST NO sale de
+    // /rutina: la tarjeta de Tareas del Inicio usa este mismo fetch, y allá
+    // renderTodo() explota porque no existe ni #rut-filas ni #rut-chips.
+    function postAccion(url, campos, alVolver) {
+        var repintar = alVolver || renderTodo;
         var rango = semanaCliente();
         var params = new URLSearchParams(campos);
         params.set('desde', rango.desde);
         params.set('hasta', rango.hasta);
         enVuelo++;
-        fetch(url, {
+        return fetch(url, {
             method: 'POST',
             body: params,
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -1006,6 +1023,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             }
             // Tareas/ocultos/calendario no tienen edición local: siempre frescos
             if (data.tareas) TAREAS = data.tareas;
+            // ⚠ Estas dos líneas van en postAccion() Y en syncAjustes(). Si
+            // faltan en una, las tareas no se refrescan solas y el bug recién
+            // se nota cuando dos teléfonos usan la app a la vez.
+            if (data.pendientes) PENDIENTES = data.pendientes;
+            if (data.pendientes_hechas) PEND_HECHAS = data.pendientes_hechas;
             if (data.ocultos) OCULTOS = data.ocultos;
             if (data.calendario) CALHOY = data.calendario;
             // La familia, sus actividades y las preferencias no tienen edición
@@ -1013,13 +1035,13 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             if (data.miembros) MIEMBROS = data.miembros;
             if (data.actividades) ACTIVIDADES = data.actividades;
             if (data.config) CFG = data.config;
-            renderTodo();
+            repintar();
         })
         .catch(function (err) {
             enVuelo--;
             sinSync = true;
             console.error('Error AJAX rutina:', err);
-            renderTodo();
+            repintar();
         });
     }
 
@@ -1041,6 +1063,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 HASTA = data.hasta;
             }
             if (data.tareas) TAREAS = data.tareas;
+            // ⚠ Estas dos líneas van en postAccion() Y en syncAjustes(). Si
+            // faltan en una, las tareas no se refrescan solas y el bug recién
+            // se nota cuando dos teléfonos usan la app a la vez.
+            if (data.pendientes) PENDIENTES = data.pendientes;
+            if (data.pendientes_hechas) PEND_HECHAS = data.pendientes_hechas;
             if (data.ocultos) OCULTOS = data.ocultos;
             if (data.calendario) CALHOY = data.calendario;
             // La familia, sus actividades y las preferencias no tienen edición
@@ -2083,13 +2110,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
     var DIAS_TODOS = '1111111';
     var MESES_TODOS = '111111111111';
 
-    // Atajos de días: cubren los tres casos que se repiten en una familia.
-    var DIAS_PRESETS = [
-        { t: 'Todos', v: DIAS_TODOS },
-        { t: 'L a V', v: '1111100' },
-        { t: 'Finde', v: '0000011' }
-    ];
-
     /** Da vuelta el bit `i` de un patrón de frecuencia. */
     function toggleBit(cadena, i) {
         return cadena.substring(0, i) +
@@ -2320,12 +2340,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                    '</option>' + durs;
         }
 
-        var presets = DIAS_PRESETS.map(function (p) {
-            return '<button type="button" class="rut-fa-preset' +
-                (f.dias === p.v ? ' activo' : '') + '" data-fa-dias-preset="' + p.v + '">' +
-                p.t + '</button>';
-        }).join('');
-
         var pausas = (f.pausas || []).map(function (p) {
             return '<li class="rut-fa-pausa">' +
                 '<span>' + fechaCorta(p.desde) + ' al ' + fechaCorta(p.hasta) +
@@ -2390,7 +2404,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
             '<div class="rut-fa-bloque">' +
                 '<span class="rut-add-label">Qué días</span>' +
-                '<div class="rut-fa-presets">' + presets + '</div>' +
                 '<div class="rut-circs rut--persona"' + styleColor(f.miembro_id) + '>' +
                     circulosHtml(f.dias, DIAS_CORTOS, DIAS_LARGOS, 'data-fa-dia') +
                 '</div>' +
@@ -2562,6 +2575,365 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         });
     }
 
+    // ── Panel Tareas ─────────────────────────────────────────────────────────
+    // Las TAREAS (rutina_pendientes) son los mandados del día: no tienen hora,
+    // no se dibujan en la línea de tiempo y se tildan cuando están hechas.
+    // ⚠ No confundir con TAREAS/formAdd de más arriba, que son las tareas
+    // sueltas CON horario del modo edición (rutina_tareas).
+    //
+    // LA REGLA DE ARRASTRE, que es todo el asunto:
+    //   La tarea del día D se ve D y D+1. Si al llegar a D+2 sigue sin tildar,
+    //   se da por realizada sola (el barrido de app.py le pone auto=1) y deja
+    //   de aparecer. Por eso una línea de la lista puede estar cerrando DOS
+    //   ocurrencias de un toque: la de ayer (arrastrada) y la de hoy.
+    //
+    // ⚠ pendienteDebe() es el espejo en JS de _pendiente_vence() de
+    // database.py. Existen las dos porque el que sabe qué día está mirando el
+    // usuario es el cliente, pero el barrido escribe y no puede esperar a que
+    // alguien abra el navegador. Si tocás una, tocá la otra.
+
+    /** 'YYYY-MM-DD' del día anterior. Sin Date.parse: evita el corrimiento UTC. */
+    function diaAntes(iso) {
+        var p = String(iso).split('-');
+        var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+        d.setDate(d.getDate() - 1);
+        return isoLocal(d);
+    }
+
+    /** PEND_HECHAS → { pendiente_id: { fecha: auto } }. Barato: se rearma por render. */
+    function hechasIndex() {
+        var idx = {};
+        PEND_HECHAS.forEach(function (h) {
+            (idx[h.pendiente_id] = idx[h.pendiente_id] || {})[h.fecha] = h.auto ? 1 : 0;
+        });
+        return idx;
+    }
+
+    /** ¿La tarea `p` vence el día `iso`? Espejo de _pendiente_vence() en Python. */
+    function pendienteDebe(p, iso) {
+        if (!p.activo) return false;
+        if (!p.repite) {
+            // La suelta tiene UNA fecha explícita y manda ella; `desde`/`hasta`
+            // acotan a las repetitivas, que si no reclamarían días anteriores
+            // a su propia alta.
+            return iso === p.fecha;
+        }
+        if (p.desde && iso < p.desde) return false;
+        if (p.hasta && iso > p.hasta) return false;
+        var dias = p.dias || '';
+        if (dias.length !== 7) return false;
+        var p2 = String(iso).split('-');
+        var f = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
+        return dias.charAt((f.getDay() + 6) % 7) === '1';   // LUNES primero
+    }
+
+    /** ¿La tarea le toca a alguno de los miembros seleccionados? Sin responsable
+     *  es una tarea de la casa: se ve siempre, esté quien esté prendido. */
+    function pendienteVisiblePara(p, sel) {
+        var resp = p.responsables || [];
+        if (!resp.length) return true;
+        return resp.some(function (id) { return sel.indexOf(String(id)) >= 0; });
+    }
+
+    /**
+     * Las tareas que se ven el día `iso`, ya filtradas por los chips de la
+     * familia. Cada línea sale como:
+     *   { p, hecha, auto, arrastrada, cerradas: ['YYYY-MM-DD', ...] }
+     * `cerradas` son las ocurrencias que cierra (o reabre) un solo toque.
+     */
+    function pendientesDelDia(iso) {
+        var idx = hechasIndex();
+        var sel = usuariosSel();
+        var ayer = diaAntes(iso);
+        var salida = [];
+        PENDIENTES.forEach(function (p) {
+            if (!pendienteVisiblePara(p, sel)) return;
+            var hechas = idx[p.id] || {};
+            var debeHoy = pendienteDebe(p, iso);
+            var abiertaHoy = debeHoy && hechas[iso] === undefined;
+            var abiertaAyer = pendienteDebe(p, ayer) && hechas[ayer] === undefined;
+            if (abiertaHoy || abiertaAyer) {
+                var cerradas = [];
+                if (abiertaAyer) cerradas.push(ayer);
+                if (abiertaHoy) cerradas.push(iso);
+                salida.push({
+                    p: p, hecha: false, auto: 0,
+                    arrastrada: abiertaAyer, cerradas: cerradas
+                });
+            } else if (debeHoy) {
+                // Ya tildada (a mano o por vencimiento): se sigue viendo, con el
+                // título tachado. Tocarla la destilda.
+                salida.push({
+                    p: p, hecha: true, auto: hechas[iso] || 0,
+                    arrastrada: false, cerradas: [iso]
+                });
+            }
+        });
+        return salida;
+    }
+
+    /** Una línea de la lista. El mismo markup sirve en /rutina y en el Inicio. */
+    function pendienteItemHtml(linea) {
+        var p = linea.p;
+        var colores = (p.responsables || []).map(function (id) {
+            return '<span class="rut-pend-punto rut--persona"' + styleColor(String(id)) +
+                ' title="' + escapeHtml(nombreDe(String(id))) + '"></span>';
+        }).join('');
+        return '<button type="button" class="rut-pend-item' +
+                (linea.hecha ? ' is-hecha' : '') + (linea.auto ? ' is-auto' : '') + '" ' +
+                'data-pt-toggle="' + p.id + '" ' +
+                'data-pt-fechas="' + linea.cerradas.join(',') + '" ' +
+                'data-pt-hecha="' + (linea.hecha ? '1' : '0') + '" ' +
+                'aria-pressed="' + linea.hecha + '">' +
+            '<span class="rut-pend-check" aria-hidden="true"></span>' +
+            '<span class="rut-pend-titulo">' + escapeHtml(p.titulo) + '</span>' +
+            (linea.arrastrada ? '<span class="rut-pend-ayer">de ayer</span>' : '') +
+            (linea.auto ? '<span class="rut-pend-ayer">se cerró sola</span>' : '') +
+            colores +
+        '</button>';
+    }
+
+    /** El desplegable de arriba de todo, en la sección Hoy. Sigue al selector
+     *  L-D: muestra las tareas del día que se está mirando, no siempre las de
+     *  hoy. Escribe SOLO adentro del <details>, nunca el <details> entero — si
+     *  no, el tick de 30 s lo cerraría solo. */
+    function renderPendientes() {
+        var cont = $('rut-pend-lista');
+        if (!cont) return;
+        var lineas = pendientesDelDia(isoLocal(fechaVista()));
+        var faltan = lineas.filter(function (l) { return !l.hecha; }).length;
+
+        var cuenta = $('rut-pend-cuenta');
+        if (cuenta) {
+            cuenta.textContent = faltan ? String(faltan) : '';
+            cuenta.hidden = !faltan;
+        }
+
+        cont.innerHTML = lineas.length
+            ? lineas.map(pendienteItemHtml).join('')
+            : '<p class="rut-panel-vacio">No hay tareas para este día.</p>';
+
+        var det = $('rut-pend-panel');
+        if (det) det.open = UI.pendAbierto !== false;
+    }
+
+    // ── El form de tareas (solapa Actividades) ───────────────────────────────
+
+    function formPendNueva() {
+        return {
+            id: null, titulo: '', dibujo: '',
+            repite: false, dias: DIAS_TODOS,
+            fecha: isoLocal(new Date()),
+            responsables: [], verResp: false, error: ''
+        };
+    }
+
+    function formPendDe(p) {
+        return {
+            id: p.id, titulo: p.titulo, dibujo: p.dibujo || '',
+            repite: !!p.repite,
+            dias: (p.dias && p.dias.indexOf('1') >= 0) ? p.dias : DIAS_TODOS,
+            fecha: p.fecha || isoLocal(new Date()),
+            responsables: (p.responsables || []).map(String),
+            verResp: false, error: ''
+        };
+    }
+
+    // Lee lo tipeado antes de un re-render. Sin esto el tick de 30 s borra lo
+    // que estabas escribiendo — mismo motivo que capturarFormActividad().
+    function capturarFormPend() {
+        if (!formPend) return;
+        var t = $('rut-fp-titulo'), f = $('rut-fp-fecha');
+        if (t) formPend.titulo = t.value;
+        if (f) formPend.fecha = f.value;
+    }
+
+    function formPendHtml() {
+        var f = formPend;
+
+        // Responsables: cero, uno o varios. No es obligatorio; sin nadie es una
+        // tarea de la casa y la ve todo el mundo.
+        // Cerrado se ven solo los elegidos (tocarlos los saca); el ＋ abre la
+        // familia entera. Así una tarea sin responsable no arrastra una fila de
+        // nombres apagados que no le importan a nadie.
+        var aMostrar = f.verResp
+            ? usuarios()
+            : usuarios().filter(function (u) { return f.responsables.indexOf(u) >= 0; });
+        var pills = aMostrar.map(function (u) {
+            var on = f.responsables.indexOf(u) >= 0;
+            return '<button type="button" class="rut-add-pill rut--persona' +
+                (on ? ' activo' : '') + '" data-fp-resp="' + u + '"' + styleColor(u) +
+                ' aria-pressed="' + on + '">' + escapeHtml(nombreDe(u)) + '</button>';
+        }).join('');
+
+        var lib = window.RutinaDibujos;
+        var dibujos = (lib ? lib.claves : []).map(function (c) {
+            return '<button type="button" class="rut-fa-dib' +
+                (f.dibujo === c ? ' activo' : '') + '" data-fp-dib="' + c + '" ' +
+                'title="' + c + '" aria-label="Dibujo ' + c + '">' +
+                lib.html(c) + '</button>';
+        }).join('');
+
+        return '<div class="rut-fm">' +
+            (f.error ? '<p class="rut-fm-error">' + escapeHtml(f.error) + '</p>' : '') +
+
+            '<div class="rut-fm-linea">' +
+                '<input type="text" class="rut-add-input" id="rut-fp-titulo" ' +
+                    'maxlength="60" placeholder="Ir a la verdulería" ' +
+                    'value="' + escapeHtml(f.titulo) + '">' +
+            '</div>' +
+
+            '<div class="rut-fa-bloque">' +
+                '<span class="rut-add-label">Responsable</span>' +
+                '<div class="rut-fm-pills">' + pills +
+                    '<button type="button" class="rut-pend-mas" data-fp-resp-mas="1" ' +
+                        'aria-expanded="' + (f.verResp ? 'true' : 'false') + '" ' +
+                        'aria-label="' + (f.verResp ? 'Listo' : 'Añadir responsable') + '">' +
+                        (f.verResp ? '✓' : '＋') + '</button>' +
+                '</div>' +
+            '</div>' +
+
+            '<label class="rut-fm-check">' +
+                '<input type="checkbox" data-fp-repite="1"' + (f.repite ? ' checked' : '') + '>' +
+                '<span>Repetir</span>' +
+            '</label>' +
+
+            (f.repite
+                ? '<div class="rut-fa-bloque">' +
+                      '<span class="rut-add-label">Qué días</span>' +
+                      '<div class="rut-circs">' +
+                          circulosHtml(f.dias, DIAS_CORTOS, DIAS_LARGOS, 'data-fp-dia') +
+                      '</div>' +
+                  '</div>'
+                // Sin repetición es para un día solo. Se deja elegir la fecha
+                // por si se carga algo para mañana.
+                : '<div class="rut-fm-linea">' +
+                      '<span class="rut-add-label">Para el día</span>' +
+                      '<input type="date" class="rut-add-input rut-fm-fecha" ' +
+                          'id="rut-fp-fecha" value="' + escapeHtml(f.fecha) + '">' +
+                  '</div>') +
+
+            '<details class="rut-frec-mas">' +
+                '<summary>Dibujo</summary>' +
+                '<div class="rut-fa-dibujos">' + dibujos + '</div>' +
+            '</details>' +
+
+            '<div class="rut-fm-linea">' +
+                '<span class="rut-add-espacio"></span>' +
+                '<button type="button" class="rut-editor-ahora" data-fp-guardar="1">Guardar</button>' +
+                '<button type="button" class="rut-editor-ok" data-fp-cancelar="1">Cancelar</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    /** La lista completa de tareas del panel de la solapa Actividades: acá se
+     *  crean, se editan y se borran. Mismo patrón que renderActividades(): el
+     *  editor de una existente se abre pegado a ella, el alta nueva va al pie. */
+    function renderPanelPendientes() {
+        var cont = $('rut-pendientes');
+        if (!cont) return;
+        var editandoId = formPend ? formPend.id : null;
+
+        var lista = PENDIENTES.map(function (p) {
+            var quien = (p.responsables || []).map(function (id) {
+                return nombreDe(String(id));
+            }).filter(Boolean).join(' y ') || 'sin responsable';
+            var cuando = p.repite ? resumenDias(p.dias) : ('el ' + fechaCorta(p.fecha));
+            var abierta = editandoId === p.id;
+            // El color del borde es el del primer responsable; sin responsable
+            // no se pinta de nadie.
+            var duenio = (p.responsables || [])[0];
+            var ficha = '<div class="rut-miembro rut--persona' +
+                    (abierta ? ' is-editando' : '') + '"' +
+                    (duenio ? styleColor(String(duenio)) : '') + '>' +
+                '<span class="rut-act-dib">' + dibujoHtml(p.dibujo, 'checklist') + '</span>' +
+                '<div class="rut-miembro-texto">' +
+                    '<div class="rut-miembro-nombre">' + escapeHtml(p.titulo) + '</div>' +
+                    '<div class="rut-miembro-sub">' +
+                        escapeHtml(quien) + ' · ' + escapeHtml(cuando) +
+                    '</div>' +
+                '</div>' +
+                '<button type="button" class="rut-btn-icono" data-fp-editar="' + p.id + '" ' +
+                    'aria-label="Editar ' + escapeHtml(p.titulo) + '">✎</button>' +
+                '<button type="button" class="rut-btn-icono" data-fp-borrar="' + p.id + '" ' +
+                    'aria-label="Borrar ' + escapeHtml(p.titulo) + '">🗑</button>' +
+            '</div>';
+            return abierta ? ficha + formPendHtml() : ficha;
+        }).join('');
+
+        var vacio = PENDIENTES.length ? '' :
+            '<p class="rut-panel-vacio">Todavía no hay tareas. Acá va lo que hay que ' +
+            'hacer y se tilda: los mandados, lo que hay que dejar listo. Si no se ' +
+            'marca el día que toca, pasa sola al día siguiente.</p>';
+
+        var pie = formPend
+            ? (formPend.id ? '' : formPendHtml())
+            : '<button type="button" class="rut-add-btn" data-fp-nuevo="1">＋ Agregar tarea</button>';
+
+        cont.innerHTML = vacio + lista + pie;
+        pintarIconos(cont);
+
+        if (enfocarFormPend) {
+            enfocarFormPend = false;
+            var abierto = cont.querySelector('.rut-fm');
+            if (abierto && abierto.scrollIntoView) {
+                abierto.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    }
+
+    /** '1111100' → 'de lunes a viernes' / 'todos los días' / 'L, M y V'. */
+    function resumenDias(dias) {
+        var bits = dias || '';
+        if (bits === DIAS_TODOS) return 'todos los días';
+        if (bits === '1111100') return 'de lunes a viernes';
+        if (bits === '0000011') return 'sábado y domingo';
+        var nombres = [];
+        bits.split('').forEach(function (b, i) {
+            if (b === '1') nombres.push(DIAS_LARGOS[i]);
+        });
+        if (!nombres.length) return 'ningún día';
+        if (nombres.length === 1) return 'los ' + nombres[0];
+        return nombres.slice(0, -1).join(', ') + ' y ' + nombres[nombres.length - 1];
+    }
+
+    function guardarPendiente() {
+        capturarFormPend();
+        var f = formPend;
+        if (!f) return;
+        if (!f.titulo.trim()) {
+            f.error = 'Poné un nombre para la tarea.';
+            return renderTodo();
+        }
+        if (f.repite && todosCeros(f.dias)) {
+            f.error = 'Elegí al menos un día, si no la tarea no aparece nunca.';
+            return renderTodo();
+        }
+        var campos = {
+            titulo: f.titulo.trim(),
+            dibujo: f.dibujo || '',
+            repite: f.repite ? '1' : '0',
+            dias: f.dias,
+            fecha: f.repite ? '' : (f.fecha || ''),
+            responsables: f.responsables.join(',')
+        };
+        if (f.id) {
+            campos.id = f.id;
+            campos.activo = '1';
+        }
+        formPend = null;
+        postAccion(f.id ? '/api/rutina/pendiente/editar' : '/api/rutina/pendiente/crear',
+                   campos);
+    }
+
+    /** Un toque tilda (o destilda) TODAS las ocurrencias abiertas de la línea:
+     *  la de ayer arrastrada y la de hoy. Si cerrara solo una, una tarea de
+     *  todos los días no desaparecería al tocarla y habría que tocar dos veces. */
+    function togglePendiente(id, fechas, hecha) {
+        postAccion('/api/rutina/pendiente/marcar',
+                   { id: id, fechas: fechas, hecha: hecha ? '1' : '0' });
+    }
+
     // ── Barra de secciones (mismo patrón que Lactancia) ──────────────────────
     // Íconos FIJOS del template (barra de secciones, títulos de panel, título
     // del módulo). Van con `data-dib="clave"` y los rellena esto, en vez de
@@ -2630,6 +3002,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         capturarFormAdd();       // preservar lo tipeado en el form de añadir
         capturarFormMiembro();   // ídem en el form de familia
         capturarFormActividad(); // ídem en el de actividades
+        capturarFormPend();      // ídem en el de tareas
         refrescarPausasDelForm();
         normalizarSeleccion();
         var calc = calcular();
@@ -2652,6 +3025,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         var ni = _nocheInfo(calc, esHoy, now);
         var nocheItem = ni.nocheItem, nocheActiva = ni.nocheActiva, enCurso = ni.enCurso;
 
+        renderPendientes();      // el desplegable de arriba de todo
         renderHeader();
         renderChips();
         renderDias();
@@ -2663,6 +3037,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         renderTips(calc.bebe);
         renderFamilia();
         renderActividades();
+        renderPanelPendientes();
         renderAjustes();
         actualizarFondo();   // el cielo sigue la hora que se está mirando
     }
@@ -2717,7 +3092,50 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         }
     }
 
-    window.Rutina = { hoyAhora: hoyAhora };
+    // Las TAREAS del Inicio salen por acá y no por hoyAhora(): no van a la
+    // línea de tiempo ni a las tarjetas "Ahora", son una lista aparte.
+    // tareasHoy() fuerza HOY real con el mismo save/restore de UI.dia, porque
+    // en el Inicio nadie eligió un día.
+    function tareasHoy() {
+        var diaOrig = UI.dia;
+        try {
+            UI.dia = new Date().getDay();
+            return pendientesDelDia(isoLocal(new Date())).map(function (l) {
+                return {
+                    id: l.p.id,
+                    titulo: l.p.titulo,
+                    dibujo: l.p.dibujo || '',
+                    hecha: l.hecha,
+                    auto: l.auto,
+                    arrastrada: l.arrastrada,
+                    fechas: l.cerradas.join(','),
+                    colores: (l.p.responsables || []).map(function (id) {
+                        return { nombre: nombreDe(String(id)), color: colorTokenDe(String(id)) };
+                    })
+                };
+            });
+        } finally {
+            UI.dia = diaOrig;
+        }
+    }
+
+    window.Rutina = {
+        hoyAhora: hoyAhora,
+        tareasHoy: tareasHoy,
+        familia: function () {
+            return MIEMBROS.map(function (m) {
+                return { id: m.id, nombre: m.nombre, color: colorTokenDe(String(m.id)) };
+            });
+        },
+        marcarTarea: function (id, fechas, hecha, alVolver) {
+            return postAccion('/api/rutina/pendiente/marcar',
+                              { id: id, fechas: fechas, hecha: hecha ? '1' : '0' },
+                              alVolver);
+        },
+        crearTarea: function (campos, alVolver) {
+            return postAccion('/api/rutina/pendiente/crear', campos, alVolver);
+        }
+    };
 
     // ── Topbar sticky: se pega justo debajo del topbar global de la app.
     //    El .site-topbar puede estar corrido (banner DEV: top 24px), así que
@@ -2889,11 +3307,6 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                     formActividad.dibujo = (formActividad.dibujo === clave) ? '' : clave;
                     return renderTodo();
                 }
-                if ((el = ev.target.closest('[data-fa-dias-preset]'))) {
-                    capturarFormActividad();
-                    formActividad.dias = el.dataset.faDiasPreset;
-                    return renderTodo();
-                }
                 if ((el = ev.target.closest('[data-fa-dia]'))) {
                     capturarFormActividad();
                     formActividad.dias = toggleBit(formActividad.dias, Number(el.dataset.faDia));
@@ -2930,6 +3343,106 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
                 }
                 // Los selects de hora y duración se leen en capturarFormActividad;
                 // no hace falta re-renderizar al cambiarlos.
+            });
+        }
+
+        // Desplegable de Tareas (sección Hoy): un toque tilda, otro destilda.
+        // El pintado es optimista —si esperara al POST habría 200 ms en los que
+        // no pasa nada y se vuelve a tocar—; postAccion() re-renderiza al
+        // volver con lo que diga el servidor.
+        var listaPend = $('rut-pend-lista');
+        if (listaPend) {
+            listaPend.addEventListener('click', function (ev) {
+                var btn = ev.target.closest('[data-pt-toggle]');
+                if (!btn) return;
+                var hecha = btn.dataset.ptHecha !== '1';
+                btn.classList.toggle('is-hecha', hecha);
+                btn.setAttribute('aria-pressed', String(hecha));
+                togglePendiente(btn.dataset.ptToggle, btn.dataset.ptFechas, hecha);
+            });
+        }
+
+        // El <details> guarda si quedó abierto o cerrado, por dispositivo.
+        var detPend = $('rut-pend-panel');
+        if (detPend) {
+            detPend.addEventListener('toggle', function () {
+                UI.pendAbierto = detPend.open;
+                persistirUI();
+            });
+        }
+
+        // Panel Tareas (solapa Actividades): alta / edición / baja. Mismo
+        // patrón que Actividades — los toggles no van al servidor, se guarda al
+        // tocar "Guardar", y cada handler captura el form antes de mutarlo.
+        var panelPend = $('rut-pendientes');
+        if (panelPend) {
+            panelPend.addEventListener('click', function (ev) {
+                var el;
+                if (ev.target.closest('[data-fp-nuevo]')) {
+                    formPend = formPendNueva();
+                    enfocarFormPend = true;
+                    renderTodo();
+                    var inp = $('rut-fp-titulo');
+                    if (inp) inp.focus();
+                    return;
+                }
+                if ((el = ev.target.closest('[data-fp-editar]'))) {
+                    var id = Number(el.dataset.fpEditar);
+                    var p = PENDIENTES.filter(function (x) { return x.id === id; })[0];
+                    if (!p) return;
+                    formPend = formPendDe(p);
+                    enfocarFormPend = true;
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fp-borrar]'))) {
+                    var bid = Number(el.dataset.fpBorrar);
+                    var bp = PENDIENTES.filter(function (x) { return x.id === bid; })[0];
+                    if (!bp) return;
+                    // Se lleva también el historial de tildados: por eso el aviso.
+                    if (!window.confirm('¿Borrar "' + bp.titulo + '"? Se pierde ' +
+                                        'también el registro de los días que se hizo.')) return;
+                    if (formPend && formPend.id === bid) formPend = null;
+                    return postAccion('/api/rutina/pendiente/borrar', { id: bid });
+                }
+                if (!formPend) return;
+                if ((el = ev.target.closest('[data-fp-resp-mas]'))) {
+                    capturarFormPend();
+                    formPend.verResp = !formPend.verResp;
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fp-resp]'))) {
+                    capturarFormPend();
+                    var u = el.dataset.fpResp;
+                    var i = formPend.responsables.indexOf(u);
+                    if (i >= 0) formPend.responsables.splice(i, 1);
+                    else formPend.responsables.push(u);
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fp-dib]'))) {
+                    capturarFormPend();
+                    var clave = el.dataset.fpDib;
+                    formPend.dibujo = (formPend.dibujo === clave) ? '' : clave;
+                    return renderTodo();
+                }
+                if ((el = ev.target.closest('[data-fp-dia]'))) {
+                    capturarFormPend();
+                    formPend.dias = toggleBit(formPend.dias, Number(el.dataset.fpDia));
+                    return renderTodo();
+                }
+                if (ev.target.closest('[data-fp-guardar]')) return guardarPendiente();
+                if (ev.target.closest('[data-fp-cancelar]')) {
+                    formPend = null;
+                    return renderTodo();
+                }
+            });
+
+            panelPend.addEventListener('change', function (ev) {
+                if (!formPend) return;
+                if (ev.target.closest('[data-fp-repite]')) {
+                    capturarFormPend();
+                    formPend.repite = ev.target.checked;
+                    return renderTodo();
+                }
             });
         }
 

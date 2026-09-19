@@ -215,6 +215,11 @@ etapa, item_id)` para el upsert. "↺ Plan original" (`borrar_ajustes_rutina`)
 borra TAMBIÉN estas filas.
 
 ### Tabla `rutina_tareas` (módulo Rutina — tareas añadidas por el usuario)
+⚠ **No es la lista de Tareas que ve el usuario**: esa es `rutina_pendientes`
+(más abajo). Esta tabla son las tareas sueltas **con horario** que se agregan a
+la línea de tiempo desde `✎ Editar`. Dos cosas distintas con el mismo nombre en
+castellano; en el código la nueva se llama `pendientes` en todas las capas.
+
 | Columna      | Tipo    | Notas                                                        |
 |--------------|---------|--------------------------------------------------------------|
 | `id`         | INTEGER | PK autoincremental. En el front el ítem es `c-<id>`          |
@@ -226,6 +231,50 @@ borra TAMBIÉN estas filas.
 | `dur`        | INTEGER | Duración en minutos (5..720)                                 |
 | `fecha`      | TEXT    | `''` = permanente (todos los días de la etapa) \| `YYYY-MM-DD` = solo ese día |
 | `creado`     | TEXT    | Timestamp ISO                                                |
+
+### Tabla `rutina_pendientes` (módulo Rutina — la lista de TAREAS)
+⚠ **No confundir con `rutina_tareas`** (arriba), que sigue viva y es otra cosa.
+Esta es la lista que el usuario ve como **Tareas**: los mandados del día. No
+tienen hora, no se dibujan en la línea de tiempo y se tildan cuando están hechas.
+
+| Columna      | Tipo    | Notas                                                        |
+|--------------|---------|--------------------------------------------------------------|
+| `id`         | INTEGER | PK autoincremental                                           |
+| `titulo`     | TEXT    | 1..60 chars                                                  |
+| `dibujo`     | TEXT    | Clave de `RutinaDibujos` (`''` → el front muestra `checklist`) |
+| `repite`     | INTEGER | 0 = tarea suelta (vale `fecha`) \| 1 = repetitiva (vale `dias`) |
+| `dias`       | TEXT    | 7 chars `'0'/'1'`, **LUNES primero**, igual que `rutina_actividades`. Con `repite=0` queda `'0000000'` |
+| `fecha`      | TEXT    | `YYYY-MM-DD`, solo con `repite=0`                            |
+| `desde`      | TEXT    | Fecha de ALTA. **No es opcional**: sin ella una tarea cargada el jueves figuraría como "no hecha" el lunes de la misma semana (el selector L-D deja mirar atrás) |
+| `hasta`      | TEXT    | `''` = abierta. Sin UI todavía; existe para archivar sin borrar |
+| `activo`     | INTEGER | 0 = no se muestra                                            |
+| `creado` / `actualizado` | TEXT | Timestamps ISO                                   |
+
+**Sin `miembro_id`**: a diferencia de una actividad, una tarea no tiene dueño —
+tiene cero o más responsables. Cero responsables = tarea de la casa: se ve
+siempre, aunque el filtro de la familia tenga miembros apagados.
+
+### Tabla `rutina_pendiente_miembros` (responsables de una tarea)
+`id`, `pendiente_id`, `miembro_id`, `UNIQUE (pendiente_id, miembro_id)`.
+
+### Tabla `rutina_pendientes_hechas` (ocurrencias cerradas)
+`id`, `pendiente_id`, `fecha`, `auto`, `hecha_en`, `UNIQUE (pendiente_id, fecha)`.
+
+`fecha` es el día que la tarea **vencía**, no el día en que se tildó (eso va en
+`hecha_en`): así el arrastre y el barrido hablan el mismo idioma. El `UNIQUE` es
+lo que hace idempotente el tildado. `auto = 1` → la cerró el barrido por
+vencimiento, no una persona.
+
+**La regla de arrastre**: la tarea del día D se ve D y D+1. Si al llegar a D+2
+sigue sin tildar, se da por realizada sola (`auto = 1`) y deja de aparecer.
+
+⚠ **Acá se rompe el principio de "la regla de ocurrencia vive en JS"** (ver
+`rutina_actividades`), y a propósito: `pendienteDebe()` en `static/rutina.js`
+decide qué se ve en pantalla (el que sabe qué día se está mirando es el
+cliente), pero `_pendiente_vence()` + `cerrar_pendientes_vencidas()` en
+`database.py` **escriben**, y no pueden esperar a que alguien abra el navegador
+el día justo. La regla está escrita dos veces: si tocás una, tocá la otra.
+`tests/test_rutina_pendientes.py` congela la de Python.
 
 ### Tabla `rutina_ocultos` (módulo Rutina — ítems quitados)
 | Columna   | Tipo    | Notas                                                        |
@@ -307,6 +356,14 @@ Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 | `actividad_rutina_existe(id)`    | `bool`                             | Valida el id antes de escribir (activa o no). Lo usan las rutas |
 | `crear_pausa_rutina(actividad_id, desde, hasta, anual, motivo)` | id nuevo | Receso de una actividad |
 | `borrar_pausa_rutina(id)`        | None                               | Saca un receso suelto; no toca la actividad |
+| `obtener_pendientes_rutina()`    | `list[dict]`                       | **Tareas** activas con `responsables` anidados (por eso dicts y no Rows) |
+| `obtener_pendientes_hechas(desde, hasta)` | `list[Row]`               | Ocurrencias cerradas por rango de VENCIMIENTO. Quien llama pide un día antes del primero visible (lo hace `_rut_payload`) |
+| `crear_pendiente_rutina(titulo, dibujo, repite, dias, fecha, desde, responsables=())` | id nuevo | `desde` = fecha de alta, la pone el servidor |
+| `editar_pendiente_rutina(id, titulo, dibujo, repite, dias, fecha, responsables, activo)` | None | **No toca `desde`**: la fecha de alta es histórica |
+| `borrar_pendiente_rutina(id)`    | None                               | Baja definitiva + cascada manual: responsables y todo el historial de tildados |
+| `pendiente_rutina_existe(id)`    | `bool`                             | Valida el id antes de escribir |
+| `marcar_pendiente_rutina(id, fechas, hecha)` | None                   | Tilda/destilda. `fechas` es LISTA: un toque puede cerrar la ocurrencia de ayer (arrastrada) y la de hoy. Idempotente |
+| `cerrar_pendientes_vencidas(hoy, lookback_dias=45)` | `int`            | El barrido: cierra con `auto=1` lo que venció hace 2 días o más. Idempotente; el `lookback` evita miles de INSERT la primera vez |
 
 ## `calcular_saldos()` — 8 claves del dict
 - `elias_ars`, `elias_usd`, `mari_ars`, `mari_usd` → saldos en moneda nativa.
