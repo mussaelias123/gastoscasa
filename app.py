@@ -2087,16 +2087,23 @@ def personal():
     # ── Saldos: la MISMA tarjeta de /gastos, con otras dos filas ──────────
     # `_tarjeta_saldos.html` y sus gauges comparan dos mitades (A vs B) en
     # cada moneda. Acá las mitades son "Personal" (la cuenta propia) y
-    # "Núcleo" (el fondo familiar entero), en vez de Elías vs Mari.
+    # "Núcleo" (lo que esta persona tiene DENTRO del fondo familiar).
+    #
+    # ⚠ "Núcleo" es la parte de ESTA persona en el fondo (`elias_ars` o
+    # `mari_ars`), NO el fondo entero. La pregunta que responde la tarjeta es
+    # "cuánta plata tengo yo en total, y de esa cuánta es mía y cuánta la
+    # tengo pero es del núcleo" — sumar la plata del otro rompía las tres
+    # filas: Núcleo mostraba el total de la casa y Total daba una cifra que
+    # no era de nadie. (Bug del 2026-09-19.)
     #
     # Se le arma a `_calcular_gauges` un dict con la MISMA forma que el del
-    # fondo, poniendo lo personal donde va `elias` y el fondo donde va `mari`.
-    # Así los dos partials y el helper de gauges se reusan tal cual, sin una
-    # rama nueva adentro: lo único propio de esta pantalla son las etiquetas.
+    # fondo, poniendo lo personal donde va `elias` y lo del núcleo donde va
+    # `mari`. Así los dos partials y el helper de gauges se reusan tal cual,
+    # sin una rama nueva adentro: lo propio de esta pantalla son las etiquetas.
     personal_saldos = database.calcular_saldos_personales(persona)
     fondo           = database.calcular_saldos()
-    nucleo_ars      = fondo['elias_ars'] + fondo['mari_ars']
-    nucleo_usd      = fondo['elias_usd'] + fondo['mari_usd']
+    nucleo_ars      = fondo[f'{persona}_ars']
+    nucleo_usd      = fondo[f'{persona}_usd']
 
     saldos_gauge = {
         'elias_ars':       personal_saldos['ars'],
@@ -2104,9 +2111,11 @@ def personal():
         'mari_ars':        nucleo_ars,
         'mari_usd':        nucleo_usd,
         'elias_total_usd': personal_saldos['total_usd'],
-        'mari_total_usd':  fondo['elias_total_usd'] + fondo['mari_total_usd'],
-        'ars_total_usd':   fondo['ars_total_usd'],
-        'usd_total_usd':   fondo['usd_total_usd'],
+        'mari_total_usd':  fondo[f'{persona}_total_usd'],
+        # `ars_total_usd`/`usd_total_usd` a propósito NO van: los usa
+        # `_calcular_gauges` solo en modo histórico, que en esta pantalla no
+        # existe (no hay selector de fecha), y los del fondo serían de la casa
+        # entera. El helper los lee con `.get(..., 0.0)`.
     }
     cotizacion_valor = float(cfg.get('cotizacion_valor') or 1.0)
 
