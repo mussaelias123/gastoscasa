@@ -375,5 +375,86 @@ class TestValidacionDelForm(unittest.TestCase):
                 f'{tipo} deberia poder ser personal')
 
 
+# ── 8. La tarjeta de saldos de /personal ─────────────────────────────────────
+
+class TestTarjetaSaldosPersonal(BaseTemporal):
+    """Las tres filas de /personal: Personal, Nucleo y Total.
+
+    POR QUE ESTE TEST: la primera version tomaba "Nucleo" como el fondo
+    ENTERO (Elias + Mari). La pregunta que responde la pantalla es "cuanta
+    plata tengo YO, y de esa cuanta es mia y cuanta la tengo pero es del
+    nucleo", asi que sumar la plata del otro rompia las tres filas: Nucleo
+    mostraba el total de la casa y Total daba una cifra que no era de nadie.
+    Es un error que no se ve — los numeros quedan mal y siguen siendo
+    plausibles. Bug del 2026-09-19.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import app as app_mod
+        self.app_mod = app_mod
+
+    def filas(self, persona):
+        """Las filas tal como las arma la ruta, sin levantar Flask."""
+        personal = database.calcular_saldos_personales(persona)
+        fondo    = database.calcular_saldos()
+        return {
+            'personal_ars': personal['ars'],
+            'nucleo_ars':   fondo[f'{persona}_ars'],
+            'personal_usd': personal['usd'],
+            'nucleo_usd':   fondo[f'{persona}_usd'],
+        }
+
+    def test_nucleo_es_lo_MIO_en_el_fondo_no_el_fondo_entero(self):
+        self.cargar_fondo()
+        f = self.filas('elias')
+
+        # Fondo de Elias: sueldo 1.000.000 * 0,85 = 850.000, menos el super
+        # 48.000 => 802.000. Mari tiene lo suyo y NO tiene que aparecer aca.
+        self.assertAlmostEqual(f['nucleo_ars'], 802000.0, places=2)
+
+        mari_en_el_fondo = database.calcular_saldos()['mari_ars']
+        self.assertNotAlmostEqual(f['nucleo_ars'],
+                                  f['nucleo_ars'] + mari_en_el_fondo, places=2,
+                                  msg='Nucleo esta sumando la plata del otro')
+
+    def test_cada_uno_ve_su_propia_parte_del_fondo(self):
+        self.cargar_fondo()
+        saldos = database.calcular_saldos()
+        self.assertAlmostEqual(self.filas('elias')['nucleo_ars'],
+                               saldos['elias_ars'], places=2)
+        self.assertAlmostEqual(self.filas('mari')['nucleo_ars'],
+                               saldos['mari_ars'], places=2)
+
+    def test_el_total_de_la_tarjeta_es_toda_la_plata_de_esa_persona(self):
+        self.cargar_fondo()
+        self.cargar_personales()
+        f = self.filas('elias')
+
+        # La fila Total del partial es la suma de las dos de arriba.
+        total_ars = f['personal_ars'] + f['nucleo_ars']
+
+        # Personal: resto del sueldo 150.000 + venta 150.000 - cafe 8.500.
+        self.assertAlmostEqual(f['personal_ars'], 291500.0, places=2)
+        # Nucleo: su parte del fondo.
+        self.assertAlmostEqual(f['nucleo_ars'], 802000.0, places=2)
+        self.assertAlmostEqual(total_ars, 1093500.0, places=2)
+
+        # Y no es el total de la casa: el de Mari no entra por ningun lado.
+        saldos = database.calcular_saldos()
+        self.assertNotAlmostEqual(total_ars,
+                                  saldos['elias_ars'] + saldos['mari_ars'],
+                                  places=2)
+
+    def test_el_sueldo_no_se_cuenta_dos_veces(self):
+        # El fondo se queda con monto * factor y lo personal con el resto:
+        # entre las dos filas tiene que dar el bruto, ni mas ni menos.
+        self.alta('Sueldo', 'elias', 'ars', 'ingreso', 1000000.0,
+                  categoria='Sueldo', factor_aplicado=0.85)
+        f = self.filas('elias')
+        self.assertAlmostEqual(f['personal_ars'] + f['nucleo_ars'],
+                               1000000.0, places=2)
+
+
 if __name__ == '__main__':
     unittest.main()
