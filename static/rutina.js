@@ -3092,49 +3092,8 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
         }
     }
 
-    // Las TAREAS del Inicio salen por acá y no por hoyAhora(): no van a la
-    // línea de tiempo ni a las tarjetas "Ahora", son una lista aparte.
-    // tareasHoy() fuerza HOY real con el mismo save/restore de UI.dia, porque
-    // en el Inicio nadie eligió un día.
-    function tareasHoy() {
-        var diaOrig = UI.dia;
-        try {
-            UI.dia = new Date().getDay();
-            return pendientesDelDia(isoLocal(new Date())).map(function (l) {
-                return {
-                    id: l.p.id,
-                    titulo: l.p.titulo,
-                    dibujo: l.p.dibujo || '',
-                    hecha: l.hecha,
-                    auto: l.auto,
-                    arrastrada: l.arrastrada,
-                    fechas: l.cerradas.join(','),
-                    colores: (l.p.responsables || []).map(function (id) {
-                        return { nombre: nombreDe(String(id)), color: colorTokenDe(String(id)) };
-                    })
-                };
-            });
-        } finally {
-            UI.dia = diaOrig;
-        }
-    }
-
     window.Rutina = {
-        hoyAhora: hoyAhora,
-        tareasHoy: tareasHoy,
-        familia: function () {
-            return MIEMBROS.map(function (m) {
-                return { id: m.id, nombre: m.nombre, color: colorTokenDe(String(m.id)) };
-            });
-        },
-        marcarTarea: function (id, fechas, hecha, alVolver) {
-            return postAccion('/api/rutina/pendiente/marcar',
-                              { id: id, fechas: fechas, hecha: hecha ? '1' : '0' },
-                              alVolver);
-        },
-        crearTarea: function (campos, alVolver) {
-            return postAccion('/api/rutina/pendiente/crear', campos, alVolver);
-        }
+        hoyAhora: hoyAhora
     };
 
     // ── Topbar sticky: se pega justo debajo del topbar global de la app.

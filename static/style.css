@@ -9170,17 +9170,11 @@ body:has(.home-page) .contenido-principal {
   min-width: 0;
   min-height: 0;
   display: grid;
-  /* 0.6rem y no 0.75: con la fila de Tareas son cinco filas y cuatro
-     separaciones, y en un iPhone SE de 375×667 cada píxel cuenta. */
-  gap: 0.6rem;
+  gap: 0.75rem;
   grid-template-columns: 1fr 1fr;
-  /* Fila 1 = Tareas, plegada (~38px). Las otras cuatro se recalibraron para
-     que el conjunto siga entrando en 375×667 sin scroll: los pisos de las dos
-     últimas bajaron lo justo para hacerle lugar. */
-  grid-template-rows: max-content max-content max-content minmax(96px, 1fr) minmax(138px, 1.35fr);
+  grid-template-rows: max-content max-content minmax(110px, 1fr) minmax(150px, 1.35fr);
 }
 
-.home-card--tareas { grid-column: span 2; }
 .home-card--gastos { grid-column: span 2; }
 .home-card--saldos { grid-column: span 2; }
 .home-card--rutina { grid-column: span 2; }
@@ -9296,137 +9290,6 @@ body:has(.home-page) .contenido-principal {
 .home-placeholder {
   color: var(--color-texto-muted);
   font-size: 0.85rem;
-}
-
-/* ── Tarjeta TAREAS ─────────────────────────────────────────────────────────
-   La lista del día que se tilda (rutina_pendientes). Plegada por defecto: el
-   Inicio no scrollea, así que cerrada tiene que ser una línea. El ＋ vive
-   afuera del <details> para poder cargar una tarea sin desplegar la lista. */
-.home-card--tareas {
-  flex-direction: row;
-  flex-wrap: wrap;     /* el form del alta baja a su propia línea */
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0.6rem;
-}
-
-/* El form del alta ocupa el ancho entero, debajo del título y del ＋ */
-.home-card--tareas .home-sheet { flex: 1 0 100%; }
-
-.home-pend {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.home-pend-summary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  list-style: none;
-  touch-action: manipulation;
-}
-
-.home-pend-summary::-webkit-details-marker { display: none; }
-
-.home-pend-summary::after {
-  content: '▾';
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--color-texto-muted);
-}
-
-.home-pend[open] > .home-pend-summary::after { content: '▴'; }
-
-.home-pend-cuenta {
-  min-width: 1.3rem;
-  padding: 0 0.35rem;
-  border-radius: 999px;
-  background: var(--color-acento);
-  color: var(--color-superficie);
-  font-size: 0.7rem;
-  font-weight: 800;
-  line-height: 1.3rem;
-  text-align: center;
-}
-
-.home-pend-lista {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  max-height: 40vh;
-  margin-top: 0.45rem;
-  overflow-y: auto;
-}
-
-/* El ＋ de la tarjeta. Cerrada, la tarjeta es una barra fina: el botón manda
-   el alto, así que 1.85rem es el techo que deja la fila en ~38px. */
-.home-pend-mas {
-  flex: 0 0 auto;
-  width: 1.85rem;
-  height: 1.85rem;
-  border: 1px solid var(--color-acento);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-acento);
-  font: inherit;
-  font-size: 1.05rem;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-/* ── Form del alta (dentro del sheet) ── */
-.home-pend-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.8rem;
-}
-
-.home-pend-input {
-  width: 100%;
-  padding: 0.5rem 0.6rem;
-  border: 1px solid var(--color-borde);
-  border-radius: var(--radio-borde);
-  background: var(--color-fondo);
-  color: var(--color-texto);
-  font: inherit;
-}
-
-.home-pend-campo[hidden] { display: none; }
-
-.home-pend-campo {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.home-pend-label {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--color-texto-muted);
-}
-
-.home-pend-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-
-.home-pend-check {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.88rem;
-}
-
-.home-pend-error {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--color-peligro);
 }
 
 /* ── Botones mobile ＋ (abren el bottom-sheet de su tarjeta) ── */
@@ -9827,14 +9690,12 @@ body:has(.home-page) .contenido-principal {
        la reparte .home-col-rutcal en flex-column (ver esa sección) para que
        Rutina no se estire a la altura de la fila 1 (dejaba espacio en
        blanco bajo las tarjetas "ahora") y Calendario se lleve el resto. */
-    grid-template-rows: max-content minmax(0, max-content) minmax(180px, 1fr);
+    grid-template-rows: minmax(0, max-content) minmax(180px, 1fr);
     grid-template-areas:
-      "tareas tareas    tareas"
       "gastos lactancia rutinacal"
       "saldos lactancia rutinacal";
   }
 
-  .home-card--tareas     { grid-area: tareas; }
   .home-card--gastos     { grid-area: gastos; }
   .home-card--saldos     { grid-area: saldos; }
   .home-card--lactancia  { grid-area: lactancia; }
@@ -9878,14 +9739,6 @@ body:has(.home-page) .contenido-principal {
 
   /* El ✕ solo tiene sentido como bottom-sheet */
   .home-sheet-cerrar { display: none; }
-
-  /* Excepción: el alta de TAREAS sigue detrás del ＋ también en escritorio.
-     La tarjeta es una barra fina de una línea; un form siempre abierto ahí
-     ocuparía más que todas las tareas juntas. Inline sí (no es bottom-sheet),
-     pero recién cuando se toca el ＋. */
-  #home-sheet-tareas { display: none; }
-  #home-sheet-tareas.is-abierta { display: block; }
-  #home-sheet-tareas .home-sheet-cerrar { display: inline-flex; }
 
   /* El sheet ya no viene después de otro contenido: abre la tarjeta pegado
      al head (Gastos: único contenido; Lactancia: arriba de las listas) →
