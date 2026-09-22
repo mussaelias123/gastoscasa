@@ -1296,25 +1296,95 @@ def inject_notif_badge():
         return {'notif_badge': 0}
 
 
+# Cuánto vale la versión calculada antes de volver a mirar el disco. 10 s es
+# el punto medio: en DEV el cambio se ve casi al toque (recargar dos veces en
+# el peor caso) y en PROD la app deja de recorrer static/ en cada render.
+_STATIC_VER_TTL = 10
+
+
 def _static_version():
-    """Devuelve el mtime más reciente de los archivos estáticos principales."""
+    """
+    Número de versión de los estáticos para el cache-busting (`?v=` en
+    base.html). Siempre devuelve un str.
+
+    POR QUÉ MIRA TODO static/ Y NO UNA LISTA ESCRITA A MANO: la lista se
+    olvida. Con `resumen.js` ya pasó: se cambiaba el archivo, la versión no se
+    movía y el navegador seguía sirviendo la copia vieja. Y además de los .js
+    acá cuelgan las fuentes (`static/fonts/`) y los PNG de la PWA, que una
+    lista de scripts nunca iba a cubrir. Son ~19 archivos y 1 MB: el paseo por
+    el disco no se nota, y con el memo de abajo pasa una vez cada 10 s.
+
+    POR QUÉ EL FALLBACK ES LA HORA Y NO '0': esta misma versión va a ser la
+    del caché del service worker. Un '0' fijo deja a todos los clientes
+    pegados para siempre a la misma versión, sin forma de destrabarlos desde
+    el servidor. La hora rompe el caché de más un rato, pero nunca clava a
+    nadie. Y el camino al fallback es real: `max()` de una lista vacía
+    revienta.
+    """
+    # Reloj monótono para la ventana del memo: no lo corre un cambio de hora
+    # del sistema. El de abajo, en cambio, es `time.time()` porque ahí hace
+    # falta un número que siempre crezca, no un intervalo.
+    ahora = time.monotonic()
+    memo = getattr(_static_version, '_memo', None)
+    if memo and ahora < memo[0]:
+        return memo[1]
+
     try:
-        paths = [
-            os.path.join(app.static_folder, 'style.css'),
-            os.path.join(app.static_folder, 'app.js'),
-            os.path.join(app.static_folder, 'calendario.js'),
-            os.path.join(app.static_folder, 'lactancia.js'),
-            os.path.join(app.static_folder, 'grafico.js'),
-            os.path.join(app.static_folder, 'resumen.js'),
-            os.path.join(app.static_folder, 'rutina.js'),
-            os.path.join(app.static_folder, 'rutina-actividades.js'),
-            os.path.join(app.static_folder, 'rutina-sueno.js'),
-            os.path.join(app.static_folder, 'rutina-dibujos.js'),
-            os.path.join(app.static_folder, 'home.js'),
-        ]
-        return str(int(max(os.path.getmtime(p) for p in paths if os.path.exists(p))))
+        mtimes = []
+        for carpeta, subcarpetas, archivos in os.walk(app.static_folder):
+            # __pycache__ y las carpetas ocultas no se sirven al navegador: si
+            # entraran, un .pyc recién escrito movería la versión sin que haya
+            # cambiado nada de lo que el cliente descarga.
+            subcarpetas[:] = [d for d in subcarpetas
+                              if d != '__pycache__' and not d.startswith('.')]
+            for nombre in archivos:
+                # Mismo criterio que las carpetas, pero para archivos sueltos.
+                # En Windows el Explorer deja `desktop.ini` y `Thumbs.db` en
+                # cualquier carpeta que se mire (static/img/ es candidata), y
+                # un editor abierto deja `.style.css.swp`. Ninguno se sirve:
+                # si contaran, cambiar la vista de una carpeta le rompería el
+                # caché a los dos teléfonos.
+                if (nombre.startswith('.')
+                        or nombre.lower() in ('desktop.ini', 'thumbs.db')
+                        or nombre.endswith(('~', '.swp', '.bak', '.tmp'))):
+                    continue
+                try:
+                    mtimes.append(os.path.getmtime(os.path.join(carpeta, nombre)))
+                except OSError:
+                    # Desapareció entre listar la carpeta y leerlo: un editor
+                    # que guarda escribiendo un temporal y renombrando deja esa
+                    # ventana abierta. Se saltea ese archivo; los otros 18
+                    # mtimes siguen siendo buenos. Abortar el cálculo entero
+                    # por uno sería mandar la versión al fallback de gusto.
+                    pass
+
+        # El service worker (`templates/sw.js`) todavía no existe. Se suma si
+        # está y se ignora si no: así el día que aparezca, esta función ya lo
+        # está mirando y nadie tiene que acordarse de volver acá.
+        try:
+            mtimes.append(os.path.getmtime(os.path.join(BASE_DIR, 'templates', 'sw.js')))
+        except OSError:
+            pass
+
+        if not mtimes:
+            raise ValueError('static/ vacío')
+
+        version = str(int(max(mtimes)))
     except Exception:
-        return '0'
+        # La hora, nunca un valor fijo (ver el POR QUÉ de arriba).
+        #
+        # Y SE MEMOIZA, igual que el camino feliz: mientras dure la falla, a
+        # todos les toca la MISMA versión inventada por 10 s. Sin memo, cada
+        # render devolvería un número distinto y el navegador se re-bajaría
+        # todo a cada paso — con el service worker encima, un caché nuevo por
+        # segundo. Memoizarlo no reintroduce el problema del '0': al vencer la
+        # ventana el número vuelve a avanzar, así que nadie queda clavado.
+        version = str(int(time.time()))
+
+    # El memo también garantiza que dos llamadas seguidas den lo MISMO: si no,
+    # el ?v= de style.css y el de app.js podrían diferir en la misma página.
+    _static_version._memo = (ahora + _STATIC_VER_TTL, version)
+    return version
 
 
 @app.template_filter('fmt_ars')
