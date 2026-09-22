@@ -103,6 +103,20 @@ DEFAULTS = {
     # clave: cambiarla a "mari" permite probar la vista de Mari sin OAuth.
     # En PROD no se lee nunca (ahí la persona sale del email de Google).
     "persona_dev": "elias",
+    # ── PWA: service worker y notificaciones push ──────────────────────────
+    # DOS interruptores SEPARADOS a propósito: son dos modos de falla
+    # distintos y hay que poder apagar uno sin el otro.
+    #   sw_enabled   → si /sw.js sirve el service worker real o la LÁPIDA (el
+    #                  SW suicida que borra cachés y se desregistra). Falla
+    #                  típica: código o pantalla vieja cacheada en el celular.
+    #   push_enabled → si la app ofrece notificaciones push del sistema.
+    #                  Falla típica: avisos repetidos o a cualquier hora.
+    # Se leen EN CALIENTE: `cargar_config()` va al disco en cada llamada, así
+    # que apagarlos es editar config.json — sin deploy y sin reiniciar el
+    # servicio. Eso es justamente lo que los hace un kill switch.
+    # Default False los dos: la app arranca exactamente como estaba.
+    "sw_enabled":   False,
+    "push_enabled": False,
     # ── Backups de la base de datos ────────────────────────────────────────────
     # Ruta relativa a la carpeta del proyecto, o absoluta. Default: "backups".
     "backup_dir": "backups",

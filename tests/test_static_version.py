@@ -54,11 +54,13 @@ class TestStaticVersion(unittest.TestCase):
     def setUp(self):
         _limpiar_memo()
         self.static_original = app_module.app.static_folder
+        self.base_dir_original = app_module.BASE_DIR
         self.temporales = []
         self.mtimes_tocados = {}
 
     def tearDown(self):
         app_module.app.static_folder = self.static_original
+        app_module.BASE_DIR = self.base_dir_original
         for ruta in self.temporales:
             if os.path.exists(ruta):
                 os.remove(ruta)
@@ -75,6 +77,21 @@ class TestStaticVersion(unittest.TestCase):
         if mtime is not None:
             os.utime(ruta, (mtime, mtime))
         return ruta
+
+    def _sin_nada_que_mirar(self):
+        """
+        Deja a `_static_version()` sin NINGUNA fuente: ni static/ ni
+        templates/sw.js.
+
+        POR QUE HACE FALTA TAPAR LAS DOS (cambio de la etapa 2): la función
+        suma el mtime del service worker aparte del paseo por static/. Desde
+        que `templates/sw.js` existe de verdad, esconder solo static/ ya no
+        llega al fallback — queda el mtime del sw.js, que es un número
+        perfectamente válido. Los tests del fallback tienen que sacar las dos.
+        """
+        inexistente = os.path.join(ROOT_DIR, 'no_existe_nada')
+        app_module.app.static_folder = inexistente
+        app_module.BASE_DIR = inexistente
 
     def _tocar(self, ruta, mtime):
         """Mueve el mtime de un archivo del repo y anota el original."""
@@ -100,8 +117,21 @@ class TestStaticVersion(unittest.TestCase):
             subs[:] = [d for d in subs
                        if d != '__pycache__' and not d.startswith('.')]
             for nombre in archivos:
+                if (nombre.startswith('.')
+                        or nombre.lower() in ('desktop.ini', 'thumbs.db')
+                        or nombre.endswith(('~', '.swp', '.bak', '.tmp'))):
+                    continue
                 esperado = max(esperado,
                                os.path.getmtime(os.path.join(carpeta, nombre)))
+
+        # `templates/sw.js` cuenta aunque viva fuera de static/: editar el
+        # service worker mueve el ?v= de TODOS los estáticos. Sin esta línea el
+        # test falla apenas alguien toca el sw.js, que es justo lo que pasó la
+        # primera vez que se lo editó después de crearlo.
+        sw = os.path.join(ROOT_DIR, 'templates', 'sw.js')
+        if os.path.exists(sw):
+            esperado = max(esperado, os.path.getmtime(sw))
+
         self.assertEqual(_static_version(), str(int(esperado)))
 
     def test_una_fuente_mueve_la_version(self):
@@ -152,7 +182,7 @@ class TestStaticVersion(unittest.TestCase):
         fijo deja a todos los clientes pegados a la misma versión para siempre
         y sin forma de destrabarlos desde el servidor.
         """
-        app_module.app.static_folder = os.path.join(ROOT_DIR, 'no_existe_nada')
+        self._sin_nada_que_mirar()
         v = _static_version()
         self.assertNotEqual(v, '0')
         self.assertTrue(v.isdigit())
@@ -165,12 +195,12 @@ class TestStaticVersion(unittest.TestCase):
         re-bajaría todo a cada paso. El daño no es que todos reciban la misma
         versión inventada: es que cada uno reciba una distinta.
         """
-        app_module.app.static_folder = os.path.join(ROOT_DIR, 'no_existe_nada')
+        self._sin_nada_que_mirar()
         self.assertEqual(_static_version(), _static_version())
 
     def test_el_fallback_avanza_al_vencer_la_ventana(self):
         """Memoizar el fallback no puede reintroducir el '0' clavado."""
-        app_module.app.static_folder = os.path.join(ROOT_DIR, 'no_existe_nada')
+        self._sin_nada_que_mirar()
         primero = _static_version()
         _limpiar_memo()
         time.sleep(1.1)
@@ -232,19 +262,25 @@ class TestStaticVersion(unittest.TestCase):
 
     # ── 6. templates/sw.js ───────────────────────────────────────────────────
 
-    def test_sw_js_suma_si_esta_y_se_ignora_si_no(self):
+    def test_sw_js_mueve_la_version(self):
         """
-        POR QUE ESTE TEST: el service worker todavía no existe. Cuando la
-        etapa 2 lo cree, esta función ya tiene que estar mirándolo — si no,
-        editar el sw.js no movería la versión de su propio caché.
+        POR QUE ESTE TEST: este mismo número es la versión que ve el service
+        worker. Si editar `templates/sw.js` no moviera la versión, un service
+        worker nuevo podría anunciarse con el número viejo.
+
+        Nació en la etapa 1, cuando el archivo todavía no existía y el test lo
+        creaba para probar el gancho. Desde la etapa 2 el sw.js es real: se le
+        mueve el mtime al futuro y `tearDown` lo devuelve a donde estaba.
         """
         sw = os.path.join(ROOT_DIR, 'templates', 'sw.js')
-        if os.path.exists(sw):
-            self.skipTest('sw.js ya existe: la etapa 2 ya está mergeada')
-
         base = _static_version()
         _limpiar_memo()
-        self._crear(sw, mtime=time.time() + 9000)
+
+        if os.path.exists(sw):
+            self._tocar(sw, time.time() + 9000)
+        else:
+            self._crear(sw, mtime=time.time() + 9000)
+
         self.assertNotEqual(_static_version(), base,
                             'sw.js no se está tomando en cuenta')
 

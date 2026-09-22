@@ -213,6 +213,33 @@
       {% endif %}
     </div>
 
+    {# ── REPARAR APP (service worker + caché del navegador) ──────────────── #}
+    {# Es el camino de rescate a mano. El automático (barrer al cargar cuando
+       `sw_enabled` está apagado) vive en base.html, pero depende de que el
+       dispositivo llegue a pedirle algo al servidor. Este botón no depende de
+       nada de eso, y es el único que se puede usar desde un celular sin
+       DevTools. La lógica está en `window.SW.barrer()` (static/app.js). #}
+    <div class="tarjeta settings-card" id="reparar-app">
+      <div class="settings-card-header">
+        <h3 class="settings-titulo-seccion">Reparar app</h3>
+        <span class="settings-card-meta">Si quedó pegada en una versión vieja</span>
+      </div>
+
+      <span class="settings-ayuda">
+        Desregistra el service worker y borra el caché que el navegador guarda de
+        esta app <strong>en este dispositivo</strong>. No toca datos: los
+        movimientos, la leche y las tareas viven en el servidor. Después de
+        repararla, recargá la página.
+      </span>
+
+      <div class="settings-acciones">
+        <button type="button" class="btn btn-secundario" id="btn-reparar-app">
+          🧹 Reparar app
+        </button>
+        <span id="reparar-app-msg" class="settings-cotizacion-msg" role="status"></span>
+      </div>
+    </div>
+
     {# El banco de leche se configura desde el panel "Ajustes" de /lactancia,
        no acá: la pantalla se trajo entera de la app suelta y configura el
        módulo desde adentro del propio módulo. #}
@@ -552,6 +579,57 @@ setInterval(fetchMetrics, 3000);
       btn.disabled = false;
       btn.textContent = textoOriginal;
     }
+  });
+})();
+
+
+// ── Reparar app (service worker + caché del navegador) ──────────────────────
+// El barrido de verdad está en `window.SW.barrer()` (static/app.js): acá solo
+// se lo llama y se cuenta qué encontró. Sin `window.SW` (app.js no cargó) el
+// botón no se cablea y queda inerte, en vez de tirar un error al tocarlo.
+(function () {
+  var btn = document.getElementById('btn-reparar-app');
+  var msg = document.getElementById('reparar-app-msg');
+  if (!btn || !window.SW) return;
+
+  btn.addEventListener('click', function () {
+    var textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Reparando...';
+    if (msg) { msg.textContent = ''; msg.className = 'settings-cotizacion-msg'; }
+
+    window.SW.barrer().then(function (r) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      if (!msg) return;
+
+      if (r.error) {
+        msg.textContent = '⚠ No se pudo limpiar del todo. Probá de nuevo.';
+        msg.className = 'settings-cotizacion-msg settings-cotizacion-msg-error';
+        return;
+      }
+      // Cero y cero es el resultado NORMAL hoy: no hay service worker todavía.
+      // Se dice explícito para que no parezca que el botón no hizo nada.
+      if (!r.registros && !r.caches) {
+        msg.textContent = '✓ Ya estaba limpio: no había nada que reparar.';
+      } else {
+        msg.textContent = '✓ Listo: ' + r.registros + ' service worker(s) y ' +
+                          r.caches + ' caché(s). Recargá la página.';
+      }
+    }).catch(function (e) {
+      // El camino feliz era el único que devolvía el botón a su estado. Si
+      // algo se escapa, sin esto el botón queda en "Reparando..." y
+      // deshabilitado para siempre — y este es el ÚNICO camino de rescate que
+      // no depende de que la lápida llegue al teléfono. Tiene que poder
+      // reintentarse.
+      console.warn('SW: falló el barrido.', e);
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      if (msg) {
+        msg.textContent = '⚠ No se pudo reparar. Probá de nuevo.';
+        msg.className = 'settings-cotizacion-msg settings-cotizacion-msg-error';
+      }
+    });
   });
 })();
 

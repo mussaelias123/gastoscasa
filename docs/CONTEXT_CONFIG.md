@@ -46,6 +46,8 @@
 | `secret_key`                 | `""`         | Flask session signing                        |
 | `auth_disabled`              | `False`      | Bypass login SOLO dev (triple cerrojo, ver `auth.py`) |
 | `persona_dev`                | `"elias"`    | `elias` \| `mari`. Quién es el usuario con el bypass DEV activo: la sesión falsa es `dev@local`, que no está en el mapa email→persona de `auth.py`, y el módulo Personal necesita saber de quién es la cuenta. Cambiarla permite probar la vista de Mari sin OAuth. **En PROD no se lee nunca** (ahí la persona sale del email de Google) |
+| `sw_enabled`                 | `False`      | Interruptor del **service worker** (PWA). `False` → la ruta `/sw.js` sirve la LÁPIDA (un SW que borra todas las cachés, se desregistra y suelta el control) y `base.html` no registra nada: además barre lo que haya quedado. `True` → sirve el SW real (hoy todavía vacío) y la página lo registra. Se lee EN CALIENTE (`cargar_config()` va al disco en cada llamada): apagarlo es editar `config.json`, sin deploy ni reiniciar el servicio. **No tiene UI a propósito**: es un kill switch, no una preferencia |
+| `push_enabled`               | `False`      | Interruptor de las **notificaciones push** del sistema. Separado de `sw_enabled` a propósito: son dos modos de falla distintos (código viejo cacheado vs. avisos repetidos) y hay que poder apagar uno sin el otro. Todavía no lo lee nadie: se define ahora para que el apagado exista antes que la función |
 | `backup_dir`                 | `"backups"`  | Carpeta de backups (relativa o absoluta)     |
 | `paleta_light`               | dict 23 vars | Colores base en modo claro (editables). Incluye `texto-invertido` (`#ffffff`, del módulo Calendario) y `persona-leon` (turquesa pastel, del módulo Rutina). |
 | `paleta_dark`                | dict 23 vars | Colores base en modo oscuro (editables). Mismas claves.                  |
@@ -62,7 +64,7 @@
   - `POST /api/lactancia/config` — los tiempos, avisos, mínimo para combinar, bolsitas y confirmaciones. Guarda solo los campos que lleguen, así cada grupo de la pantalla se guarda por su cuenta.
   - `POST /api/lactancia/bebe` — nombre y fecha de nacimiento.
   - `POST /api/lactancia/recordatorio` — interruptor y hora del recordatorio nocturno.
-- **A mano en `config.json`**: ngrok, OAuth, puerto, `auth_disabled` (no tienen UI).
+- **A mano en `config.json`**: ngrok, OAuth, puerto, `auth_disabled`, `sw_enabled` y `push_enabled` (no tienen UI). Los dos últimos son kill switches: se cambian en caliente y aplican en la siguiente carga de página. Lo que SÍ tiene UI es el rescate del lado del cliente: el botón **"Reparar app"** de Settings (`window.SW.barrer()`), que desregistra el service worker y borra las cachés de ESE dispositivo.
 
 ## Reglas
 1. Para agregar clave: definir en `DEFAULTS` (con valor seguro), luego usar en código.

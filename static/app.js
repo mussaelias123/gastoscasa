@@ -958,6 +958,94 @@ window.Notif = (function () {
 
 /*
 ================================================================================
+window.SW — barrido del service worker (el botón de pánico)
+================================================================================
+`window.SW.barrer()` desregistra TODOS los service workers de este origen y
+borra TODAS las cachés del navegador para la app. Devuelve una promesa con
+`{ registros, caches }` (cuántos encontró de cada cosa).
+
+Lo llaman dos lugares:
+  · `base.html`, en cada carga, cuando `sw_enabled` está apagado. Es el
+    camino automático: apagar el flag en config.json limpia los teléfonos
+    solos, sin tocar nada más.
+  · el botón "Reparar app" de Settings. Es el camino a mano, el único que NO
+    depende de que la lápida llegue al dispositivo y el único que se puede
+    ejecutar desde un celular, sin DevTools.
+
+TIENE QUE SER SEGURO CORRERLO CUANDO NO HAY NADA, que es el caso normal de
+hoy: sin service workers y sin cachés no hace nada, no tira error y no escribe
+en consola. No toca datos de la app: la base vive en el servidor y esto solo
+borra archivos que el navegador puede volver a bajar.
+================================================================================
+*/
+window.SW = (function () {
+    // Leer un global que puede NO estar, sin que se caiga nada.
+    //
+    // No alcanza con `'caches' in window`: el `in` mira si la propiedad existe
+    // en la cadena de prototipos, pero NO invoca el getter. Con el storage
+    // bloqueado (Chrome con todas las cookies bloqueadas, un iframe sandbox,
+    // una política de empresa) la propiedad sigue estando y lo que revienta es
+    // LEERLA, con un SecurityError sincrónico. Y sincrónico acá es grave: el
+    // throw sale antes de que exista la promesa, así que ningún `.catch` de
+    // más abajo lo agarra y se lleva puesto el barrido entero — justo el
+    // camino de rescate, justo en el navegador roto en el que se iba a usar.
+    function global(leer) {
+        try {
+            return leer();
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // `caches` tampoco existe en navegadores viejos ni en http:// sin localhost.
+    function barrerCaches() {
+        var c = global(function () { return window.caches; });
+        if (!c) return Promise.resolve(0);
+        return c.keys().then(function (nombres) {
+            return Promise.all(nombres.map(function (nombre) {
+                return c.delete(nombre);
+            })).then(function () { return nombres.length; });
+        });
+    }
+
+    // getRegistrations() (plural) no está en Safari viejo, que solo tiene
+    // getRegistration() (singular). Sin él no hay nada que desregistrar.
+    function barrerRegistros() {
+        var sw = global(function () { return navigator.serviceWorker; });
+        if (!sw || !sw.getRegistrations) return Promise.resolve(0);
+        return sw.getRegistrations().then(function (regs) {
+            return Promise.all(regs.map(function (reg) {
+                return reg.unregister();
+            })).then(function () { return regs.length; });
+        });
+    }
+
+    function barrer() {
+        // El `Promise.resolve().then(...)` de afuera es a propósito: convierte
+        // en rechazo cualquier throw sincrónico que igual se escape, así
+        // `barrer()` SIEMPRE devuelve una promesa. Sin eso, quien lo llama con
+        // `.then(...)` se cuelga para siempre — el botón "Reparar app" quedaba
+        // en "Reparando..." y deshabilitado.
+        return Promise.resolve()
+            .then(function () {
+                return Promise.all([barrerRegistros(), barrerCaches()]);
+            })
+            .then(function (res) {
+                return { registros: res[0], caches: res[1] };
+            })
+            .catch(function (err) {
+                // Nunca romper la página: mismo criterio que window.Notif.
+                console.warn('SW: no se pudo limpiar del todo.', err);
+                return { registros: 0, caches: 0, error: true };
+            });
+    }
+
+    return { barrer: barrer };
+})();
+
+
+/*
+================================================================================
 FUNCIÓN: initFiltros()
 ================================================================================
 Propósito:
