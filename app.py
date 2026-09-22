@@ -1600,10 +1600,11 @@ def index():
 # en el redirect al login leería el HTML del login como manifest, y no habría
 # botón de instalar. Los PNG ya son públicos: viven en static/.
 #
-# EL SERVICE WORKER ES OTRA RUTA (/sw.js, acá abajo) y hoy está INERTE: el
-# botón de instalar y la ventana propia nunca lo necesitaron. Cuando se le
-# sume caché de verdad, va network-first y SIN cachear /api/*: la app nunca
-# debe mostrar saldos viejos.
+# EL SERVICE WORKER ES OTRA RUTA (/sw.js, acá abajo) y el botón de instalar
+# nunca lo necesitó. ESTE MANIFEST NO SE CACHEA, y no por olvido: el service
+# worker atiende una LISTA BLANCA de /static/, así que esta ruta —que arma los
+# colores leyendo la paleta EN CALIENTE— queda afuera por construcción, igual
+# que las páginas y las rutas /api/*. Nadie tiene que acordarse de excluirla.
 # =============================================================================
 
 @app.route('/manifest.json')
@@ -1656,7 +1657,7 @@ def manifest():
 
 
 # =============================================================================
-# RUTA: PWA — service worker (hoy INERTE: es el interruptor de apagado)
+# RUTA: PWA — service worker (+ su interruptor de apagado)
 # URL: GET /sw.js
 # =============================================================================
 #
@@ -1698,7 +1699,15 @@ def manifest():
 # deploy ni reinicio, porque `cargar_config()` lee el disco en cada llamada):
 #   * False (default) → LÁPIDA: un SW que borra las cachés, se desregistra y
 #     suelta el control. Sin fetch handler, así que la app queda idéntica.
-#   * True            → el SW real, que en esta etapa todavía está vacío.
+#   * True            → el SW real: precachea el esqueleto (CSS, JS global y
+#     fuentes) y atiende una LISTA BLANCA — solo GET, solo de este origen,
+#     solo bajo /static/. Las 13 páginas (que se renderizan ACÁ, con los saldos
+#     YA ADENTRO del HTML), las rutas /api/*, el manifest, este mismo /sw.js,
+#     el login y el CSV quedan afuera POR CONSTRUCCIÓN: la ruta que se escriba
+#     mañana nace protegida sin que nadie tenga que acordarse de excluirla.
+#     El porqué está escrito adentro de `templates/sw.js`; lo que NO se puede
+#     hacer es convertir esa lista blanca en lista negra (tests/test_sw.py la
+#     congela).
 # =============================================================================
 
 # Lápida de EMERGENCIA. Es la misma idea que la mitad LAPIDA de

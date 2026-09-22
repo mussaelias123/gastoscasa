@@ -227,15 +227,37 @@ class TestStaticVersion(unittest.TestCase):
                 raise FileNotFoundError(ruta)
             return real(ruta)
 
+        # El esperado se calcula, no se adivina: el mtime más nuevo del árbol
+        # SALTEANDO el archivo que falla. Comparar contra el reloj sería
+        # frágil — alcanza con que alguien acabe de editar un archivo para que
+        # su mtime sea "ahora" y el test no distinga un mtime legítimo del
+        # fallback.
+        esperado = 0
+        for carpeta, subs, archivos in os.walk(app_module.app.static_folder):
+            subs[:] = [d for d in subs
+                       if d != '__pycache__' and not d.startswith('.')]
+            for nombre in archivos:
+                ruta = os.path.join(carpeta, nombre)
+                if os.path.abspath(ruta) == os.path.abspath(fantasma):
+                    continue
+                if (nombre.startswith('.')
+                        or nombre.lower() in ('desktop.ini', 'thumbs.db')
+                        or nombre.endswith(('~', '.swp', '.bak', '.tmp'))):
+                    continue
+                esperado = max(esperado, real(ruta))
+        sw = os.path.join(ROOT_DIR, 'templates', 'sw.js')
+        if os.path.exists(sw):
+            esperado = max(esperado, real(sw))
+
         os.path.getmtime = getmtime_roto
         try:
             v = _static_version()
         finally:
             os.path.getmtime = real
 
-        # No se fue al fallback: sigue siendo un mtime del árbol, no la hora.
-        self.assertLess(int(v), int(time.time()) - 60,
-                        f'se fue al fallback de la hora en vez de saltear uno: {v}')
+        # No se fue al fallback: devolvió el mtime del resto del árbol.
+        self.assertEqual(v, str(int(esperado)),
+                         f'se fue al fallback en vez de saltear el archivo roto: {v}')
         self.assertLessEqual(int(v), int(base))
 
     # ── 5. Lo que no se sirve, no cuenta ─────────────────────────────────────
