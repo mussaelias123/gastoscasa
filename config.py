@@ -117,6 +117,39 @@ DEFAULTS = {
     # Default False los dos: la app arranca exactamente como estaba.
     "sw_enabled":   False,
     "push_enabled": False,
+    # ── Push: par de claves VAPID + contacto ───────────────────────────────
+    # VAPID es cómo el servidor le demuestra al servicio de push (FCM de
+    # Google, Mozilla, el de Apple) que el aviso lo manda el dueño de la app y
+    # no cualquiera. Es UN par de claves P-256, del SERVIDOR, no del usuario.
+    #
+    # SE GENERAN UNA SOLA VEZ, con `python TempScripts/generar_vapid.py`, y se
+    # pegan a mano acá. Se tratan igual que `secret_key`: no se versionan, no
+    # se loguean, no se muestran. Y como `secret_key`, REGENERARLAS ROMPE LO
+    # QUE YA HAY — cambiar `secret_key` desloguea a todos; cambiar el par VAPID
+    # invalida TODAS las suscripciones existentes, y encima en silencio: el
+    # navegador sigue teniendo la suscripción vieja, el envío falla del lado
+    # del servicio de push y el teléfono simplemente no recibe nada.
+    #
+    #   push_vapid_publica   → base64url del punto sin comprimir (65 bytes, 87
+    #                          caracteres). Es la que el navegador necesita para
+    #                          suscribirse (`applicationServerKey`), así que
+    #                          VIAJA AL HTML a propósito: `base.html` la pone en
+    #                          un data-attribute del <body>. Es pública por
+    #                          definición; sola no sirve para mandar nada.
+    #   push_vapid_secreta   → base64url del escalar privado (32 bytes, 43
+    #                          caracteres). La come `pywebpush` tal cual.
+    #                          Nombrada "secreta" y no "privada" a propósito:
+    #                          que no se confunda de un vistazo con la pública
+    #                          (y, de paso, cae sola bajo MARCADORES_SECRETOS).
+    #   push_contacto_mailto → el `sub` del JWT: `mailto:alguien@dominio.com`,
+    #                          CON el prefijo. Es a quién reclama el servicio de
+    #                          push si la app se manda una macana. Apple lo
+    #                          valida de verdad y es más estricto que FCM.
+    #
+    # Vacías por default: sin ellas nadie se suscribe y la app queda como está.
+    "push_vapid_publica":   "",
+    "push_vapid_secreta":   "",
+    "push_contacto_mailto": "",
     # ── Backups de la base de datos ────────────────────────────────────────────
     # Ruta relativa a la carpeta del proyecto, o absoluta. Default: "backups".
     "backup_dir": "backups",
@@ -174,6 +207,67 @@ DEFAULTS = {
         "deco-4":         "#334155",
     },
 }
+
+
+# =============================================================================
+# CLAVES SECRETAS — qué no puede salir de este módulo
+# =============================================================================
+#
+# EL PROBLEMA: `inject_config()` (app.py) manda el dict ENTERO de config a
+# TODOS los templates bajo la clave `cfg`. Ahí adentro viajan hoy
+# `google_client_secret`, `secret_key` y `ngrok_authtoken`. Ningún template los
+# imprime, así que hoy no se filtra nada — pero están a UN `{{ cfg }}` de
+# distancia de aparecer en el HTML, y el HTML se lo lleva cualquiera que mire
+# el código fuente de la página. No es un bug: es una mina puesta. Se saca
+# justo antes de sumar una clave secreta más (`push_vapid_secreta`).
+#
+# POR QUÉ UN CRITERIO Y NO UNA LISTA DE NOMBRES: una lista hay que acordarse de
+# actualizarla, y el día que alguien agrega una clave secreta y no la agrega a
+# la lista, la clave sale al HTML sin que nada falle ni avise. El olvido es
+# silencioso, que es la peor clase de olvido. Un criterio sobre el NOMBRE, en
+# cambio, cubre sola a la clave nueva: alcanza con llamarla como ya se llaman
+# todas las de esta app.
+#
+# QUÉ CUBRE HOY, sin tocar nada:
+#     secret  → `secret_key`, `google_client_secret`, `push_vapid_secreta`
+#     token   → `ngrok_authtoken`
+# Las otras dos ("password", "clave_privada") no matchean ninguna clave actual:
+# están para el nombre que todavía no existe.
+#
+# EL PRECIO, dicho en voz alta: una clave que NO sea secreta pero se llame con
+# uno de estos fragmentos tampoco llega al template, y en Jinja eso no explota,
+# renderiza vacío. Es el lado correcto del que fallar: un dato de más que falta
+# se ve enseguida en la pantalla; un secreto de más que sobra no se ve nunca.
+#
+# REGLA para quien agregue una clave: si es un secreto, el nombre tiene que
+# contener uno de estos fragmentos. Está congelado en `tests/test_cfg_secretos.py`.
+MARCADORES_SECRETOS = ('secret', 'token', 'password', 'clave_privada')
+
+
+def es_clave_secreta(clave):
+    """True si el NOMBRE de la clave la marca como secreta (ver arriba)."""
+    nombre = str(clave).lower()
+    return any(marcador in nombre for marcador in MARCADORES_SECRETOS)
+
+
+def sin_secretos(cfg):
+    """
+    Copia de `cfg` sin las claves secretas. Es lo que se le pasa a los
+    templates (app.py → inject_config).
+
+    COSTO: es una comprensión de dict sobre ~45 claves, del orden del
+    microsegundo. Corre en cada render, sí — pero pegada a `cargar_config()`,
+    que en ese mismo render ABRE UN ARCHIVO DEL DISCO y lo parsea con
+    `json.load`. Al lado de eso esto no se mide: cachearlo agregaría un
+    invalidador nuevo (y el lector en caliente de `sw_enabled` depende
+    justamente de que no haya caché) a cambio de nada.
+
+    Copia PLANA a propósito: los valores anidados (`paleta_light`,
+    `paleta_dark`) se comparten con el dict original, que `cargar_config()`
+    arma nuevo en cada llamada. No hay secretos anidados y nadie muta el cfg
+    del render.
+    """
+    return {k: v for k, v in cfg.items() if not es_clave_secreta(k)}
 
 
 # Rangos válidos de los parámetros numéricos del panel "Ajustes" de Lactancia.

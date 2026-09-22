@@ -44,3 +44,10 @@ psutil>=7.2.2
 authlib>=1.6.9
 requests>=2.33.1
 flask-compress>=1.25
+# Notificaciones push (Web Push + VAPID). Arrastra 11 paquetes: aiohttp y su
+# familia (multidict, yarl, frozenlist, aiosignal, propcache, aiohappyeyeballs,
+# attrs), cryptography (+cffi, pycparser), py-vapid y http-ece. Todos con wheel
+# precompilado para Windows + Python 3.13: no compila nada.
+# AL DEPLOYAR: correr `pip install -r requirements.txt` ANTES de reiniciar el
+# servicio (ver docs/CONTEXT_DEPLOY.md).
+pywebpush>=2.5.0

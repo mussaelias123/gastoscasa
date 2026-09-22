@@ -10,7 +10,15 @@
   `git pull` si cambió esa lista — hay que correr también
   `pip install -r requirements.txt` ANTES de reiniciar el servicio, o el
   proceso no arranca (`ModuleNotFoundError`) y NSSM lo deja caído.
-  Última alta: `flask-compress` (2026-09-21, compresión de respuestas; arrastra
+  Última alta: `pywebpush` (2026-09-22, notificaciones push / VAPID). **Es la
+  que más arrastra hasta hoy: 11 paquetes** — `aiohttp` y su familia
+  (`multidict`, `yarl`, `frozenlist`, `aiosignal`, `propcache`,
+  `aiohappyeyeballs`, `attrs`), `cryptography` (+ `cffi`, `pycparser`),
+  `py-vapid` y `http-ece`. Todos con wheel precompilado para Windows +
+  Python 3.13: no compila nada, pero es una instalación larga. Si se reinicia
+  el servicio sin correr el `pip install` primero, NSSM lo deja caído con
+  `ModuleNotFoundError: pywebpush`.
+  Anterior: `flask-compress` (2026-09-21, compresión de respuestas; arrastra
   `brotli` y `backports.zstd`, los dos con wheel precompilado para Windows +
   Python 3.13, no compilan nada).
 - Servicio Windows: NSSM (`E:\Fondo\nssm.exe`, raíz del clon PROD, binario fuera de git; no existe en DEV).

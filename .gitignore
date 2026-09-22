@@ -4,6 +4,12 @@ config.json
 # Variables de entorno
 .env
 
+# Lo escribe pywebpush en la carpeta actual cada vez que se depura un envío con
+# `curl=True` (el camino documentado cuando una notificación no llega). Adentro
+# van el payload cifrado y la clave pública efímera. Va acá desde la etapa que
+# sumó la dependencia, para que no se cuele en un `git add -A` apurado.
+encrypted.data
+
 # Base de datos local (fondo.db desde el rename 2026-07; gastos.db = nombre
 # legacy, se mantiene ignorado por si algún entorno todavía no migró)
 fondo.db
