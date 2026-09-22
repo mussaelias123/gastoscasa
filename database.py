@@ -580,6 +580,46 @@ def inicializar_db():
         ON rutina_pendientes_hechas (fecha)
     ''')
 
+    # -------------------------------------------------------------------
+    # Tabla push_suscripciones: a QUÉ NAVEGADORES avisarle.
+    #
+    # UNA FILA = UN NAVEGADOR, NO UNA PERSONA. El `endpoint` que devuelve
+    # el navegador al suscribirse es la URL del buzón que abrió el servicio
+    # de push (FCM, Mozilla, Apple) para ESE navegador en ESE dispositivo:
+    # es único y no se repite, por eso es la PRIMARY KEY. De ahí se sigue
+    # todo lo demás: si Mari entra en el Android de Elías, el endpoint es el
+    # mismo de siempre y el alta PISA `persona`/`user_email` — el dueño del
+    # buzón pasa a ser la última sesión que lo usó. Es lo correcto: quien
+    # mire ese teléfono va a ver la notificación, sea de quien sea.
+    #
+    # p256dh / auth: las dos claves que el navegador genera para que el
+    # servidor pueda CIFRAR el contenido del aviso (el servicio de push no
+    # puede leerlo). Sin ellas el endpoint no sirve para nada.
+    #
+    # user_agent: recortado a 300 caracteres al guardar (ver
+    # guardar_suscripcion_push). Es para poder distinguir un teléfono de
+    # otro cuando haya que mirar por qué uno dejó de recibir avisos.
+    #
+    # NO HAY `ultimo_ok` NI CONTADOR DE FALLOS, y no es un olvido: esta
+    # tabla entra en el dump lógico que hashea _hash_datos_db() (app.py)
+    # para decidir si el día tuvo cambios que backupear. Un campo que se
+    # reescriba en cada envío haría que el hash cambie todos los días y el
+    # detector de backups quedaría inútil (backup diario falso, para
+    # siempre). Misma razón por la que `creada` NO se refresca en el alta
+    # repetida y por la que el upsert lleva WHERE.
+    # -------------------------------------------------------------------
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS push_suscripciones (
+            endpoint   TEXT PRIMARY KEY,
+            p256dh     TEXT NOT NULL,
+            auth       TEXT NOT NULL,
+            persona    TEXT NOT NULL DEFAULT '',
+            user_email TEXT NOT NULL DEFAULT '',
+            user_agent TEXT NOT NULL DEFAULT '',
+            creada     TEXT
+        )
+    ''')
+
     conn.commit()   # Confirma los cambios (como un "guardar")
     conn.close()    # Cierra la conexión
 
@@ -2283,3 +2323,147 @@ def cerrar_pendientes_vencidas(hoy, lookback_dias=45):
     conn.commit()
     conn.close()
     return cerradas
+
+
+# =============================================================================
+# SUSCRIPCIONES PUSH (tabla push_suscripciones)
+# Propósito: guardar a qué navegadores avisarle. NO manda nada.
+# =============================================================================
+#
+# El envío en sí (pywebpush) es de una etapa posterior y NO vive acá:
+# `database.py` es capa de datos pura.
+#
+# EL LARGO DEL user_agent: lo elige el cliente, así que se recorta. Un UA de
+# 50 KB entraría entero a la fila, al dump lógico y al backup diario, para
+# cero beneficio. El recorte es determinístico (siempre los primeros 300
+# caracteres) justamente para que un alta repetida siga dando el MISMO valor y
+# el upsert de abajo siga siendo un no-op.
+
+_PUSH_UA_MAX = 300
+
+
+def guardar_suscripcion_push(endpoint, p256dh, auth, persona, user_email, user_agent=''):
+    """
+    Alta (o refresco) de la suscripción de UN navegador. Devuelve True si de
+    verdad escribió algo, False si fue un no-op.
+
+    ⚠ LO QUE PROTEGE EL DETECTOR DE BACKUPS ES QUE `creada` NO ESTÉ EN EL
+    `SET`. Esa es la línea importante de acá abajo, y conviene tenerlo claro
+    porque no es lo que parece.
+
+    `_hash_datos_db()` (app.py) hashea el DUMP LÓGICO: ve el CONTENIDO de las
+    filas, no las escrituras. Un UPDATE que reescribe exactamente los mismos
+    valores deja la fila idéntica y el hash quieto. Medido: sin el WHERE hay
+    diez UPDATE reales por diez altas repetidas y el hash igual no se mueve.
+    El que lo movería es `creada`, porque sería un valor NUEVO en cada alta —
+    y el navegador re-manda su suscripción en cada arranque. Ahí sí
+    `_scheduler_backup` vería "datos nuevos" todos los días y generaría un
+    backup diario FALSO para siempre, rompiendo lo único que hoy distingue un
+    día con movimientos de uno sin.
+
+    Entonces: si mañana se suma un `ultimo_ok` o un contador de fallos que se
+    refresque después de cada envío, NO alcanza con este WHERE — ese UPDATE es
+    otro y va por fuera de este `ON CONFLICT`. Sería exactamente el backup
+    diario falso que esta tabla se cuidó de no provocar.
+
+    EL `WHERE` SIGUE VALIENDO, por otra razón: evita diez escrituras inútiles
+    por sesión (lock, WAL, I/O) y es lo que permite devolver si escribió de
+    verdad. Pero no es el que cuida el hash.
+
+    `persona` y `user_email` los pone el SERVIDOR (ver `_persona_actual()` en
+    app.py); acá llegan ya resueltos. Se pisan a propósito en cada alta: el
+    dueño del buzón es la última sesión que lo usó.
+    """
+    ua = (user_agent or '')[:_PUSH_UA_MAX]
+    conn = conectar()
+    cur = conn.execute('''
+        INSERT INTO push_suscripciones
+            (endpoint, p256dh, auth, persona, user_email, user_agent, creada)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (endpoint) DO UPDATE SET
+            p256dh     = excluded.p256dh,
+            auth       = excluded.auth,
+            persona    = excluded.persona,
+            user_email = excluded.user_email,
+            user_agent = excluded.user_agent
+        WHERE push_suscripciones.p256dh     IS NOT excluded.p256dh
+           OR push_suscripciones.auth       IS NOT excluded.auth
+           OR push_suscripciones.persona    IS NOT excluded.persona
+           OR push_suscripciones.user_email IS NOT excluded.user_email
+           OR push_suscripciones.user_agent IS NOT excluded.user_agent
+    ''', (endpoint, p256dh, auth, persona, user_email, ua, _ahora_iso()))
+    escribio = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return escribio
+
+
+def borrar_suscripcion_push(endpoint, user_email=None):
+    """
+    Baja de un navegador. Devuelve cuántas filas borró (0 = no estaba).
+
+    Que no esté NO es un error: el navegador puede mandar la baja de algo que
+    ya se borró de este lado (otro logout, otra pestaña, un reinstall). Quien
+    llama responde ok igual.
+
+    `user_email` ACOTA el borrado a lo propio, y la ruta siempre lo manda. Sin
+    eso, cualquiera de los dos podía dar de baja el teléfono del otro con solo
+    conocer su endpoint: un POST y al otro le dejan de llegar los avisos, sin
+    nada en pantalla que lo explique y sin forma de volver atrás salvo
+    re-suscribir el dispositivo. Es el mismo criterio que `_es_ajeno()` en los
+    movimientos personales. Se deja opcional para el borrado interno (el de
+    `logout`, que ya filtra por email).
+    """
+    conn = conectar()
+    if user_email:
+        cur = conn.execute(
+            'DELETE FROM push_suscripciones '
+            'WHERE endpoint = ? AND LOWER(user_email) = LOWER(?)',
+            (endpoint, user_email),
+        )
+    else:
+        cur = conn.execute(
+            'DELETE FROM push_suscripciones WHERE endpoint = ?', (endpoint,)
+        )
+    borradas = cur.rowcount
+    conn.commit()
+    conn.close()
+    return borradas
+
+
+def borrar_suscripciones_push_de_email(user_email):
+    """
+    Borra todas las suscripciones de una cuenta. Devuelve cuántas borró.
+
+    Es la red de seguridad del logout (auth.py): quien se va de un navegador
+    deja de recibir ahí los avisos de su cuenta. Un `user_email` vacío no
+    borra NADA — si no, un logout sin sesión se llevaría puestas las filas que
+    quedaron sin email.
+    """
+    email = (user_email or '').strip().lower()
+    if not email:
+        return 0
+    conn = conectar()
+    cur = conn.execute(
+        'DELETE FROM push_suscripciones WHERE LOWER(user_email) = ?', (email,)
+    )
+    borradas = cur.rowcount
+    conn.commit()
+    conn.close()
+    return borradas
+
+
+def obtener_suscripciones_push(persona=None):
+    """Las suscripciones guardadas, todas o las de una persona. Orden estable."""
+    conn = conectar()
+    if persona:
+        filas = conn.execute(
+            'SELECT * FROM push_suscripciones WHERE persona = ? ORDER BY creada, endpoint',
+            (persona,)
+        ).fetchall()
+    else:
+        filas = conn.execute(
+            'SELECT * FROM push_suscripciones ORDER BY creada, endpoint'
+        ).fetchall()
+    conn.close()
+    return filas

@@ -290,6 +290,52 @@ insert-idempotente (`DO NOTHING`) funcione. Un ítem del bebé quitado sale de
 la cadena ANTES de la cascada (los siguientes se re-encadenan, en el front).
 Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 
+### Tabla `push_suscripciones` (PWA — a qué navegadores avisarle)
+| Columna      | Tipo | Notas                                                             |
+|--------------|------|-------------------------------------------------------------------|
+| `endpoint`   | TEXT | **PRIMARY KEY**. URL https del buzón que el servicio de push (FCM / Mozilla / Apple) le abrió a ESE navegador en ESE dispositivo |
+| `p256dh`     | TEXT | Clave pública del navegador (base64url, 87-88 chars). Sin ella el aviso no se puede cifrar |
+| `auth`       | TEXT | Secreto de 16 bytes (base64url, 22-24 chars)                      |
+| `persona`    | TEXT | `elias` \| `mari`. **La pone el servidor** (`_persona_actual()`), nunca el POST |
+| `user_email` | TEXT | El de la sesión. Es por lo que el logout sabe qué filas borrar    |
+| `user_agent` | TEXT | Recortado a **300 chars** al guardar (`_PUSH_UA_MAX`). Para distinguir un teléfono de otro cuando haya que mirar por qué uno dejó de recibir avisos |
+| `creada`     | TEXT | Timestamp ISO de la PRIMERA vez que se vio ese buzón. **No se refresca nunca** |
+
+**Una fila = un NAVEGADOR, no una persona.** Por eso el `endpoint` es la PK: si
+Mari entra en el Android de Elías, el endpoint es el mismo y el alta PISA
+`persona`/`user_email` — el dueño del buzón pasa a ser la última sesión. Es lo
+correcto: quien mire ese teléfono va a ver la notificación.
+
+**No hay `ultimo_ok` ni contador de fallos, y no es un olvido.** Esta tabla
+entra en el dump lógico que hashea `_hash_datos_db()` (app.py) para decidir si
+el día tuvo algo que backupear. Un campo que se reescriba en cada envío haría
+cambiar el hash todos los días y el detector de backups quedaría inútil
+(backup diario FALSO, para siempre).
+
+⚠ **Lo que protege el hash es que `creada` NO esté en el `SET` del upsert**, y
+conviene tenerlo claro porque no es lo que parece. `_hash_datos_db()` hashea el
+**contenido** de las filas, no las escrituras: un UPDATE que reescribe los
+mismos valores deja la fila idéntica y el hash quieto. Medido — sin el `WHERE`
+hay 10 UPDATE reales por 10 altas repetidas y el hash **igual no se mueve**. El
+que lo movería es `creada`, porque sería un valor nuevo cada vez.
+
+**Consecuencia para quien venga a sumar `ultimo_ok`**: el `WHERE` de este
+`ON CONFLICT` NO lo cubre. Ese refresh sería un UPDATE aparte, con un valor
+nuevo cada envío, y ahí sí el hash se mueve todos los días. El criterio para
+dar de baja un buzón muerto es el 404/410 del servicio de push, y tiene que ser
+un `DELETE` de la fila, no un campo que se reescriba.
+
+El upsert lleva **`WHERE`** igual, por otra razón — evita escrituras inútiles y
+permite devolver si escribió de verdad:
+
+```sql
+ON CONFLICT (endpoint) DO UPDATE SET ...
+WHERE push_suscripciones.p256dh IS NOT excluded.p256dh OR ...   -- los 5 campos
+```
+
+Las dos cosas están congeladas en `tests/test_push_suscripciones.py`: el hash
+antes y después de 10 altas iguales, y que esas 10 no escriban.
+
 ### Migraciones
 `inicializar_db()` ejecuta `ALTER TABLE ADD COLUMN` en bucle silencioso (try/except). **Nunca borrar columnas**, solo agregar. Migración manual de datos → `TempScripts/`.
 
@@ -364,6 +410,10 @@ Es también la 4ª capa de la frecuencia: faltar UN día suelto (feriado).
 | `pendiente_rutina_existe(id)`    | `bool`                             | Valida el id antes de escribir |
 | `marcar_pendiente_rutina(id, fechas, hecha)` | None                   | Tilda/destilda. `fechas` es LISTA: un toque puede cerrar la ocurrencia de ayer (arrastrada) y la de hoy. Idempotente |
 | `cerrar_pendientes_vencidas(hoy, lookback_dias=45)` | `int`            | El barrido: cierra con `auto=1` lo que venció hace 2 días o más. Idempotente; el `lookback` evita miles de INSERT la primera vez |
+| `guardar_suscripcion_push(endpoint, p256dh, auth, persona, user_email, user_agent='')` | `bool` | Upsert de UN navegador. Devuelve si **escribió de verdad**: con los mismos datos es un no-op REAL (ver el `WHERE` arriba). Recorta el `user_agent` a 300 chars. NO refresca `creada` |
+| `borrar_suscripcion_push(endpoint)` | `int`                          | Filas borradas. `0` = no estaba, y **no es un error** (el navegador puede pedir la baja de algo ya borrado) |
+| `borrar_suscripciones_push_de_email(user_email)` | `int`             | Todas las de una cuenta. La usa el logout (`auth.py`). Email vacío → `0`, no borra nada. Case-insensitive |
+| `obtener_suscripciones_push(persona=None)` | `list[Row]`             | Todas o las de una persona, orden estable (`creada, endpoint`) |
 
 ## `calcular_saldos()` — 8 claves del dict
 - `elias_ars`, `elias_usd`, `mari_ars`, `mari_usd` → saldos en moneda nativa.
