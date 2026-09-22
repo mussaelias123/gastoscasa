@@ -6,6 +6,13 @@
 - **No se compila.** La app corre como `python app.py`; en producción NSSM
   envuelve ese mismo comando (no hay PyInstaller, instalador ni comandos de
   servicio propios en `app.py`).
+- **Dependencias**: `requirements.txt`. Al actualizar PROD no alcanza con
+  `git pull` si cambió esa lista — hay que correr también
+  `pip install -r requirements.txt` ANTES de reiniciar el servicio, o el
+  proceso no arranca (`ModuleNotFoundError`) y NSSM lo deja caído.
+  Última alta: `flask-compress` (2026-09-21, compresión de respuestas; arrastra
+  `brotli` y `backports.zstd`, los dos con wheel precompilado para Windows +
+  Python 3.13, no compilan nada).
 - Servicio Windows: NSSM (`E:\Fondo\nssm.exe`, raíz del clon PROD, binario fuera de git; no existe en DEV).
 - Túnel público: ngrok con dominio fijo.
 - Backups DB: diario via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings. Archivos sin fecha en el nombre (ej. `gastos_PreGitHub.db`) no cuentan como backup ni entran en la rotación.

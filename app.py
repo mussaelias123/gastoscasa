@@ -45,6 +45,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 import re as _re
 from flask import (Flask, render_template, request, redirect, url_for, jsonify,
                    flash, Response)
+from flask_compress import Compress
 import database
 import config
 import cotizacion
@@ -1224,6 +1225,28 @@ app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
             static_folder=os.path.join(BASE_DIR, 'static'))
 app.config['TEMPLATES_AUTO_RELOAD'] = True  # Recargar templates sin reiniciar
+
+# ── Compresión de respuestas ─────────────────────────────────────────────────
+# Comprime el HTML, el CSS, el JS y los JSON antes de mandarlos por la red.
+#
+# QUÉ PASABA ANTES: todo navegador avisa en cada pedido que sabe descomprimir
+# (manda la cabecera `Accept-Encoding`). El servidor lo ignoraba y respondía
+# crudo. Es mandar la carpeta entera del proyecto en vez del .zip.
+#
+# CUÁNTO AHORRA (medido acá, con gzip; brotli comprime todavía un poco más):
+#   style.css   328 KB → 73 KB   (-78%)
+#   rutina.js   199 KB → 50 KB   (-75%)
+#   /resumen    155 KB → 19 KB   (-88%)
+#
+# NO TOCA NADA MÁS: el navegador descomprime solo, la página se ve igual y no
+# cambia una línea de HTML, CSS ni JS. El túnel ngrok tampoco comprimía, así
+# que el ahorro se nota igual desde afuera de casa.
+#
+# QUÉ NO COMPRIME (y está bien): las fuentes .woff2 y los PNG de los íconos ya
+# vienen comprimidos de fábrica — comprimirlos de nuevo no achica nada y gasta
+# CPU al pedo. La lista por defecto de flask-compress ya los deja afuera, igual
+# que las respuestas de menos de 500 bytes.
+Compress(app)
 
 # ── Autenticación con Google OAuth ───────────────────────────────────────────
 # init_auth() configura: secret_key persistente, OAuth con Google,

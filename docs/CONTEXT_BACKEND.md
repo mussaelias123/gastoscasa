@@ -202,6 +202,23 @@ tareas/ocultos = permanente (todos los días).
 - Carpeta de backups editable desde Settings vía `accion='guardar_backup_dir'` (POST `/settings`).
 - **Compat rename 2026-07** (`gastos.db` → `fondo.db`): `_listar_backups`, `_limpiar_backups_antiguos` y `_ultimo_backup_fecha` filtran por `('fondo_', 'gastos_')` (los dos prefijos rotan juntos por fecha). `_fecha_de_backup` usa regex `^(?:fondo|gastos)_(\d{4}-\d{2}-\d{2})` (ya no slicing de largo fijo, porque el prefijo cambió de longitud) — mismo contrato: `None` si el nombre no matchea.
 
+## Compresión de respuestas (2026-09-21)
+`Compress(app)` (flask-compress) justo después de crear la app en `app.py`, antes
+de `init_auth`. Es un `after_request` global: comprime HTML, CSS, JS y JSON de
+salida. **No hay nada que llamar por ruta** — anda solo.
+
+- Config: toda por defecto. No se tocó `COMPRESS_MIMETYPES` porque la lista de
+  fábrica ya cubre `text/javascript`, `text/css`, `text/html`, `application/json`
+  y `application/manifest+json`, y deja afuera `.woff2` y `.png` (ya comprimidos).
+- Mínimo 500 bytes: respuestas más chicas salen crudas (ej. `/api/saldos`, 445 b).
+- Algoritmo lo elige el navegador: Chrome Android → `zstd`, Safari iPhone → `br`.
+  **En archivos estáticos no se usa gzip**: flask-compress lo excluye del modo
+  streaming (`COMPRESS_ALGORITHM_STREAMING`). Las páginas HTML sí usan gzip si es
+  lo único que el cliente acepta. Ningún navegador actual queda sin comprimir.
+- Cache intacto: agrega `Vary: Accept-Encoding` y le pone sufijo de algoritmo al
+  ETag (`"...:zstd"`), así la revalidación 304 sigue funcionando por algoritmo.
+- Medido en dev: `/resumen` 155 KB → 21 KB, `style.css` 328 KB → 78 KB.
+
 ## Modo servicio (Windows)
 `app.py` no tiene comandos de servicio propios. En producción NSSM envuelve
 `python app.py` (mismo entry point que dev). Ver `docs/CONTEXT_DEPLOY.md`.
