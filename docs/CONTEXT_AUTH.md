@@ -57,6 +57,46 @@ clave `persona_dev` de `config.json` (ver `CONTEXT_CONFIG.md`).
    - Y `session['user_email']` falta o no está en whitelist.
 4. Si `google_client_id` o `google_client_secret` faltan en config → middleware deja pasar (modo bootstrap para configurar).
 
+## El logout limpia las suscripciones push
+`logout()` borra las filas de `push_suscripciones` de ese `user_email` (vía
+`database.borrar_suscripciones_push_de_email`) **antes** del `session.clear()`.
+Quien se va de un navegador deja de recibir ahí los avisos de su cuenta.
+
+Dos detalles que parecen de estilo y no lo son:
+
+- **El orden**: el email vive en la sesión, así que después del `clear()` no
+  habría a quién borrarle nada y la fila quedaría viva para siempre, sin que
+  nadie se entere. Es el mismo motivo por el que `user_name` se lee arriba.
+- **El `try/except`**: si el borrado falla (base bloqueada, disco lleno), se
+  loguea `AVISO:` y el logout sigue. Una suscripción huérfana es un aviso de
+  más en un teléfono; no poder salir de la sesión es quedarse adentro de la
+  app.
+
+⚠ **Deuda conocida, a cerrar cuando exista el front del push.** `/logout` es
+GET y es pública, y desde que limpia suscripciones **borra datos**. La cookie
+es `SameSite=Lax`, que tapa el POST cross-site pero **no** la navegación GET:
+un link desde cualquier lado a `<dominio>/logout` se lleva puestas las
+suscripciones de **todos** los dispositivos de esa cuenta, no solo del
+navegador que hizo el pedido. Se recupera re-suscribiendo cada uno, pero
+mientras tanto no llega nada y nadie sabe por qué.
+
+El arreglo barato no es pasar el logout a POST: es que borre **solo el
+endpoint del navegador que se va** (que el front manda en el mismo pedido) en
+vez de todas las filas del email. Eso además saca un efecto colateral molesto
+que hoy existe: desloguearse en la notebook apaga los avisos del teléfono. No
+se hizo antes porque hasta esta etapa no hay front que mande ese endpoint.
+
+Otro efecto esperable del borrado, para que no se investigue como bug: el
+ciclo **logout → login → alta** regenera la fila con `creada` nueva, así que
+mueve el hash de la base y puede disparar un backup en un día sin movimientos.
+No es el detector mintiendo — el conjunto de suscripciones efectivamente se
+borró y se volvió a crear.
+
+Las dos rutas que escriben esa tabla (`/api/push/alta`, `/api/push/baja`) **NO**
+van en `rutas_publicas`: son las que atan un endpoint a una persona. Ver
+`CONTEXT_BACKEND.md` y `CONTEXT_DB.md`. Congelado en
+`tests/test_push_suscripciones.py`.
+
 ## Bypass DEV (`auth_disabled`) — TRIPLE CERROJO
 Permite que el entorno DEV no pida login de Google, sin debilitar PROD.
 

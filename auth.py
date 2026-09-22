@@ -280,8 +280,32 @@ def callback():
 
 @auth_bp.route('/logout')
 def logout():
-    """Cierra la sesión y redirige al login."""
+    """Cierra la sesión y redirige al login.
+
+    Antes de limpiar la sesión se borran las suscripciones push de esa cuenta:
+    quien se va de un navegador deja de recibir ahí los avisos de su cuenta.
+
+    ⚠ EL ORDEN NO ES CASUAL. Tiene que ser ANTES del `session.clear()`, que es
+    donde vive el email — después del clear no habría a quién borrarle nada y
+    la fila quedaría viva para siempre. Es el mismo motivo por el que
+    `user_name` se lee arriba.
+
+    ⚠ Y VA EN try/except A PROPÓSITO: si el borrado falla (base bloqueada,
+    disco lleno), el usuario TIENE que poder desloguearse igual. Una
+    suscripción huérfana es un aviso de más en un teléfono; no poder salir de
+    la sesión es quedarse adentro de la app.
+    """
     nombre = session.get('user_name', 'Usuario')
+    email = session.get('user_email', '')
+
+    try:
+        import database
+        borradas = database.borrar_suscripciones_push_de_email(email)
+        if borradas:
+            log(f"OK: Logout — se borraron {borradas} suscripción(es) push de {email}.")
+    except Exception as e:
+        log(f"AVISO: No se pudieron borrar las suscripciones push de {email}: {e}")
+
     session.clear()
     log(f"OK: Logout — {nombre}")
     return redirect(url_for('auth.login'))

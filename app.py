@@ -1844,6 +1844,219 @@ def service_worker():
 
 
 # =============================================================================
+# PUSH: a quién avisarle (tabla push_suscripciones)
+# =============================================================================
+#
+# ACÁ NO SE MANDA NINGÚN AVISO. Estas dos rutas solo guardan y borran el
+# "buzón" que el navegador abre en el servicio de push (FCM / Mozilla /
+# Apple). El envío con pywebpush es de otra etapa y `push_enabled` sigue
+# apagado: nadie lo lee todavía.
+#
+# LAS DOS VAN PROTEGIDAS (NO entran en `rutas_publicas` de auth.py). Son
+# justamente las que atan un endpoint a una persona: sin sesión no hay a quién
+# atarlo, y abiertas dejarían que cualquiera se anote para recibir los avisos
+# de esta casa.
+#
+# UNA SUSCRIPCIÓN ES DE UN NAVEGADOR, NO DE UNA PERSONA — ver el comentario de
+# la tabla en database.py.
+
+# Largos y formas de lo que manda el navegador. Nada de esto es de confianza:
+# un POST puede traer cualquier cosa, y lo que llegue termina en una fila, en
+# el dump lógico y en el backup diario.
+_PUSH_ENDPOINT_MAX = 1000          # los reales andan por 200-400 caracteres
+_PUSH_CLAVE_RE = _re.compile(r'^[A-Za-z0-9_\-]+=*$')   # base64url, con o sin relleno
+
+# Los únicos hosts a los que se le puede mandar un aviso.
+#
+# POR QUÉ UNA LISTA BLANCA Y POR QUÉ ACÁ: hoy el endpoint es un dato guardado y
+# no molesta a nadie. Desde que se prenda el envío, ese string es un destino al
+# que el servidor le hace un POST — y el servicio corre adentro de la red de
+# casa. Un endpoint dado de alta como `https://192.168.1.1/admin` convierte cada
+# aviso en un pedido del servidor a un host interno que desde afuera no se
+# alcanza; uno apuntando afuera recibe los avisos de la familia (cifrados, pero
+# con los metadatos: cuándo, cuántos, a quién). Se valida acá, que es cuando el
+# dato entra, y no allá, que es cuando ya es tarde.
+#
+# Si algún día un navegador estrena un host nuevo, el alta falla con un mensaje
+# claro en pantalla y se agrega una línea acá. Falla visible y barata, que es
+# lo contrario de descubrirlo cuando los avisos dejan de llegar.
+_PUSH_HOSTS = (
+    'fcm.googleapis.com',                    # Chrome, Edge, Android
+    'android.googleapis.com',                # FCM viejo, todavía en la vuelta
+    'updates.push.services.mozilla.com',     # Firefox
+    'web.push.apple.com',                    # Safari / iOS (el de Mari)
+)
+_PUSH_HOSTS_SUFIJO = (
+    '.notify.windows.com',                   # WNS, un subdominio por región
+)
+
+
+def _push_endpoint_valido(endpoint):
+    """
+    Devuelve el endpoint normalizado, o tira `ValueError` si no es de un
+    servicio de push conocido.
+
+    Se compara el HOSTNAME parseado, nunca un `startswith` sobre la URL entera:
+    `https://fcm.googleapis.com.evil.com/x` empieza con el host bueno y no lo es.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        partes = urlparse(endpoint)
+    except ValueError:
+        raise ValueError("El endpoint de la suscripción no es una URL válida.")
+
+    # https y nada más: los cuatro servicios lo sirven así y no existe un
+    # endpoint http. El esquema se normaliza a minúsculas para que `HTTPS://` y
+    # `https://` no terminen siendo dos filas para el mismo teléfono.
+    if partes.scheme.lower() != 'https' or not partes.hostname:
+        raise ValueError("El endpoint de la suscripción tiene que ser una URL https.")
+
+    host = partes.hostname.lower()
+    if host not in _PUSH_HOSTS and not host.endswith(_PUSH_HOSTS_SUFIJO):
+        raise ValueError(
+            "El endpoint no es de un servicio de push conocido. "
+            "Si es un navegador nuevo, hay que sumar su host a _PUSH_HOSTS.")
+
+    return partes._replace(scheme='https', netloc=partes.netloc.lower()).geturl()
+
+
+def _push_leer_suscripcion(con_claves=True):
+    """
+    Lee la suscripción del POST y la valida. Devuelve `(endpoint, p256dh, auth)`
+    (las claves vienen `''` si `con_claves=False`, que es el caso de la baja).
+
+    Acepta las DOS formas a propósito: los campos sueltos de un form (como el
+    resto de la app) y el JSON que sale de `PushSubscription.toJSON()`, que
+    trae las claves anidadas en `keys`. Así el front de la etapa que viene
+    puede mandar la suscripción tal cual se la dio el navegador, sin
+    desarmarla. El form gana si están los dos.
+
+    Lanza `ValueError` con el motivo (→ 400).
+    """
+    datos = request.form
+    if not datos or not (datos.get('endpoint') or '').strip():
+        cuerpo = request.get_json(silent=True)
+        if not isinstance(cuerpo, dict):
+            cuerpo = {}
+        claves = cuerpo.get('keys')
+        if not isinstance(claves, dict):
+            claves = {}
+        datos = {
+            'endpoint': cuerpo.get('endpoint') or '',
+            'p256dh':   cuerpo.get('p256dh') or claves.get('p256dh') or '',
+            'auth':     cuerpo.get('auth') or claves.get('auth') or '',
+        }
+
+    endpoint = str(datos.get('endpoint') or '').strip()
+    if not endpoint:
+        raise ValueError("Falta el endpoint de la suscripción.")
+    if len(endpoint) > _PUSH_ENDPOINT_MAX:
+        raise ValueError("El endpoint de la suscripción es demasiado largo.")
+    # Sin caracteres de control. Un \r\n acá termina en un cliente HTTP cuando
+    # se empiece a mandar de verdad, y un \x00 va a la fila, al dump lógico y
+    # a todos los backups.
+    if any(c < ' ' or c == '\x7f' for c in endpoint):
+        raise ValueError("El endpoint de la suscripción tiene caracteres inválidos.")
+
+    endpoint = _push_endpoint_valido(endpoint)
+
+    if not con_claves:
+        return endpoint, '', ''
+
+    # Sin el relleno base64. La MISMA clave con y sin '=' son dos strings
+    # distintos, y el upsert compara strings: alternar entre las dos formas
+    # sería una escritura real cada vez, sin que haya cambiado nada.
+    p256dh = str(datos.get('p256dh') or '').strip().rstrip('=')
+    auth   = str(datos.get('auth') or '').strip().rstrip('=')
+    # p256dh = punto P-256 sin comprimir (65 bytes → 87-88 chars base64url).
+    # auth   = 16 bytes de secreto (→ 22-24 chars). Los rangos van holgados
+    # para no pelearse con el relleno, pero acotados: sin ellas el aviso no se
+    # puede cifrar, y una clave "cualquier cosa" es una fila que no va a
+    # funcionar nunca.
+    for valor, campo, minimo, maximo in (
+        (p256dh, 'p256dh', 80, 128),
+        (auth,   'auth',   16,  32),
+    ):
+        if not valor:
+            raise ValueError(f"Falta la clave {campo} de la suscripción.")
+        if not (minimo <= len(valor) <= maximo) or not _PUSH_CLAVE_RE.match(valor):
+            raise ValueError(f"La clave {campo} de la suscripción no tiene el formato esperado.")
+
+    return endpoint, p256dh, auth
+
+
+@app.route('/api/push/alta', methods=['POST'])
+def api_push_alta():
+    """
+    Guarda (o refresca) la suscripción del navegador que hace el pedido.
+
+    LA PERSONA Y EL EMAIL SALEN DE LA SESIÓN, NUNCA DEL POST. Si el cliente
+    manda `persona=mari`, se ignora: el POST lo escribe el navegador y puede
+    decir cualquier cosa. La identidad la resuelve `_persona_actual()`, que
+    además ya contempla el bypass DEV (ahí el email es `dev@local`, que no
+    está mapeado, y manda la clave `persona_dev` de config.json).
+
+    Repetir el alta con los mismos datos es un no-op REAL en la base — ver
+    `guardar_suscripcion_push()` en database.py y el porqué del WHERE.
+    """
+    from flask import session as flask_session
+    try:
+        endpoint, p256dh, auth = _push_leer_suscripcion()
+        cfg = config.cargar_config(CONFIG_FILE)
+        persona = _persona_actual(cfg)
+        user_email = (flask_session.get('user_email') or '').strip().lower()
+        database.guardar_suscripcion_push(
+            endpoint, p256dh, auth, persona, user_email,
+            request.headers.get('User-Agent', ''),
+        )
+        if _es_ajax():
+            return jsonify({'ok': True, 'persona': persona})
+        return redirect(url_for('index'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('index'))
+    except Exception as e:
+        log(f"ERROR: alta de suscripción push falló: {e}")
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('index'))
+
+
+@app.route('/api/push/baja', methods=['POST'])
+def api_push_baja():
+    """
+    Borra la suscripción de este navegador.
+
+    Que el endpoint NO exista no es un error: el navegador puede pedir la baja
+    de algo que ya se borró de este lado (un logout desde otro lado, otra
+    pestaña, la app reinstalada). Responde `ok` igual, con `borradas` para el
+    que quiera mirarlo.
+
+    SOLO SE BORRA LO PROPIO: el email sale de la sesión y acota el DELETE. Sin
+    eso alcanzaba con conocer el endpoint del otro para dejarlo sin avisos.
+    """
+    from flask import session as flask_session
+    try:
+        endpoint, _, _ = _push_leer_suscripcion(con_claves=False)
+        user_email = (flask_session.get('user_email') or '').strip().lower()
+        borradas = database.borrar_suscripcion_push(endpoint, user_email)
+        if _es_ajax():
+            return jsonify({'ok': True, 'borradas': borradas})
+        return redirect(url_for('index'))
+    except ValueError as e:
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return redirect(url_for('index'))
+    except Exception as e:
+        log(f"ERROR: baja de suscripción push falló: {e}")
+        if _es_ajax():
+            return jsonify({'ok': False, 'error': str(e)}), 500
+        return redirect(url_for('index'))
+
+
+# =============================================================================
 # RUTA: Módulo Gastos — Saldos + formulario + tabla de movimientos (ex /)
 # URL: http://localhost:5000/gastos
 # =============================================================================
