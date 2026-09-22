@@ -138,6 +138,15 @@ def init_auth(app, config_file):
         # login como manifest y no ofrecería instalar la app. No expone datos:
         # solo nombre, colores de la paleta e íconos (que ya son públicos vía
         # 'static'). Ver la ruta en app.py.
+        # 'service_worker' = /sw.js (PWA). Mismo problema que el manifest pero
+        # peor: si cayera en el redirect al login, el navegador recibiría el
+        # HTML del login donde espera JavaScript y el registro muere con
+        # "unsupported MIME type (text/html)". Y no pasa una sola vez: el
+        # navegador re-pide /sw.js en CADA navegación para chequear si hay
+        # versión nueva, así que también se rompería el apagado de emergencia
+        # (la lápida nunca llegaría). No expone datos: es código, y encima el
+        # cuerpo lo decide `sw_enabled` de config.json. Ver la ruta en app.py.
+        # OJO: acá va el nombre del ENDPOINT de Flask, no la URL.
         rutas_publicas = [
             'auth.login',
             'auth.google_login',
@@ -145,6 +154,7 @@ def init_auth(app, config_file):
             'auth.logout',
             'static',
             'manifest',
+            'service_worker',
         ]
 
         if request.endpoint in rutas_publicas:

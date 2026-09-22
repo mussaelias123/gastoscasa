@@ -1358,9 +1358,11 @@ def _static_version():
                     # por uno sería mandar la versión al fallback de gusto.
                     pass
 
-        # El service worker (`templates/sw.js`) todavía no existe. Se suma si
-        # está y se ignora si no: así el día que aparezca, esta función ya lo
-        # está mirando y nadie tiene que acordarse de volver acá.
+        # El service worker (`templates/sw.js`) vive FUERA de static/, así que
+        # se suma aparte: si se edita, la versión se mueve. Eso importa porque
+        # este mismo número va a ser el nombre de su caché. El try/except queda
+        # por si algún día se mueve o se borra — la lápida de emergencia de
+        # /sw.js cubre ese caso del otro lado.
         try:
             mtimes.append(os.path.getmtime(os.path.join(BASE_DIR, 'templates', 'sw.js')))
         except OSError:
@@ -1598,9 +1600,10 @@ def index():
 # en el redirect al login leería el HTML del login como manifest, y no habría
 # botón de instalar. Los PNG ya son públicos: viven en static/.
 #
-# SIN SERVICE WORKER a propósito. El botón de instalar y la ventana propia no
-# lo necesitan. Si algún día se suma, va network-first y SIN cachear /api/*:
-# la app nunca debe mostrar saldos viejos.
+# EL SERVICE WORKER ES OTRA RUTA (/sw.js, acá abajo) y hoy está INERTE: el
+# botón de instalar y la ventana propia nunca lo necesitaron. Cuando se le
+# sume caché de verdad, va network-first y SIN cachear /api/*: la app nunca
+# debe mostrar saldos viejos.
 # =============================================================================
 
 @app.route('/manifest.json')
@@ -1650,6 +1653,168 @@ def manifest():
 
     return Response(json.dumps(datos, ensure_ascii=False, indent=2),
                     mimetype='application/manifest+json')
+
+
+# =============================================================================
+# RUTA: PWA — service worker (hoy INERTE: es el interruptor de apagado)
+# URL: GET /sw.js
+# =============================================================================
+#
+# QUÉ SIRVE: una de las dos mitades de `templates/sw.js`. Ese archivo NO es un
+# template Jinja aunque viva en templates/ (leer su encabezado): se lee como
+# TEXTO PLANO y se le reemplaza el marcador `__VERSION__` por
+# `_static_version()`, la misma versión que usa el cache-busting de los
+# estáticos.
+#
+# POR QUÉ NO SE USA render_template():
+#   a. Dispara TODOS los context processors, incluido `inject_notif_badge`,
+#      que evalúa las notificaciones de todos los módulos (varias queries +
+#      leer config.json). El navegador re-pide /sw.js en CADA navegación para
+#      chequear si cambió: con render_template, cada carga de página pagaría
+#      DOS veces la cuenta de notificaciones.
+#   b. Jinja se comería cualquier `{{ }}` o `{# #}` que aparezca dentro del
+#      JavaScript y devolvería un archivo roto.
+#
+# POR QUÉ ES UNA RUTA Y NO UN ARCHIVO EN static/: mismo argumento que el
+# manifest de arriba, pero acá es una condición dura del navegador. Un service
+# worker solo controla las URLs que cuelgan de su propio path: servido desde
+# /static/sw.js su alcance máximo sería /static/ y no controlaría NINGUNA
+# página. Tiene que colgar de la RAÍZ.
+#
+# CACHE-CONTROL EXPLÍCITO (`no-cache`): no significa "no lo guardes", significa
+# "guardalo pero revalidá SIEMPRE antes de usarlo". Es la contracara del
+# `updateViaCache: 'none'` del registro en base.html: si el archivo quedara
+# cacheado por HTTP, el chequeo de actualización compararía contra la copia
+# vieja y el service worker podría quedar pegado hasta 24 h. Un kill switch que
+# tarda un día en llegar no es un kill switch.
+#
+# FUERA DEL LOGIN: el endpoint 'service_worker' está en `rutas_publicas` de
+# auth.py. Si cayera en el redirect al login, el navegador recibiría el HTML
+# del login donde espera JavaScript y el registro falla con "unsupported MIME
+# type (text/html)". Es PEOR que el caso del manifest porque se repite en cada
+# navegación. No expone nada: es código, sin datos de la familia adentro.
+#
+# DOS MODOS, según `sw_enabled` de config.json (se cambia EN CALIENTE, sin
+# deploy ni reinicio, porque `cargar_config()` lee el disco en cada llamada):
+#   * False (default) → LÁPIDA: un SW que borra las cachés, se desregistra y
+#     suelta el control. Sin fetch handler, así que la app queda idéntica.
+#   * True            → el SW real, que en esta etapa todavía está vacío.
+# =============================================================================
+
+# Lápida de EMERGENCIA. Es la misma idea que la mitad LAPIDA de
+# `templates/sw.js`, escrita acá a mano para el caso en que ese archivo no se
+# pueda leer (se borró, se renombró, un permiso raro en PROD, se le tocaron los
+# marcadores). Duplicar estas pocas líneas es a propósito: si el ÚNICO camino
+# de apagado dependiera de un archivo del disco, un archivo faltante dejaría a
+# los clientes clavados con el service worker viejo y sin forma de rescatarlos
+# desde el servidor. Va sin comentarios y en una sola pieza para que sea
+# difícil de romper.
+_SW_LAPIDA_EMERGENCIA = """self.addEventListener('install', function () { self.skipWaiting(); });
+self.addEventListener('activate', function (evento) {
+    evento.waitUntil(Promise.resolve()
+        .then(function () { return typeof caches === 'undefined' ? null : caches.keys(); })
+        .then(function (nombres) {
+            return Promise.all((nombres || []).map(function (n) { return caches.delete(n); }));
+        })
+        .catch(function () { })
+        .then(function () { return self.registration.unregister(); })
+        .then(function () { return self.clients.claim(); })
+        .catch(function () { }));
+});
+"""
+
+
+def _sw_seccion(texto, nombre):
+    """
+    Corta de `templates/sw.js` la mitad marcada con
+    `// ==== INICIO <nombre> ====` ... `// ==== FIN <nombre> ====`.
+    Devuelve `None` si los marcadores no están (archivo editado a mano, mitad
+    borrada sin querer): quien llama decide qué hacer con esa falla, y acá la
+    decisión es servir la lápida.
+
+    Es un corte por texto y no un `import` ni un parser: el archivo es
+    JavaScript, Python no lo entiende, y lo único que necesitamos es quedarnos
+    con un pedazo.
+    """
+    ini = texto.find('// ==== INICIO %s ====' % nombre)
+    fin = texto.find('// ==== FIN %s ====' % nombre)
+    if ini == -1 or fin == -1 or fin <= ini:
+        return None
+    return texto[ini:fin]
+
+
+# El navegador re-pide /sw.js en CADA navegación para chequear si cambió. Si
+# algo está roto, loguearlo en cada request llena `logs/` con la misma línea
+# repetida justo el día que hay que abrirlo para entender qué pasó. Se avisa
+# una vez, y se vuelve a habilitar el aviso recién cuando el archivo se lee
+# bien de nuevo.
+_sw_aviso_dado = False
+
+
+@app.route('/sw.js')
+def service_worker():
+    global _sw_aviso_dado
+
+    cfg = config.cargar_config(CONFIG_FILE)
+    # `is True` y no verdad de Python. Este flag no tiene UI a propósito: se
+    # edita a mano en config.json, apurado y con la app rota. Todos los valores
+    # de alrededor son strings, así que el reflejo es escribir `"false"` entre
+    # comillas — que es un string no vacío, o sea VERDADERO, y prendería el
+    # service worker que se quería apagar, sin ningún error que lo explique.
+    # Cualquier cosa que no sea el booleano JSON `true` cae en la lápida, que
+    # es el lado seguro. Mismo criterio que `auth_disabled is True` en auth.py.
+    modo = 'ACTIVO' if cfg.get('sw_enabled') is True else 'LAPIDA'
+
+    cuerpo = None
+    motivo = None
+    try:
+        # Se abre en binario y se decodifica a mano tolerando bytes raros. Con
+        # `encoding='utf-8'` un archivo guardado en ANSI tira UnicodeDecodeError
+        # — que NO es OSError, así que se escapaba del except y la ruta salía
+        # 500. Y este archivo tiene acentos y vive en Windows, donde
+        # `Set-Content` sin `-Encoding utf8` escribe en el codepage del sistema:
+        # el caso no es hipotético.
+        #
+        # Un 500 acá es PEOR que servir la lápida: el navegador da el chequeo de
+        # actualización por fallido y deja vivo el service worker que ya tenía
+        # instalado. O sea, exactamente el teléfono clavado del que esta ruta
+        # tiene que poder rescatar.
+        with open(os.path.join(BASE_DIR, 'templates', 'sw.js'), 'rb') as f:
+            cuerpo = _sw_seccion(f.read().decode('utf-8', errors='replace'), modo)
+        if cuerpo is None:
+            motivo = 'faltan los marcadores'
+    except Exception as e:
+        motivo = str(e)
+
+    # No alcanza con que la sección exista: tiene que tener algo adentro, y si
+    # es la lápida, tiene que saber suicidarse. Si alguien vacía esa mitad y
+    # deja los marcadores puestos (un merge mal resuelto, un editor que se come
+    # un bloque), `_sw_seccion` devuelve el marcador solo — un string no vacío —
+    # y el apagado quedaría roto EN SILENCIO: el navegador acepta el archivo,
+    # reinstala, y no pasa nada. Es justo el modo de falla contra el que se
+    # escribió la lápida de emergencia.
+    if (cuerpo is None or not cuerpo.strip()
+            or (modo == 'LAPIDA' and 'unregister' not in cuerpo)):
+        # Fallar SIEMPRE del lado seguro: se sirve la LÁPIDA incluso con el flag
+        # pidiendo el SW activo. Un service worker que se apaga solo es un
+        # problema visible y reversible (se vuelve a prender); uno que se queda
+        # sirviendo código viejo en el teléfono de Mari, no.
+        if not _sw_aviso_dado:
+            log(f"AVISO: /sw.js sirve la lápida de emergencia "
+                f"(modo pedido: {modo}; motivo: {motivo or 'la sección quedó vacía'}). "
+                f"Este aviso sale una sola vez hasta que el archivo vuelva a leerse bien.")
+            _sw_aviso_dado = True
+        cuerpo = _SW_LAPIDA_EMERGENCIA
+    else:
+        _sw_aviso_dado = False
+
+    # El reemplazo va a mano, sin Jinja (ver el POR QUÉ de arriba). `.replace`
+    # de un marcador que no está no rompe nada: devuelve el texto igual.
+    cuerpo = cuerpo.replace('__VERSION__', _static_version())
+
+    resp = Response(cuerpo, mimetype='application/javascript')
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 
 # =============================================================================

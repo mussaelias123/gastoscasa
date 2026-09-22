@@ -62,6 +62,68 @@ Cada página hija define su propio {% block contenido %}.
     })();
   </script>
 
+  {# ── PWA: service worker ────────────────────────────────────────────────
+     El archivo lo sirve la ruta /sw.js de app.py (cuelga de la RAÍZ y está
+     fuera del login), y QUÉ sirve lo decide `sw_enabled` de config.json: el
+     service worker real o la lápida (un SW que se borra solo). Ver
+     CONTEXT_BACKEND.md.
+
+     Acá se hace UNA de dos cosas, nunca las dos:
+       · flag prendido  → registrar el service worker.
+       · flag apagado   → BARRER lo que haya quedado (desregistrar + borrar
+         cachés), vía `window.SW.barrer()` de static/app.js.
+
+     POR QUÉ SON EXCLUYENTES: registrar Y barrer a la vez es una carrera
+     infinita. La página registra, el SW que sirve el servidor se suicida, la
+     página lo vuelve a registrar en la carga siguiente, y así para siempre.
+
+     `updateViaCache: 'none'` obliga al navegador a pedir /sw.js por red en
+     lugar de mirar su caché HTTP para el chequeo de versión. Sin eso puede
+     comparar contra una copia vieja y quedarse con el SW anterior hasta 24 h
+     — un apagado de emergencia que tarda un día no es un apagado.
+
+     Todo cuelga de `load` por dos razones: no pelear ancho de banda con los
+     recursos de la página, y porque el barrido vive en `window.SW`, que se
+     define en app.js (al final del <body>) y todavía no existe acá arriba. #}
+  <script>
+    (function () {
+      // Sin soporte no hay nada que registrar ni nada que barrer: ese
+      // navegador nunca pudo haber instalado un service worker.
+      if (!('serviceWorker' in navigator)) return;
+
+      {# `is sameas true` y no verdad de Jinja: un `"sw_enabled": "false"` con
+         comillas en config.json es un string no vacío, o sea verdadero, y
+         PRENDERÍA el service worker que se quería apagar. El flag se edita a
+         mano y apurado, con la app rota; cualquier cosa que no sea el booleano
+         JSON `true` tiene que caer del lado seguro. La ruta /sw.js del backend
+         usa el mismo criterio (`is True`), así que los dos lados coinciden. #}
+      var PRENDIDO = {{ 'true' if cfg.sw_enabled is sameas true else 'false' }};
+
+      window.addEventListener('load', function () {
+        if (PRENDIDO) {
+          navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+            .catch(function (e) {
+              // Un registro fallido no rompe nada: la app sigue andando
+              // exactamente igual, sin service worker.
+              console.warn('SW: no se pudo registrar.', e);
+            });
+          return;
+        }
+        // Flag apagado. En el caso normal de hoy (nunca hubo service worker)
+        // esto no hace nada y no dice nada: la lista de registros viene vacía.
+        //
+        // El try/catch es cinturón y tirantes: `barrer()` ya se encarga de no
+        // tirar, pero este bloque corre en CADA carga de CADA página, así que
+        // un error suelto acá sería un Uncaught en la consola de todo el mundo.
+        try {
+          if (window.SW && window.SW.barrer) window.SW.barrer();
+        } catch (e) {
+          console.warn('SW: no se pudo barrer.', e);
+        }
+      });
+    })();
+  </script>
+
   {# Paleta dinámica desde config — sobreescribe los fallbacks de style.css #}
   <style>
     :root {
