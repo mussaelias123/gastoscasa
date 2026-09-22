@@ -64,6 +64,22 @@ Reportar siempre:
 2. `CONTEXT_*.md` actualizado (sí/no, y cuál).
 3. Resultado de verificación en ngrok.
 
+## §4b Enjambre de sub-agentes (idea, 2026-09-22)
+
+No es obligación — cada orquestador decide según lo que tenga que desarrollar.
+Lo que funcionó en la etapa 1 del service worker: **1 implementador y después N
+revisores adversariales en paralelo**, con una lente distinta cada uno
+(correctitud / regresión / reglas del proyecto). Los revisores arrancan recién
+cuando el implementador terminó; lanzados junto a él leen código a medio
+escribir. Encontraron 3 bugs reales que el implementador no vio, todos en el
+camino de error.
+
+- **Lentes distintas, no repetidas.** Que dos coincidan por separado es la señal fuerte.
+- **Quien orquesta valida por su cuenta** (tests + navegador). Un hallazgo de un
+  agente es una hipótesis, no un hecho; y puede faltar el que importa.
+- **Etapas que tocan el mismo archivo van en serie.** En paralelo se pisan, y
+  resolver el conflicto cuesta más que lo que ahorró el paralelismo.
+
 ## §5 Higiene de git y worktree (reduce conflictos)
 
 **Antes de empezar (quien orquesta la sesión):**
