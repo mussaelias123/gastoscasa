@@ -1268,9 +1268,26 @@ init_auth(app, CONFIG_FILE)
 
 @app.context_processor
 def inject_config():
+    """
+    Expone `cfg` (y el usuario de la sesión) a TODOS los templates.
+
+    `cfg` va RECORTADO: `sin_secretos()` saca las claves cuyo nombre las marca
+    como secretas —`secret_key`, `google_client_secret`, `ngrok_authtoken`,
+    `push_vapid_secreta`— antes de que el dict cruce a Jinja. El criterio y el
+    por qué están en `config.py` (`MARCADORES_SECRETOS`); en dos renglones: acá
+    viajaba la config ENTERA, y aunque hoy ningún template imprime un secreto,
+    un `{{ cfg }}` de más los mandaba al HTML. El recorte lo hace imposible en
+    vez de improbable.
+
+    Lo que SÍ sigue viajando es todo lo que las páginas usan (`app_name`,
+    `first_run`, `factor_sueldo`, `cotizacion_*`, las dos paletas, `sw_enabled`)
+    y la clave PÚBLICA de VAPID, que es pública por definición: el navegador la
+    necesita para suscribirse al push. Sale por el data-attribute del <body>
+    de `base.html`.
+    """
     from flask import session as flask_session
     return {
-        'cfg': config.cargar_config(CONFIG_FILE),
+        'cfg': config.sin_secretos(config.cargar_config(CONFIG_FILE)),
         'user_email': flask_session.get('user_email', ''),
         'user_name': flask_session.get('user_name', ''),
         'user_photo': flask_session.get('user_photo', ''),
@@ -1890,10 +1907,13 @@ def gastos():
 
     gastos_fijos_json = _gastos_fijos_json()
 
+    # OJO: `cfg` NO se pasa acá. Llega solo, y RECORTADO, por el context
+    # processor `inject_config()`. Pasarlo a mano lo pisaría con el dict
+    # completo —secretos incluidos— y saltearía el recorte sin que nada avise.
+    # Regla: `cfg` entra a los templates por UN solo lugar.
     return render_template('gastos.html',
         saldos=saldos,
         movimientos=movimientos,
-        cfg=cfg,
         mes=mes,
         mes_prev=mes_prev,
         mes_next=mes_next,
@@ -4406,9 +4426,12 @@ def settings():
         flash('Configuración guardada.')
         return redirect(url_for('settings'))
 
-    cfg = config.cargar_config(CONFIG_FILE)
     fijos = database.obtener_gastos_fijos(solo_activos=False)
-    return render_template('settings.html', cfg=cfg, fijos=fijos, paleta_meta=PALETA_META)
+    # `cfg` NO se pasa acá: llega RECORTADO por `inject_config()` (ver el
+    # comentario de /gastos y `config.sin_secretos`). Esta página es la más
+    # riesgosa de todas —es la que imprime valores de config en <input>— así
+    # que es justo la que no puede tener su propia copia del dict entero.
+    return render_template('settings.html', fijos=fijos, paleta_meta=PALETA_META)
 
 
 # =============================================================================

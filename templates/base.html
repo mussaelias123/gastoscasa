@@ -142,7 +142,28 @@ Cada página hija define su propio {% block contenido %}.
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
 
-<body{% if cfg and cfg.app_name and 'DEV' in cfg.app_name %} class="has-dev-banner"{% endif %}>
+{# ── PWA: clave PÚBLICA de VAPID ────────────────────────────────────────────
+   `pushManager.subscribe()` pide la clave pública del servidor
+   (`applicationServerKey`) para suscribir a este navegador. Viaja acá, en un
+   data-attribute del <body>, y no por una ruta nueva: es un dato fijo, de 87
+   caracteres, que se necesita en la MISMA carga de página donde se pregunta
+   si suscribirse — una ruta más sería un viaje de red extra para leer algo
+   que el servidor ya tenía cuando armó el HTML.
+
+   Va en el <body> del layout base, así que está en TODAS las páginas: el que
+   la lea puede vivir en cualquier .js (`document.body.dataset.pushVapid`) sin
+   depender de en qué pantalla está parado.
+
+   ES PÚBLICA: el navegador la necesita, cualquiera puede leerla y sola no
+   sirve para mandar nada. Lo que firma los envíos es `push_vapid_secreta`,
+   que ni siquiera llega al template (config.py → MARCADORES_SECRETOS).
+
+   VACÍA ES EL CASO DE HOY: nadie generó todavía el par de claves, así que
+   sale `data-push-vapid=""`. `dataset.pushVapid` da `''` —falso—, que es
+   exactamente la señal de "push no configurado": el código de suscripción
+   (etapas 5 en adelante) mira eso y ni ofrece la función. Un atributo vacío
+   no cambia el HTML en nada más. #}
+<body data-push-vapid="{{ cfg.push_vapid_publica | default('', true) }}"{% if cfg and cfg.app_name and 'DEV' in cfg.app_name %} class="has-dev-banner"{% endif %}>
 
   {% if cfg and cfg.app_name and 'DEV' in cfg.app_name %}
   <div id="dev-banner">⚙ APP — MODO DESARROLLO</div>

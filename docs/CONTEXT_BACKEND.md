@@ -96,7 +96,7 @@
 - `_pct_texto(valor)` → `'15'` / `'33,3'`. Porcentaje con coma decimal para el subtítulo de la fila sintética ("15 % de AR$ 1.000.000").
 - `_sw_seccion(texto, nombre)` → str | `None`. Corta de `templates/sw.js` la mitad marcada con `// ==== INICIO <nombre> ====` … `// ==== FIN <nombre> ====` (`LAPIDA` o `ACTIVO`). `None` si faltan los marcadores.
 - `_SW_LAPIDA_EMERGENCIA`: la lápida escrita a mano en `app.py`. Se sirve si `templates/sw.js` no se puede leer o perdió los marcadores — **incluso con `sw_enabled=True`**: se falla del lado seguro, porque un SW apagado es un problema reversible y uno que sirve código viejo en el celular, no.
-- `inject_config()`: context_processor, expone `cfg` a todos los templates.
+- `inject_config()`: context_processor, expone `cfg` a todos los templates — **RECORTADO** con `config.sin_secretos()` (se van `secret_key`, `google_client_secret`, `ngrok_authtoken`, `push_vapid_secreta`). ⚠ **REGLA: ninguna ruta pasa `cfg=` a `render_template`.** Un `cfg=` en la llamada PISA el recortado con el dict entero y vuelve a dejar los secretos a un `{{ cfg }}` de distancia. `/gastos` y `/settings` lo hacían y se les sacó. Hay un test que lo vigila (`tests/test_cfg_secretos.py`, vía la señal `template_rendered`), pero el que agrega una ruta nueva lee ESTE doc, no ese test. Detalle en `CONTEXT_CONFIG.md`.
 - Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
 - `PALETA_META`: lista `(key, nombre, uso)` con las 23 variables de paleta (incluye `texto-invertido` y `persona-leon`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
 - `_HEX_RE`: regex `^#[0-9a-fA-F]{6}$` para validar hex de la paleta.

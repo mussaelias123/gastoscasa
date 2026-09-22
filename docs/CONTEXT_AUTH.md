@@ -82,8 +82,28 @@ Permite que el entorno DEV no pida login de Google, sin debilitar PROD.
 - HttpOnly: True
 - SameSite: Lax
 
+## Lo que viaja a los templates (`cfg`)
+`app.py → inject_config()` le pasa la config a TODOS los templates bajo `cfg`.
+Le pasaba el dict **entero**: `secret_key`, `google_client_secret` y
+`ngrok_authtoken` incluidos. Ningún template los imprimía —no había fuga— pero
+estaban a un `{{ cfg }}` de aparecer en el HTML, que se lee con click derecho.
+
+Desde 2026-09-22 el `cfg` que cruza a Jinja va **recortado**
+(`config.sin_secretos`): se van las claves cuyo nombre las marca como secretas.
+El criterio y la regla para nombrar una clave nueva están en
+`CONTEXT_CONFIG.md`; lo que importa acá:
+
+- `secret_key` y `google_client_secret` **no llegan al template**, y no hay
+  forma de que un template los imprima aunque quiera (una clave ausente en
+  Jinja es `Undefined`: renderiza vacío, no explota).
+- Las rutas **no** pasan `cfg=` a `render_template` — eso pisaría el recortado
+  con el dict completo. `cfg` entra por un solo lugar.
+- Congelado en `tests/test_cfg_secretos.py`, incluido el test que revisa que el
+  **HTML servido** no contenga ningún valor secreto.
+
 ## Reglas específicas
-1. **Nunca exponer `client_secret`** en logs ni respuestas.
+1. **Nunca exponer `client_secret`** en logs ni respuestas — ni en el HTML: el
+   `cfg` de los templates va recortado (ver arriba).
 2. **Whitelist es hardcode intencional** — se busca control estricto, no escala.
 3. Cambiar `secret_key` invalida todas las sesiones (logout forzado).
 4. OAuth scope: `openid email profile` (mínimo necesario).
