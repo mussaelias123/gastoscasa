@@ -11,6 +11,9 @@
 #   Ejemplo: 26/06/11-14:30:55 | OK: Backup de DB (manual): fondo_2026-06-11_14-30.db
 #
 #   - El timestamp lo agrega log(); el mensaje NO debe traer fecha/hora propia.
+#   - Excepción TEMPORAL: el ensayo en seco del push usa un cuarto prefijo,
+#     SECO:, para ser grepeable y contable. Se retira cuando el push se
+#     encienda de verdad. No usarlo para nada más ni pasarlo a OK:.
 #   - NO usar print() directo para logs: siempre log() de este módulo.
 #   - flush=True para que NSSM escriba el archivo al instante (sin buffer).
 # =============================================================================

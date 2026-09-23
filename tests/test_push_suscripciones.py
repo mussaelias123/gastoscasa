@@ -603,11 +603,13 @@ class TestNadaCorreSolo(unittest.TestCase):
     para la ruta POST /api/push/prueba. El propio docstring de la clase vieja
     decia que se borraba cuando se prendiera el envio, y se prendio.
 
-    LA SEGUNDA MITAD SIGUE VIVA, y ahora es la que importa: se manda cuando
-    alguien APRIETA UN BOTON, y nada mas. No hay scheduler, no hay provider, no
-    hay nada que se despierte solo — eso es la etapa que viene, y es la que va
-    a leer `push_enabled`. Que este test se ponga rojo significa que los avisos
-    automaticos se colaron antes de tiempo.
+    LA SEGUNDA MITAD SIGUE VIVA, y ahora es la que importa: SE MANDA CUANDO
+    ALGUIEN APRIETA UN BOTON, Y NADA MAS. Desde la etapa del ensayo en seco ya
+    hay un scheduler corriendo solo (`_scheduler_push`), pero ese motor
+    decide CUANDO habria que avisar y lo escribe en el log — no manda nada, no
+    llama a `_push_enviar()` y ni siquiera lee la tabla de suscripciones. Que
+    este test se ponga rojo significa que los avisos automaticos se colaron
+    antes de tiempo, sin el ensayo que dice si la frecuencia se banca.
     """
 
     def test_nadie_lee_push_enabled(self):
@@ -622,15 +624,42 @@ class TestNadaCorreSolo(unittest.TestCase):
         """
         `webpush(` aparece UNA vez en toda la app: adentro de `_push_enviar()`,
         que hoy lo llama solo la ruta de prueba. Un segundo llamado es, por
-        definicion, algo que manda avisos por otro camino — y si ese camino no
-        pasa por una mano apretando un boton, es el scheduler adelantado.
+        definicion, algo que manda avisos por otro camino.
+
+        Y el motor de flancos NO es ese camino: se mira su codigo fuente y no
+        aparece ni `_push_enviar` ni la lectura de las suscripciones. Mientras
+        dure el ensayo en seco, una vuelta del scheduler es una linea de log y
+        nada mas. El dia que el push se encienda de verdad, este test hay que
+        venir a cambiarlo A MANO — que es justamente el punto.
+
+        SE CUENTA SOBRE TODO EL ARCHIVO, ademas de mirar las tres funciones del
+        motor. Mirar solo esas tres funciones no alcanza: un
+        `def _push_anunciar(...): _push_enviar(...)` llamado desde `_push_ciclo`
+        las deja a las tres limpias, deja `webpush(` en 1 (sigue adentro de
+        `_push_enviar`) y pone el test en VERDE mientras los telefonos suenan
+        solos. El conteo global es lo unico que no se puede esquivar con una
+        indireccion. Los comentarios no cuentan: el `#` habla del codigo, no lo
+        ejecuta.
         """
+        import inspect
         with open(os.path.join(ROOT_DIR, 'app.py'), encoding='utf-8') as f:
             fuente = f.read()
         self.assertEqual(fuente.count('webpush('), 1)
-        # Y no hay hilo/timer nuevo colgado del push.
-        for pista in ('Thread(target=_push', 'scheduler_push', '_push_scheduler'):
-            self.assertNotIn(pista, fuente)
+
+        codigo_vivo = [l for l in fuente.split('\n') if not l.strip().startswith('#')]
+        llamadas = sum(l.count('_push_enviar(') for l in codigo_vivo)
+        # 2 = la `def` + la UNICA llamada, la de /api/push/prueba.
+        self.assertEqual(llamadas, 2,
+                         "Aparecio un segundo llamador de _push_enviar(): "
+                         "algo manda push por fuera del boton de prueba.")
+
+        for fn in (app_module._push_avisos_ahora,
+                   app_module._push_ciclo,
+                   app_module._scheduler_push):
+            with self.subTest(fn=fn.__name__):
+                codigo = inspect.getsource(fn)
+                self.assertNotIn('_push_enviar', codigo)
+                self.assertNotIn('obtener_suscripciones_push', codigo)
 
 
 if __name__ == '__main__':
