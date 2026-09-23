@@ -150,6 +150,27 @@ DEFAULTS = {
     "push_vapid_publica":   "",
     "push_vapid_secreta":   "",
     "push_contacto_mailto": "",
+    # ── Push: horas de silencio ───────────────────────────────────────────
+    # La franja en la que el motor de avisos NO manda nada. Existe porque un
+    # push no se puede desavisar: una partida que se vence a las 3 de la
+    # mañana es exactamente igual de vencida a las 7, y la diferencia es si
+    # alguien se despierta por eso.
+    #
+    # ⚠ LA VENTANA CRUZA LA MEDIANOCHE: 22:30 → 07:00 no es un rango entre dos
+    # números, es "de acá para arriba O de acá para abajo". El código lo lee
+    # así a propósito (`_push_en_silencio`).
+    #
+    # NO ES UNA COLA, Y ES LO MEJOR QUE TIENE: un aviso que cae en esta franja
+    # simplemente no se marca como avisado, así que a las 07:00 el motor
+    # vuelve a mirar el nivel REAL. Si la condición se resolvió durante la
+    # noche, ese aviso NUNCA sale — nadie se despierta con la novedad de algo
+    # que ya no pasa.
+    #
+    # Sin UI a propósito: se editan acá, como `sw_enabled`. Formato "HH:MM";
+    # una hora corrupta cae a estos valores. Las dos iguales = ventana vacía
+    # (o sea, nunca hay silencio).
+    "push_silencio_desde":  "22:30",
+    "push_silencio_hasta":  "07:00",
     # ── Backups de la base de datos ────────────────────────────────────────────
     # Ruta relativa a la carpeta del proyecto, o absoluta. Default: "backups".
     "backup_dir": "backups",

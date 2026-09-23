@@ -84,7 +84,10 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
   el mensaje no debe traer fecha/hora propia. Ej: `26/06/11-14:30:55 | OK: Login exitoso — Elías (...)`.
   **Excepción temporal: `SECO:`**, cuarto prefijo, exclusivo del ensayo en seco del
   push (ver abajo). Existe para ser grepeable y contable; se retira el día que el
-  push se encienda. No usarlo para nada más, ni "normalizarlo" a `OK:`.
+  push se encienda. No usarlo para nada más, ni "normalizarlo" a `OK:`. Su
+  reemplazo con el flag prendido es **`PUSH:`**, quinto prefijo y mismo criterio:
+  token distinto justamente para que el conteo del ensayo y el de lo mandado de
+  verdad nunca se mezclen.
 - Arranque: **una sola línea** `OK: App iniciada — ...` (DB, schedulers, puerto, modo). Sin separadores ni texto decorativo en la salida.
 - Se loguea: login/logout/acceso denegado, backups y restores, refrescos de cotización (incluido el del arranque), fallos de ngrok, modo DEV.
 - NO se loguea: URL pública de ngrok, aviso de first_run (el modo va dentro de la línea "App iniciada").
@@ -92,9 +95,15 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 
 ## Cómo se lee el ENSAYO EN SECO del push
 
-El hilo `push-scheduler` corre en PROD y **no manda ningún aviso**: escribe en el
-log el push que mandaría. El entregable de esa etapa es justamente el log, y se
-lee con un grep:
+⚠ **El ensayo es el estado de HOY, no una etapa que ya pasó.** El motor de push
+ya está conectado al envío y tiene sus frenos, pero `push_enabled` sigue en
+`False` en el `config.json` de PROD, así que el hilo `push-scheduler` hace
+exactamente lo de siempre: **no manda ningún aviso**, escribe en el log el push
+que mandaría. **Prender ese flag es lo que termina el ensayo** — y es lo único
+que falta; el código ya está. Qué mirar una vez encendido, al final de esta
+sección.
+
+El entregable del ensayo es justamente el log, y se lee con un grep:
 
 ```powershell
 (Select-String -Path E:\Fondo\logs\*.log -Pattern 'SECO: flanco push').Count
@@ -114,18 +123,56 @@ bloque lleva la palabra "seco": el token contable es uno solo.
   antes de que suene un teléfono de verdad. `(vigentes ahora: N)` dice si tres
   flancos fueron una tanda o tres eventos separados.
 - Las vueltas sin novedad **no loguean**. Queda un latido de UNA línea por día:
-  `OK: Ensayo push: sin flancos nuevos; N aviso(s) vigente(s); providers OK x/y`.
+  `OK: Motor de push (en ensayo): sin flancos nuevos; N aviso(s) vigente(s); providers OK x/y`.
   Si eso tampoco aparece, el hilo se murió. Si dice `providers OK 0/2`, el hilo
   está vivo pero **ciego** — que no es lo mismo que "no pasa nada".
 - Al arrancar por primera vez sale una línea de siembra
-  (`OK: Ensayo push: sin estado previo...`): esa vuelta nunca anuncia nada. Si
+  (`OK: Motor de push: sin estado previo...`): esa vuelta nunca anuncia nada. Si
   esa línea aparece **todos los días**, el estado no se está guardando: mirar el
   `AVISO:` que la acompaña y revisar `backup_dir`.
 - Todo lo que se repite (provider roto, estado que no se puede guardar) sale
   **1 vez por día**, no 144. Que una de esas líneas aparezca ya significa que
   viene pasando hace rato.
-- Para verlo andar sin esperar días: `python TempScripts/simular_flancos_push.py`
-  (no toca nada real).
+- Para verlo andar sin esperar días: `python TempScripts/simular_flancos_push.py`.
+  Es **seco por construcción** (tiene `_push_enviar` parcheado para reventar),
+  así que no manda nada ni con el flag prendido.
+
+### Y una vez ENCENDIDO (`push_enabled: true`)
+
+Cambia el token contable: `SECO: flanco push` deja de salir y en su lugar sale
+**una línea por aviso**. Es a propósito — así el conteo del ensayo y el de lo
+que sonó de verdad nunca se suman entre sí.
+
+```powershell
+(Select-String -Path E:\Fondo\logs\*.log -Pattern 'PUSH: aviso mandado').Count
+```
+
+- Formato:
+  `PUSH: aviso mandado [lactancia|peligro|Partida vencida] -> titulo="Partida vencida" cuerpo="Lactancia · 3 avisos" url=/lactancia (entregado en 2 dispositivo(s), 3/8 hoy)`
+- ⚠ **`PUSH: aviso SIN ENTREGAR`** es el mismo formato con otro token, y es el
+  que hay que cazar: el aviso salió, quedó marcado como avisado y no entró en
+  ningún dispositivo. Grepear `'PUSH: aviso'` cuenta los dos juntos. Si SIN
+  ENTREGAR se repite, el canal está roto — probar el botón "Mandarme un aviso
+  de prueba" de Settings, que es el diagnóstico y no mira el flag.
+- **`N/8 hoy`** es el contador diario. Si llega a 8 seguido, la frecuencia es
+  demasiado alta para los topes de hoy: el problema no es el tope, es cuántos
+  flancos hay.
+- Los frenos **nunca son silenciosos**, y todo lo que dura horas sale **1 vez
+  por día**. Si falta un aviso que se esperaba, buscar por ese día:
+  `horas de silencio` (quedó para la mañana), `tope de` (quedó para mañana),
+  `esperan el intervalo` (el servicio reinició hace menos de 10 min), `VAPID`
+  (config a medio hacer: NO se marcó, sale cuando se arregle) o `no hay ningún
+  dispositivo suscripto`. Todas nombran **las claves** retenidas.
+- ⚠ **`vienen de días anteriores sin poder salir`** es el más difícil de ver
+  solo: un aviso cuya condición es cierta **únicamente** adentro de las horas de
+  silencio no sale NUNCA. Pasa, por ejemplo, si el recordatorio nocturno de
+  Lactancia se configura a una hora posterior a `push_silencio_desde`. El motor
+  lo detecta y lo dice a partir del segundo día.
+- ⚠ **Un aviso retenido NO está en ninguna cola**: se vuelve a evaluar contra lo
+  que pase en ese momento. Si la condición se resolvió durante la noche, ese
+  aviso no sale nunca — y está bien. El dato sigue en la campana.
+- Para volver atrás: `push_enabled: false` en `config.json`. **En caliente**, sin
+  deploy y sin reiniciar el servicio; la vuelta siguiente (≤ 10 min) ya no manda.
 
 ## codebase-memory-mcp (opcional, herramienta local)
 

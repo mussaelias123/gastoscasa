@@ -1460,6 +1460,48 @@ window.Push = (function () {
 
 /*
 ================================================================================
+Llegó un push → refrescar la campana sola
+================================================================================
+El service worker, después de mostrar la notificación, le manda
+`{tipo: 'push-recibido'}` a las ventanas abiertas (handler `push` de
+`templates/sw.js`). Acá se lo escucha y se re-pide `/api/notificaciones`.
+
+PARA QUÉ: sin esto, alguien con la app abierta ve el aviso del sistema y en la
+campana sigue sin haber nada hasta que recargue. El aviso y el dato
+contradiciéndose en la misma pantalla, que es la forma más rápida de que
+alguien deje de creerle a los dos.
+
+TODO ES DEFENSIVO: puede no haber service worker (`sw_enabled` apagado,
+Safari viejo) y puede no existir `window.Notif` (una página sin campana). Esto
+corre en TODAS las páginas: si rompe, rompe todo.
+
+⚠ EL `tipo` SE MIRA POR EXTENSIBILIDAD, NO POR DESCONFIANZA. Acá adentro solo
+puede despachar el service worker de ESTE mismo origen: un `postMessage()` de
+otra pestaña dispara sobre `window`, y un BroadcastChannel sobre el canal.
+Se mira porque mañana el SW puede mandar más de un mensaje, y este `if` es el
+punto de despacho. NO agregar un chequeo de `evento.origin`: los MessageEvent
+que nacen de `Client.postMessage()` llegan con `origin` vacío en Chrome, así
+que esa guarda no matchea NUNCA y deja la campana sin refrescar en silencio.
+================================================================================
+*/
+(function () {
+    var sw;
+    // Leer el global adentro de un try: con el storage bloqueado la propiedad
+    // existe pero LEERLA tira. Mismo motivo que en window.SW.
+    try { sw = navigator.serviceWorker; } catch (e) { sw = null; }
+    if (!sw || !sw.addEventListener) return;
+
+    sw.addEventListener('message', function (evento) {
+        var datos = evento && evento.data;
+        if (!datos || typeof datos !== 'object') return;
+        if (datos.tipo !== 'push-recibido') return;
+        if (window.Notif && window.Notif.refrescar) window.Notif.refrescar();
+    });
+})();
+
+
+/*
+================================================================================
 FUNCIÓN: initFiltros()
 ================================================================================
 Propósito:

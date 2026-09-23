@@ -110,6 +110,8 @@ CLAVES_DE_HOY = {
     'port',
     'push_contacto_mailto',
     'push_enabled',
+    'push_silencio_desde',
+    'push_silencio_hasta',
     'push_vapid_publica',
     'push_vapid_secreta',
     'rutina_cumple_activo',
