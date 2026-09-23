@@ -8,9 +8,10 @@ Este script comprime eso en dos segundos: inventa providers falsos, corre
 varias vueltas de `_push_ciclo()` contra un directorio de estado TEMPORAL, y
 muestra la secuencia NIVEL → FLANCO en una escalera, como se mira una señal.
 
-NO toca nada de la máquina: ni la carpeta de backups de verdad, ni la base, ni
-la red, ni una sola suscripción. El estado va a una carpeta temporal que se
-borra al terminar.
+SECO POR CONSTRUCCIÓN, no por suerte: `_push_enviar` se parchea para reventar,
+así que este script NO manda un push ni con `push_enabled` prendido. El estado
+va a una carpeta temporal que se borra al terminar; no se toca la carpeta de
+backups de verdad, ni la base, ni una sola suscripción.
 
 CORRER:
     python TempScripts/simular_flancos_push.py
@@ -91,7 +92,9 @@ def main():
         lineas.append(texto)
 
     print()
-    print('SIMULADOR DE FLANCOS DEL PUSH — nada de esto sale del proceso.')
+    print('SIMULADOR DE FLANCOS DEL PUSH')
+    print('Seco por construcción: `_push_enviar` está parcheado para reventar,')
+    print('así que no manda nada ni con push_enabled prendido.')
     print(f'Estado temporal en: {carpeta}')
     print()
     print('  NIVEL  = lo que contestan los providers en esa vuelta.')
@@ -99,7 +102,25 @@ def main():
     print()
 
     try:
+        # ⚠ `_push_enviar` SE PARCHEA SÍ O SÍ, y no es cinturón y tirantes.
+        # Desde la etapa que encendió el motor, `_push_ciclo()` lee
+        # `push_enabled` EN CALIENTE del config.json de verdad. El día que
+        # alguien lo prenda en producción y corra este script —que es
+        # justamente lo que CONTEXT_DEPLOY.md le dice que haga para verlo
+        # andar— los teléfonos de Elías y Mari sonarían con las partidas
+        # vencidas INVENTADAS del GUION. Y un push no se puede desavisar.
+        # Los topes tampoco lo frenarían: el estado va a una carpeta temporal,
+        # así que `enviados_hoy` arranca en cero en cada corrida.
+        #
+        # Revienta en vez de devolver (0, 0): que el simulador llegue hasta
+        # acá es un bug del simulador, y un bug se grita, no se traga.
+        def _no_manda(*a, **k):
+            raise AssertionError(
+                'El simulador intentó mandar un push de verdad. '
+                'Es un bug del simulador, no del motor.')
+
         with unittest.mock.patch.object(app, '_get_backup_dir', lambda: carpeta), \
+             unittest.mock.patch.object(app, '_push_enviar', _no_manda), \
              unittest.mock.patch.object(app, 'log', _log_falso):
             app._push_seco_dicho.clear()
             for i, (rotulo, items) in enumerate(GUION, start=1):
@@ -144,9 +165,12 @@ def main():
 
     print('LO QUE HAY QUE MIRAR:')
     print('  - La vuelta 1 no suena aunque hubiera algo vencido (siembra).')
-    print('  - La vuelta 3 no suena: cambió el `detalle`, no la bolsita.')
-    print('  - La vuelta 4 no suena: 3 partidas son UN aviso, no tres.')
-    print('  - La vuelta 8 SÍ suena: la señal se fue y volvió (rearme).')
+    print('  - La vuelta 4 no suena aunque el provider acabe de volver en sí:')
+    print('    no contestar NO es decir "ya no hay nada", así que sus claves')
+    print('    se arrastran. Si se borraran, la misma bolsita sonaría de nuevo.')
+    print('  - La vuelta 5 no suena: cambió el `detalle`, no la bolsita.')
+    print('  - La vuelta 6 no suena: 3 partidas son UN aviso, no tres.')
+    print('  - La última SÍ suena: la señal se fue y volvió (rearme).')
     print()
 
 

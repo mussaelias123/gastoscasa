@@ -1867,8 +1867,8 @@ def service_worker():
 #
 # ACÁ NO SE MANDA NINGÚN AVISO. Estas dos rutas solo guardan y borran el
 # "buzón" que el navegador abre en el servicio de push (FCM / Mozilla /
-# Apple). El envío con pywebpush es de otra etapa y `push_enabled` sigue
-# apagado: nadie lo lee todavía.
+# Apple). El envío vive más abajo, en su propio bloque, y el motor que
+# decide cuándo, más abajo todavía.
 #
 # LAS DOS VAN PROTEGIDAS (NO entran en `rutas_publicas` de auth.py). Son
 # justamente las que atan un endpoint a una persona: sin sesión no hay a quién
@@ -2078,16 +2078,18 @@ def api_push_baja():
 # PUSH: mandar un aviso de verdad (pywebpush)
 # =============================================================================
 #
-# ACÁ SÍ SE MANDA. Es lo primero de este dominio que le habla al servicio de
-# push, y sigue teniendo UN SOLO disparador: el botón "Mandarme un aviso de
-# prueba" de Settings. Nadie más llama a `_push_enviar()`, y hay un test que
-# lo cuenta (`TestNadaCorreSolo` en tests/test_push_suscripciones.py).
+# ACÁ SÍ SE MANDA. Es lo único de este dominio que le habla al servicio de
+# push, y tiene DOS disparadores, ninguno más:
 #
-# ⚠ Abajo en este mismo archivo SÍ hay un scheduler: `_scheduler_push()` corre
-# cada 10 minutos decidiendo CUÁNDO habría que avisar. Pero está EN SECO: solo
-# escribe en el log lo que mandaría, y no toca nada de este bloque ni lee las
-# suscripciones. Los avisos automáticos de verdad son la etapa siguiente, y
-# son los que van a leer `push_enabled`.
+#   1. El botón "Mandarme un aviso de prueba" de Settings (abajo). Es el
+#      diagnóstico del canal y NO mira `push_enabled`, a propósito.
+#   2. El motor de avisos automáticos, más abajo en este mismo archivo
+#      (`_push_ciclo`). Ese SÍ mira `push_enabled`, y encima tiene frenos
+#      propios: horas de silencio y topes por vuelta y por día.
+#
+# Un tercer llamador a `_push_enviar()` sería, por definición, un camino de
+# envío que nadie revisó. Hay un test que los cuenta
+# (`TestUnSoloCaminoDeEnvio` en tests/test_push_suscripciones.py).
 #
 # ┌──────────────────────────────────────────────────────────────────────────┐
 # │ LA REGLA DEL PAYLOAD:  EL AVISO NUNCA LLEVA PLATA.                       │
@@ -2156,7 +2158,57 @@ def _push_payload(titulo, cuerpo, url):
     }
 
 
-def _push_enviar(filas, payload, cfg=None):
+def _push_claves_vapid(cfg=None):
+    """
+    Devuelve `(secreta, contacto)` listas para firmar, o tira `_PushSinClaves`
+    con un texto que dice QUÉ falta y cómo arreglarlo.
+
+    ESTÁ SEPARADA DEL ENVÍO PARA QUE SE PUEDA PREGUNTAR ANTES. El
+    motor de avisos automáticos guarda el estado (las claves ya avisadas)
+    ANTES de mandar nada, porque un guardado que falla después de mandar
+    reanuncia el mismo flanco cada 10 minutos para siempre. Pero si las VAPID
+    están rotas, guardar primero significaría marcar como "avisado" algo que
+    no sonó en ningún lado — y el día que se arregle el config.json el motor
+    diría "ya avisé todo" sin que nunca hubiera sonado nada. Con la validación
+    acá afuera, el motor pregunta primero, no guarda y deja el flanco
+    pendiente. El envío la sigue llamando igual: es la misma puerta.
+
+    (Escrita sin paréntesis a propósito donde se la nombra en prosa: hay un
+    test que CUENTA las apariciones de `_push_enviar` seguido de paréntesis
+    para que no aparezca un camino de envío nuevo sin que nadie lo decida.)
+    """
+    cfg = cfg if cfg is not None else config.cargar_config(CONFIG_FILE)
+    secreta = (cfg.get('push_vapid_secreta') or '').strip()
+    publica = (cfg.get('push_vapid_publica') or '').strip()
+    contacto = (cfg.get('push_contacto_mailto') or '').strip()
+    if not secreta or not publica or not contacto:
+        raise _PushSinClaves(
+            "Faltan las claves VAPID. Generarlas con "
+            "`python TempScripts/generar_vapid.py` y pegar "
+            "push_vapid_publica, push_vapid_secreta y push_contacto_mailto "
+            "en config.json.")
+
+    # Que la clave ESTÉ no quiere decir que SIRVA. Una mal copiada, truncada o
+    # con un salto de línea adentro revienta al deserializarla, y eso pasaba
+    # adentro del bucle de envío: caía en el except de cada teléfono, la ruta
+    # terminaba en el 502 genérico y le decía a la persona "probá desactivar y
+    # volver a activar los avisos". O sea, la mandaba a re-suscribir el
+    # teléfono por un problema que está en el config.json del servidor — y por
+    # más que lo hiciera, iba a fallar igual. Se chequea UNA vez, antes de
+    # empezar, y una clave rota se contesta igual que una clave ausente.
+    try:
+        from py_vapid import Vapid
+        Vapid.from_string(secreta)
+    except Exception as e:
+        raise _PushSinClaves(
+            "La clave VAPID está cargada pero no es válida "
+            f"({type(e).__name__}). Regenerar el par con "
+            "`python TempScripts/generar_vapid.py` y pegarlo de nuevo en "
+            "config.json.")
+    return secreta, contacto
+
+
+def _push_enviar(filas, payload, cfg=None, ttl=None):
     """
     Manda `payload` a cada suscripción de `filas`. Devuelve
     `(enviados, borradas)`.
@@ -2164,6 +2216,11 @@ def _push_enviar(filas, payload, cfg=None):
     Tira `_PushSinClaves` si el par VAPID o el contacto no están cargados —
     que es una config a medio hacer, no una falla, y se contesta con un
     mensaje que dice qué hacer en vez de un 500 que no dice nada.
+
+    `ttl` en segundos: cuánto guarda el servicio de push el aviso si el
+    teléfono está apagado. Sin pasarlo va `_PUSH_TTL`, el del botón de
+    prueba; los avisos automáticos mandan el suyo (`_PUSH_TTL_AVISO`), que es
+    mucho más largo y está justificado allá abajo.
 
     UN ENVÍO QUE FALLA NO FRENA A LOS DEMÁS: son teléfonos distintos y el de
     Mari no tiene por qué quedarse sin aviso porque el de Elías se rompió.
@@ -2178,34 +2235,8 @@ def _push_enviar(filas, payload, cfg=None):
     import json
     from pywebpush import webpush, WebPushException
 
-    cfg = cfg if cfg is not None else config.cargar_config(CONFIG_FILE)
-    secreta = (cfg.get('push_vapid_secreta') or '').strip()
-    publica = (cfg.get('push_vapid_publica') or '').strip()
-    contacto = (cfg.get('push_contacto_mailto') or '').strip()
-    if not secreta or not publica or not contacto:
-        raise _PushSinClaves(
-            "Faltan las claves VAPID. Generarlas con "
-            "`python TempScripts/generar_vapid.py` y pegar "
-            "push_vapid_publica, push_vapid_secreta y push_contacto_mailto "
-            "en config.json.")
-
-    # Que la clave ESTÉ no quiere decir que SIRVA. Una mal copiada, truncada o
-    # con un salto de línea adentro revienta al deserializarla, y eso pasaba
-    # adentro del bucle: caía en el except de cada teléfono, la ruta terminaba
-    # en el 502 genérico y le decía a la persona "probá desactivar y volver a
-    # activar los avisos". O sea, la mandaba a re-suscribir el teléfono por un
-    # problema que está en el config.json del servidor — y por más que lo
-    # hiciera, iba a fallar igual. Se chequea UNA vez, antes de empezar, y una
-    # clave rota se contesta igual que una clave ausente.
-    try:
-        from py_vapid import Vapid
-        Vapid.from_string(secreta)
-    except Exception as e:
-        raise _PushSinClaves(
-            "La clave VAPID está cargada pero no es válida "
-            f"({type(e).__name__}). Regenerar el par con "
-            "`python TempScripts/generar_vapid.py` y pegarlo de nuevo en "
-            "config.json.")
+    secreta, contacto = _push_claves_vapid(cfg)
+    ttl = _PUSH_TTL if ttl is None else ttl
 
     cuerpo = json.dumps(payload, ensure_ascii=False)
     enviados = 0
@@ -2234,7 +2265,7 @@ def _push_enviar(filas, payload, cfg=None):
                 # endpoint. Acá va únicamente el `sub`: a quién le reclama el
                 # servicio de push si la app se manda una macana.
                 vapid_claims={'sub': contacto},
-                ttl=_PUSH_TTL,
+                ttl=ttl,
                 timeout=_PUSH_TIMEOUT,
             )
             enviados += 1
@@ -2354,18 +2385,34 @@ def api_push_prueba():
 
 
 # =============================================================================
-# PUSH: el motor que decide CUÁNDO habría que avisar — POR AHORA, EN SECO
+# PUSH: el motor que decide CUÁNDO avisar (y los frenos que lo sujetan)
 # =============================================================================
 #
-# Esto es lo primero de este dominio que corre SOLO, sin que nadie apriete
-# nada. Y NO MANDA NI UN PUSH: escribe en el log el aviso que mandaría. La
-# idea es dejarlo así unos días en producción y recién después leer el log
-# para saber si la frecuencia es tolerable, ANTES de que un teléfono empiece a
-# sonar de verdad. Un aviso de más no se puede "desavisar", y el que se
-# quemó con dos noches de pitidos apaga los avisos para siempre.
+# Esto es lo único de este dominio que corre SOLO, sin que nadie apriete nada.
 #
-# Acá NO se leen las suscripciones ni se toca la red: `_push_enviar()` no se
-# llama desde ningún lado de este bloque.
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ TODO ESTE BLOQUE SALE DE UNA SOLA FRASE:  UN PUSH NO SE PUEDE DESAVISAR. │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# Un mail de más se borra, un puntito de más en la campana se ignora. Un
+# teléfono que sonó a las 3 de la mañana ya sonó, y el que se quemó con dos
+# noches de pitidos apaga los avisos para siempre — y ahí no se pierde un
+# aviso, se pierde el canal. De ahí salen el interruptor, las horas de
+# silencio, los dos topes y el TTL corto: todos frenan hacia el mismo lado.
+#
+# EL INTERRUPTOR: `push_enabled` (config.json, leído EN CALIENTE en cada
+# vuelta, igual que `backup_dir`). Apagado —el caso de hoy— el motor hace
+# exactamente lo mismo que hacía en el ensayo en seco: decide qué avisaría,
+# lo escribe en el log con el token `SECO: flanco push` y marca el estado,
+# pero no toca la red ni la tabla de suscripciones. Prendido, manda de verdad.
+# EL CAMINO ES EL MISMO hasta el último metro (flanco, arrastre, siembra,
+# guardar-antes-de-anunciar): si fueran dos caminos distintos, el que se
+# probó 72 horas no sería el que se enciende.
+#
+# ⚠ LOS FRENOS SOLO ACTÚAN ENCENDIDO. En seco se marcan y se loguean TODOS los
+# flancos, sin silencio ni topes: el ensayo existe para medir la frecuencia
+# BRUTA, y un ensayo que ya viene recortado no contesta la pregunta que se le
+# hace.
 #
 # ┌──────────────────────────────────────────────────────────────────────────┐
 # │ LA CAMPANA ES UN NIVEL. EL PUSH ES UN FLANCO.                            │
@@ -2390,6 +2437,54 @@ _PUSH_INTERVALO = 600
 # Dónde queda la marca de memoria del detector de flancos.
 _PUSH_ESTADO_ARCHIVO = 'push_estado.json'
 
+# ── Los frenos ───────────────────────────────────────────────────────────────
+
+# Cuántos avisos como mucho salen en UNA vuelta. Tres: es lo que se puede
+# mirar de un vistazo en la pantalla bloqueada. Lo que no entra NO SE MARCA, o
+# sea que sigue siendo flanco ascendente y sale en la vuelta siguiente — 10
+# minutos después. Es un goteo, no un descarte: el mismo mecanismo que las
+# horas de silencio.
+#
+# POR QUÉ HACE FALTA: los avisos no llegan de a uno. Un provider que se
+# desbloquea después de una semana rota, o una tanda de partidas que vencen el
+# mismo día, es UNA vuelta con diez flancos juntos. Sin tope, eso son diez
+# notificaciones seguidas en el mismo minuto, que es exactamente la forma en
+# que la gente aprende a apagar los avisos.
+_PUSH_TOPE_VUELTA = 3
+
+# Y el techo del día. Ocho: más que eso ya no es un aviso, es un ruido de
+# fondo, y el valor de un push está en que sea raro. Pasado el tope no se
+# manda nada más hasta que cambie el día — y, otra vez, lo retenido no se
+# marca: sigue pendiente.
+_PUSH_TOPE_DIA = 8
+
+# Cuánto guarda el servicio de push un aviso AUTOMÁTICO si el teléfono está
+# apagado o sin señal. Es DISTINTO del `_PUSH_TTL = 60` del botón de prueba, y
+# tiene que serlo: aquel es un diagnóstico que se mira en el momento ("andá a
+# Settings"), y llegar media hora tarde no le sirve a nadie. Estos avisos, en
+# cambio, tienen que aguantar el bache real de todos los días — el subte, la
+# notebook cerrada un rato, el celu en modo avión durante una siesta —, y eso
+# se mide en horas.
+#
+# DOS HORAS, y el techo importa tanto como el piso:
+#   · Pasado ese rato el aviso deja de describir el AHORA. "Bajá bolsitas para
+#     mañana" apareciendo a las 3 de la madrugada no es el mismo mensaje que
+#     era a las 21:00; es un aviso que confunde más de lo que sirve.
+#   · Y acota cuánto puede colarse un aviso HACIA la noche. Lo último que sale
+#     antes del silencio se manda 22:29; con dos horas, en un teléfono que
+#     estaba apagado no puede sonar más tarde de las 00:29. Con un TTL de un
+#     día entero las horas de silencio no servirían para nada: el servicio de
+#     push se las saltearía por nosotros, entregando a las 4 de la mañana algo
+#     que nosotros tuvimos el cuidado de no mandar a esa hora.
+#
+# ⚠ CONSECUENCIA, Y HAY QUE TENERLA CLARA: si el TTL vence con el teléfono
+# apagado, ese aviso SE PERDIÓ — la clave ya quedó marcada como avisada y no
+# vuelve a sonar. NO es información perdida: el dato sigue estando en la
+# campana, adentro de la app, que es donde vive. EL PUSH ES UN EMPUJÓN, NO EL
+# REGISTRO. Esa frase es la que justifica todo lo demás de este bloque:
+# perder un aviso es barato, mandar uno de más no se deshace.
+_PUSH_TTL_AVISO = 7200
+
 
 # Lo ya dicho hoy: `token -> fecha`. Un scheduler que corre 144 veces por día
 # no puede loguear una condición persistente en cada vuelta: un módulo roto
@@ -2409,6 +2504,112 @@ def _push_seco_decir(token, mensaje, ahora=None):
     _push_seco_dicho[token] = hoy
     log(mensaje)
     return True
+
+
+def _push_encendido(cfg=None):
+    """
+    ¿Están prendidos los avisos automáticos?
+
+    UN SOLO LUGAR EN TODO EL PROGRAMA LEE `push_enabled`, y es este. Un flag de
+    pánico consultado desde varios lados es un flag que apaga algunas cosas y
+    otras no — el peor resultado posible para un interruptor que se toca
+    justamente cuando algo ya salió mal. Hay un test que cuenta las lecturas
+    (`TestUnSoloCaminoDeEnvio`).
+
+    Se lee EN CALIENTE, nunca al importar: apagarlo tiene que ser editar
+    `config.json`, sin deploy y sin reiniciar el servicio. `is True` y no un
+    `bool()` por lo mismo que `sw_enabled`: un `"false"` entre comillas es un
+    string no vacío y prendería los avisos.
+    """
+    cfg = cfg if cfg is not None else config.cargar_config(CONFIG_FILE)
+    return cfg.get('push_enabled') is True
+
+
+def _push_horas_silencio(cfg=None):
+    """
+    `(desde, hasta)` en "HH:MM". Una hora corrupta cae al DEFAULT, igual que
+    en `_lac_recordatorio()`: un typo en config.json no puede tumbar el hilo
+    ni —peor— dejar la noche sin protección.
+
+    ⚠ SE DEVUELVE NORMALIZADA (`strftime` después del `strptime`), Y ESO NO ES
+    PROLIJIDAD. `%H` acepta UN SOLO DÍGITO: `strptime("7:00", "%H:%M")` no
+    tira nada, así que validar sin normalizar dejaba pasar `"7:00"` tal cual.
+    Y `_push_en_silencio()` compara STRINGS, apoyándose en que midan lo mismo:
+    con `desde="22:30"` y `hasta="7:00"`, `'2' < '7'` da True, la ventana se
+    lee como si NO cruzara la medianoche, y el resultado medido es silencio a
+    las 23:00 pero NO a las 02:00 ni a las 06:59. O sea: el teléfono suena a
+    las tres de la mañana, con un config.json que se ve perfecto y sin una
+    sola línea en el log. Escribir "7:00" en vez de "07:00" es la forma
+    natural de escribir las siete, y este archivo se edita a mano porque las
+    horas de silencio no tienen UI. Una línea acá lo cierra.
+    """
+    if cfg is None:
+        cfg = config.cargar_config(CONFIG_FILE)
+    horas = []
+    for clave in ('push_silencio_desde', 'push_silencio_hasta'):
+        txt = str(cfg.get(clave, config.DEFAULTS[clave]))
+        try:
+            txt = datetime.strptime(txt.strip(), '%H:%M').strftime('%H:%M')
+        except ValueError:
+            txt = config.DEFAULTS[clave]
+        horas.append(txt)
+    return horas[0], horas[1]
+
+
+def _push_en_silencio(ahora, cfg=None):
+    """
+    True si a esta hora no se manda nada.
+
+    ⚠ LA VENTANA CRUZA LA MEDIANOCHE, y ahí está el único bug posible de esta
+    función. 22:30–07:00 NO es `desde <= hora <= hasta`: escrito así no
+    silencia NUNCA, porque no hay ninguna hora que sea a la vez mayor que
+    22:30 y menor que 07:00. Es `hora >= desde` **O** `hora < hasta`, y esa
+    rama es la que corre todas las noches de verdad. La otra (una ventana que
+    no cruza, tipo 13:00–15:00) está igual porque el día que alguien la
+    configure así tiene que andar sin que nadie se acuerde de esto.
+    Comparación de strings "HH:MM", que para horas de largo fijo ordena igual
+    que los números y evita convertir de ida y de vuelta.
+
+    LAS DOS HORAS IGUALES = VENTANA VACÍA, o sea NUNCA hay silencio. Es la
+    decisión explícita porque el caso es ambiguo (podría ser "silencio las 24
+    horas") y el otro significado apagaría los avisos enteros con un typo, en
+    silencio y sin que nadie se entere. Para no recibir nada está
+    `push_enabled`, que se ve.
+    """
+    desde, hasta = _push_horas_silencio(cfg)
+    if desde == hasta:
+        return False
+    actual = ahora.strftime('%H:%M')
+    if desde < hasta:
+        return desde <= actual < hasta
+    return actual >= desde or actual < hasta
+
+
+def _push_ttl_efectivo(ahora, cfg=None):
+    """
+    Cuánto puede guardar el servicio de push este aviso: `_PUSH_TTL_AVISO`,
+    pero NUNCA más allá del arranque de las horas de silencio.
+
+    POR QUÉ: el freno del silencio actúa sobre el ENVÍO, y el envío no es la
+    entrega. Un aviso que sale 22:29 con TTL de 2 h y encuentra el teléfono
+    apagado se lo queda FCM, y lo entrega cuando el teléfono vuelve — a las
+    00:29, dos horas adentro de la ventana que existe justo para que eso no
+    pase. Recortando el TTL, si el teléfono no estaba, el aviso muere en la
+    puerta del silencio. Y morir ahí es el lado barato: el dato sigue en la
+    campana, que es dónde vive.
+
+    Con la ventana vacía (las dos horas iguales) no hay nada que recortar.
+    """
+    desde, hasta = _push_horas_silencio(cfg)
+    if desde == hasta:
+        return _PUSH_TTL_AVISO
+    hh, mm = desde.split(':')
+    arranque = ahora.replace(hour=int(hh), minute=int(mm), second=0,
+                             microsecond=0)
+    if arranque <= ahora:
+        arranque += timedelta(days=1)
+    faltan = int((arranque - ahora).total_seconds())
+    return max(1, min(_PUSH_TTL_AVISO, faltan))
 
 
 def _push_avisos_ahora():
@@ -2476,7 +2677,7 @@ def _push_avisos_ahora():
             # fila que lo rompió.
             _push_seco_decir(
                 f"provider-roto:{clave_provider}",
-                f"AVISO: Ensayo push: provider '{clave_provider}' falló "
+                f"AVISO: Motor de push: provider '{clave_provider}' falló "
                 f"({type(e).__name__}); sus avisos no se evalúan esta vuelta. "
                 f"Se reintenta cada {_PUSH_INTERVALO // 60} min; esta línea "
                 f"sale 1 vez por día mientras siga roto.")
@@ -2503,7 +2704,7 @@ def _push_avisos_ahora():
             sin_payload.add(clave)
             _push_seco_decir(
                 f"payload-roto:{clave}",
-                f"AVISO: Ensayo push: aviso descartado [{clave}] "
+                f"AVISO: Motor de push: aviso descartado [{clave}] "
                 f"({type(e).__name__}); no se puede armar el payload. "
                 f"1 línea por día mientras siga así.")
     return avisos, sin_payload, fallados
@@ -2569,11 +2770,41 @@ def _push_estado_guardar(estado):
         return False
 
 
-def _push_ciclo():
+def _push_ciclo(ahora=None):
     """
-    Una vuelta completa del detector. Devuelve la lista de claves NUEVAS
-    (las que dispararon flanco ascendente en esta vuelta) — devuelve algo
-    para poder testearla y para que el script de TempScripts la muestre.
+    Una vuelta completa del motor. Devuelve la lista de claves ANUNCIADAS en
+    esta vuelta (las que dispararon flanco ascendente y además pasaron los
+    frenos) — devuelve algo para poder testearla y para que el script de
+    TempScripts la muestre. `ahora` se puede pasar para congelar el reloj en
+    los tests; en producción lo pone la función.
+
+    EL INTERRUPTOR SE LEE EN CALIENTE, en cada vuelta, no al importar: apagar
+    los avisos tiene que ser editar `config.json`, sin deploy y sin reiniciar
+    el servicio. Un flag leído al arranque no es un kill switch, es una
+    constante con nombre de flag.
+
+    APAGADO (hoy) ES EXACTAMENTE EL ENSAYO EN SECO: mismo flanco, mismo
+    arrastre, misma siembra, mismo marcado, misma línea `SECO: flanco push`.
+    Lo único que no pasa es el envío. Esto NO es negociable: el ensayo tiene
+    que poder seguir corriendo en producción tal cual después de esta etapa,
+    y el camino que se midió 72 horas tiene que ser el mismo que se enciende.
+
+    ENCENDIDO SE AGREGAN LOS FRENOS, y todos frenan hacia el mismo lado —
+    hacia no mandar:
+      · HORAS DE SILENCIO. Un flanco entre las 22:30 y las 07:00 no se manda
+        Y NO SE MARCA, así que sigue siendo flanco ascendente en la vuelta
+        siguiente. NO HAY COLA: a las 07:00 el motor vuelve a leer el nivel
+        REAL, y si la condición se fue durante la noche ese aviso no sale
+        nunca. Nadie se despierta con la novedad de algo que ya se resolvió.
+      · TOPES por vuelta y por día. Lo que no entra tampoco se marca: gotea
+        de a `_PUSH_TOPE_VUELTA` cada 10 minutos. Y NINGÚN TOPE ES SILENCIOSO:
+        si se retiene algo, el log lo dice (una vez por día lo que dura horas,
+        porque el scheduler corre 144 veces).
+      · CLAVES VAPID rotas o ausentes: no se manda, NO SE MARCA, y se avisa
+        una vez por día. Ver el comentario en el propio camino.
+    Lo retenido sale de las claves que se guardan: el estado pasa a ser
+    `vigentes - retenidas`. Ese resto es todo el mecanismo del diferimiento,
+    y no hay una sola línea de cola en ningún lado.
 
     LA SIEMBRA (primera vuelta): si no hay estado previo, se guarda el set
     actual y NO se anuncia NADA, ni siquiera en seco. Es el bit de "primer
@@ -2612,31 +2843,78 @@ def _push_ciclo():
     perder un aviso — que es el lado barato: el aviso sigue estando en la
     campana, que es donde vive el dato. Un push que no llegó no es información
     perdida; un push repetido cada 10 minutos no se puede desavisar.
+
+    Y POR ESO LAS VAPID SE PREGUNTAN ANTES DE GUARDAR (`_push_claves_vapid`),
+    en vez de dejar que el envío reviente después. Ver el porqué en el
+    camino de envío, unas líneas más abajo.
     """
+    ahora = ahora or datetime.now()
+    cfg = config.cargar_config(CONFIG_FILE)
+    encendido = _push_encendido(cfg)
+
     avisos, sin_payload, fallados = _push_avisos_ahora()
-    previas = _push_estado_leer().get('avisadas')
-    ahora = datetime.now()
+    estado_previo = _push_estado_leer()
+    previas = estado_previo.get('avisadas')
     sanos = len(PUSH_AVISOS) - len(fallados)
 
     conocidas = set(previas) if isinstance(previas, list) else set()
     arrastradas = {c for c in conocidas if c.split('|', 1)[0] in fallados}
     vigentes = sorted(set(avisos) | sin_payload | arrastradas)
 
-    def _guardar():
-        """Guarda solo si el set cambió. Sin esto serían 144 escrituras por
-        día del mismo contenido, y `backup_dir` puede apuntar a una carpeta
-        sincronizada. Devuelve si el estado en disco quedó al día."""
-        if isinstance(previas, list) and vigentes == sorted(previas):
+    # El contador del día vive en el MISMO archivo que las claves avisadas, y
+    # se resetea cuando cambia `dia`. ⚠ Tiene que tolerar un push_estado.json
+    # de la etapa anterior, que no tiene ninguna de las dos claves: en
+    # producción el archivo YA EXISTE con la forma vieja, y un motor que
+    # explota la primera vuelta después de un deploy es un motor que no
+    # arranca nunca. Sin `dia` se lo trata como un día distinto, o sea se
+    # arranca el conteo en cero. Es el default seguro: el tope diario nace
+    # entero, no a medias.
+    hoy = ahora.date().isoformat()
+    enviados_hoy = estado_previo.get('enviados_hoy')
+    if estado_previo.get('dia') != hoy or not isinstance(enviados_hoy, int):
+        enviados_hoy = 0
+
+    # CUÁNDO salió la última tanda, para que el tope por vuelta no se evapore
+    # cuando el servicio reinicia (ver el freno 'muy-seguido'). Ilegible o
+    # ausente = "hace mucho", igual que se tolera el archivo de la etapa
+    # anterior: el default seguro acá es dejar mandar, porque lo contrario
+    # sería un motor que nunca arranca.
+    try:
+        ultima_tanda = datetime.fromisoformat(estado_previo['ultima_tanda'])
+    except (KeyError, TypeError, ValueError):
+        ultima_tanda = None
+
+    diferidas = {}         # clave -> primer día que se la retuvo (diagnóstico)
+
+    def _guardar(claves, enviados, tanda=None):
+        """Guarda solo si algo cambió. Sin esto serían 144 escrituras por día
+        del mismo contenido, y `backup_dir` puede apuntar a una carpeta
+        sincronizada. Devuelve si el estado en disco quedó al día.
+
+        `tanda` solo viene cuando esta vuelta MANDÓ algo: es la marca que lee
+        el freno 'muy-seguido', y tiene que decir cuándo sonó un teléfono por
+        última vez, no cuándo corrió el hilo."""
+        marca = (tanda or ultima_tanda)
+        marca_txt = marca.isoformat(timespec='seconds') if marca else None
+        if (isinstance(previas, list) and claves == sorted(previas)
+                and estado_previo.get('dia') == hoy
+                and estado_previo.get('enviados_hoy') == enviados
+                and estado_previo.get('ultima_tanda') == marca_txt
+                and (estado_previo.get('diferidas') or {}) == (diferidas or {})):
             return True
         if _push_estado_guardar({
-                'avisadas': vigentes,
-                'actualizado': ahora.isoformat(timespec='seconds')}):
+                'avisadas': claves,
+                'actualizado': ahora.isoformat(timespec='seconds'),
+                'dia': hoy,
+                'enviados_hoy': enviados,
+                'ultima_tanda': marca_txt,
+                'diferidas': diferidas}):
             return True
         _push_seco_decir(
             'estado-no-guardado',
-            f"AVISO: Ensayo push: no se pudo guardar {_PUSH_ESTADO_ARCHIVO} en "
-            f"{_get_backup_dir()}. Sin memoria de flancos el detector no "
-            f"anuncia nada. Revisar backup_dir. (1 línea por día.)", ahora)
+            f"AVISO: Motor de push: no se pudo guardar {_PUSH_ESTADO_ARCHIVO} "
+            f"en {_get_backup_dir()}. Sin memoria de flancos no se anuncia "
+            f"nada. Revisar backup_dir. (1 línea por día.)", ahora)
         return False
 
     if not isinstance(previas, list):
@@ -2644,46 +2922,286 @@ def _push_ciclo():
         # NO dice "se sembró" si el guardado falló, porque entonces la vuelta
         # siguiente vuelve a entrar por acá y el log afirmaría 144 veces por
         # día haber sembrado algo que nunca se escribió.
-        if _guardar():
-            log(f"OK: Ensayo push: sin estado previo (archivo ausente o "
+        if _guardar(vigentes, 0):
+            log(f"OK: Motor de push: sin estado previo (archivo ausente o "
                 f"ilegible); sembrado con {len(vigentes)} aviso(s) "
                 f"vigente(s). Esta vuelta no anuncia nada.")
         return []
 
-    if not _guardar():
+    candidatas = [c for c in vigentes if c not in conocidas and c in avisos]
+
+    # ── Los frenos ──────────────────────────────────────────────────────────
+    #
+    # `retenidas` es lo que NO se va a marcar: eso, y nada más, es todo el
+    # diferimiento. No hay cola, no hay archivo de pendientes, no hay nada que
+    # se pueda corromper — lo retenido sigue siendo flanco ascendente porque
+    # el estado no lo vio pasar, y la vuelta siguiente lo vuelve a evaluar
+    # contra el nivel REAL. Si mientras tanto la condición se resolvió, ese
+    # aviso no existe más y nunca suena.
+    retenidas = []
+    filas = []
+    motivo = None          # por qué se retuvo, para la ÚNICA línea de más abajo
+    detalle_motivo = ''
+    if not encendido:
+        # En seco no hay frenos: el ensayo mide la frecuencia BRUTA.
+        a_mandar = candidatas
+    elif _push_en_silencio(ahora, cfg):
+        a_mandar = []
+        retenidas = candidatas
+        motivo = 'silencio'
+    elif (ultima_tanda is not None
+            and (ahora - ultima_tanda).total_seconds() < _PUSH_INTERVALO):
+        # ⚠ EL TOPE POR VUELTA ES POR LLAMADA, NO POR TIEMPO, y sin esto se
+        # evapora en el único momento en que hace falta. `_push_ciclo()` corre
+        # una vez por ARRANQUE de proceso (el `sleep` va al final), así que un
+        # servicio que reinicia en loop —el puerto tomado por un python viejo,
+        # NSSM reintentando cada 30 s, un reboot con arranques encadenados—
+        # dispara una vuelta completa por reinicio. Medido: 8 flancos vigentes
+        # salen 3 + 3 + 2 en SESENTA SEGUNDOS, contra 3 + 3 + 2 en media hora,
+        # que es todo el punto del goteo. El tope diario aguanta (no pasa de 8)
+        # pero el teléfono igual tira ocho notificaciones seguidas desde una
+        # app que ni siquiera está sirviendo páginas.
+        a_mandar = []
+        retenidas = candidatas
+        motivo = 'muy-seguido'
+    else:
+        cupo = min(_PUSH_TOPE_VUELTA, max(0, _PUSH_TOPE_DIA - enviados_hoy))
+        a_mandar = candidatas[:cupo]
+        retenidas = candidatas[cupo:]
+        motivo = ('tope-dia' if enviados_hoy + len(a_mandar) >= _PUSH_TOPE_DIA
+                  else 'tope-vuelta')
+
+    if encendido and a_mandar:
+        # ⚠ LAS VAPID SE PREGUNTAN ACÁ, ANTES DE GUARDAR, y no se descubren
+        # cuando `_push_enviar()` reviente. Si se marcaran las claves y recién
+        # después saltara `_PushSinClaves`, el estado iría consumiendo EN
+        # SILENCIO todos los flancos mientras la config está rota, y el día
+        # que alguien la arregle el motor diría "ya avisé todo" — sin que
+        # nunca hubiera sonado nada en ningún teléfono, y sin una sola pista
+        # de que faltó algo. Dejando el flanco pendiente, lo primero que pasa
+        # después de arreglar el config.json es un aviso de verdad, que es
+        # además la prueba de que el canal anda. Y la tanda que se acumuló
+        # mientras tanto no es un problema: la sujetan los topes y las horas
+        # de silencio, que es para lo que están.
+        try:
+            _push_claves_vapid(cfg)
+        except _PushSinClaves as e:
+            retenidas = candidatas
+            a_mandar = []
+            motivo = 'sin-claves'
+            detalle_motivo = str(e)
+
+    if encendido and a_mandar:
+        # A TODAS LAS SUSCRIPCIONES, sin filtrar por persona. ES UNA DECISIÓN,
+        # NO UN DESCUIDO: es una casa de dos, y lo que se avisa hoy —leche que
+        # se vence, bolsitas para bajar— le importa a los dos por igual;
+        # además el payload no lleva nada privado (esa es la regla del
+        # payload). El día que aparezca un aviso que sea de UNO SOLO, el lugar
+        # donde se filtra es acá, y esta línea es la que hay que venir a
+        # cambiar.
+        try:
+            filas = list(database.obtener_suscripciones_push())
+        except Exception as e:
+            filas = []
+            detalle_motivo = type(e).__name__
+        if not filas:
+            # Nadie activó los avisos todavía (o la tabla no se pudo leer).
+            # Tampoco se marca: no sonó en ningún lado, así que el nivel
+            # sigue siendo una novedad para el primero que se suscriba.
+            retenidas = candidatas
+            a_mandar = []
+            motivo = ('suscripciones-ilegibles' if detalle_motivo
+                      else 'sin-dispositivos')
+
+    # ⚠ Un aviso cuyo payload no se pudo armar tampoco se da por avisado.
+    # Es el MISMO criterio que el de las VAPID, y sin esta línea quedaba
+    # aplicado al revés: `candidatas` exige `c in avisos`, así que una clave
+    # de `sin_payload` no era candidata, no entraba en `retenidas`, y por lo
+    # tanto sí entraba en `marcadas` — quemada para siempre sin haber sonado
+    # nunca. El día que alguien arregle la url del provider, esa clave ya
+    # figura como avisada y no vuelve a ser flanco.
+    if encendido:
+        retenidas = list(retenidas) + [c for c in sorted(sin_payload)
+                                       if c not in conocidas]
+
+    # ── Recién acá se dice por qué se retuvo ──────────────────────────
+    #
+    # DESPUÉS de todos los frenos, no adentro de cada uno. Cuando la línea del
+    # tope vivía arriba, se escribía ANTES de los gates de VAPID y de
+    # dispositivos — que después podían vaciar `a_mandar`. Con las VAPID rotas
+    # y 5 flancos vigentes, el log decía "salen 3 aviso(s)" 144 veces por día
+    # con `enviados_hoy` clavado en cero: 144 líneas afirmando enviíos que
+    # nunca ocurrieron, y cualquier conteo de "cuántos salieron" arruinado.
+    #
+    # El TOKEN LLEVA LAS CLAVES RETENIDAS, no solo el motivo. Con un token fijo
+    # ('silencio'), el segundo aviso que se retiene la misma noche no dejaba
+    # NI UNA línea: el token ya estaba gastado y el latido también. Así, un
+    # set NUEVO de retenidas vuelve a hablar, y el mismo set repetido 144 veces
+    # sigue diciendo una sola cosa. Van las CLAVES, que no llevan plata.
+    if retenidas and motivo:
+        claves_txt = ', '.join(retenidas)
+        if motivo == 'silencio':
+            desde, hasta = _push_horas_silencio(cfg)
+            texto = (f"OK: Motor de push: {len(retenidas)} aviso(s) en horas de "
+                     f"silencio ({desde}–{hasta}): {claves_txt}. Se vuelven a "
+                     f"evaluar después de las {hasta} — y salen SOLO si a esa "
+                     f"hora la condición sigue siendo cierta.")
+        elif motivo == 'muy-seguido':
+            texto = (f"OK: Motor de push: {len(retenidas)} aviso(s) esperan el "
+                     f"intervalo (la vuelta anterior fue hace menos de "
+                     f"{_PUSH_INTERVALO // 60} min; el servicio reinició): "
+                     f"{claves_txt}.")
+        elif motivo == 'tope-dia':
+            texto = (f"AVISO: Motor de push: tope de {_PUSH_TOPE_DIA} avisos "
+                     f"del día; quedan {len(retenidas)} para mañana: "
+                     f"{claves_txt}.")
+        elif motivo == 'sin-claves':
+            texto = (f"AVISO: Motor de push: {detalle_motivo} Los "
+                     f"{len(retenidas)} aviso(s) quedan PENDIENTES (no se "
+                     f"marcan) y salen cuando la config esté completa: "
+                     f"{claves_txt}.")
+        elif motivo == 'suscripciones-ilegibles':
+            texto = (f"AVISO: Motor de push: no se pudieron leer las "
+                     f"suscripciones ({detalle_motivo}); {len(retenidas)} "
+                     f"aviso(s) quedan pendientes: {claves_txt}.")
+        elif motivo == 'sin-dispositivos':
+            texto = (f"AVISO: Motor de push: push_enabled está prendido pero "
+                     f"no hay ningún dispositivo suscripto; {len(retenidas)} "
+                     f"aviso(s) quedan pendientes: {claves_txt}.")
+        else:
+            texto = (f"AVISO: Motor de push: salen {len(a_mandar)} aviso(s) "
+                     f"(tope de {_PUSH_TOPE_VUELTA} por vuelta); "
+                     f"{len(retenidas)} para la vuelta que viene: {claves_txt}.")
+        _push_seco_decir(f"{motivo}:{claves_txt}", texto + " (1 línea por día.)",
+                         ahora)
+
+    retenidas_set = set(retenidas)
+    marcadas = [c for c in vigentes if c not in retenidas_set]
+
+    # ── El diferimiento CRÓNICO ─────────────────────────────────────────────
+    #
+    # Hay un aviso que, sin esto, no sale NUNCA y nadie se entera jamás.
+    # `_lac_recordatorio_pendiente()` solo es cierto entre la hora configurada
+    # y la medianoche (a las 00:10 vuelve a ser "todavía no"). Esa hora es un
+    # campo de Settings. Si alguien la pone en 23:00 y el silencio arranca
+    # 22:30: a las 23:00 el flanco se retiene, a las 00:00 la condición
+    # DESAPARECE, y a las 07:00 no queda nada que evaluar. Simulado día tras
+    # día: cero envíos, para siempre, en silencio.
+    #
+    # El diferimiento no puede dejar de ser lo que es —no hay cola, y esa es
+    # su virtud— así que lo que se guarda acá es PURO DIAGNÓSTICO: desde qué
+    # día se viene reteniendo cada clave. De acá NO se manda nada; solo se
+    # habla. Una clave que se retiene dos días distintos ya no es "esta noche
+    # está callado", es una ventana que no se cruza nunca, y eso hay que
+    # poder verlo sin leer el código.
+    previas_dif = estado_previo.get('diferidas')
+    if not isinstance(previas_dif, dict):
+        previas_dif = {}
+    diferidas = {c: previas_dif.get(c, hoy) for c in retenidas}
+    cronicas = sorted(c for c, desde_dia in diferidas.items() if desde_dia < hoy)
+    if cronicas:
+        _push_seco_decir(
+            'cronicas:' + ','.join(cronicas),
+            f"AVISO: Motor de push: {len(cronicas)} aviso(s) vienen de días "
+            f"anteriores sin poder salir: "
+            + '; '.join(f"[{c}] desde el {diferidas[c]}" for c in cronicas)
+            + ". Si la condición solo es cierta adentro de las horas de "
+              "silencio, no va a salir nunca: revisar las dos horas.", ahora)
+
+    # El contador del día cuenta AVISOS MANDADOS, así que en seco no se mueve:
+    # el ensayo no gasta cupo. Y se suma ANTES de mandar, no después: un envío
+    # que falla igual consumió el aviso (la clave ya quedó marcada), y el
+    # error que se quiere evitar es el de mandar de más.
+    enviados_total = enviados_hoy + (len(a_mandar) if encendido else 0)
+    if not _guardar(marcadas, enviados_total,
+                    ahora if (encendido and a_mandar) else None):
         return []
 
-    nuevas = [c for c in vigentes if c not in conocidas and c in avisos]
-
-    # El log ES el entregable de esta etapa. `SECO: flanco push` es el token
-    # contable: el resto de las líneas de este bloque NO lleva la palabra
+    # ── Recién acá se anuncia ───────────────────────────────────────────────
+    #
+    # En seco, el log ES el entregable: `SECO: flanco push` es el token
+    # contable, y el resto de las líneas de este bloque NO lleva la palabra
     # "seco" ni siquiera adentro de otra, porque `Select-String` de PowerShell
-    # ignora mayúsculas y un "en seco" en la línea de latido haría que el conteo
-    # del ensayo salga multiplicado. Campos con nombre y comillas: el `|` ya
-    # está ocupado separando la clave.
-    for clave in nuevas:
+    # ignora mayúsculas y un "en seco" en la línea de latido haría que el
+    # conteo del ensayo salga multiplicado. Campos con nombre y comillas: el
+    # `|` ya está ocupado separando la clave.
+    #
+    # Encendido, la línea cambia de token (`PUSH: aviso mandado`) para que las
+    # dos etapas no se confundan al contar, y agrega en cuántos dispositivos
+    # entró. El payload es EL MISMO objeto que se venía logueando en seco.
+    for clave in a_mandar:
         p = avisos[clave]
-        log(f"SECO: flanco push [{clave}] -> titulo=\"{p['titulo']}\" "
+        if not encendido:
+            log(f"SECO: flanco push [{clave}] -> titulo=\"{p['titulo']}\" "
+                f"cuerpo=\"{p['cuerpo']}\" url={p['url']} "
+                f"(vigentes ahora: {len(vigentes)})")
+            continue
+        if not filas:
+            # `_push_enviar` borra las filas muertas (404/410) de la base, pero
+            # `filas` es una copia local: sin esto, los avisos 2 y 3 de la
+            # tanda reintentaban endpoints que el aviso 1 ya había dado de
+            # baja, y pagaban el timeout de cada uno para nada.
+            log(f"AVISO: Motor de push: [{clave}] no sale, no quedó ningún "
+                f"dispositivo vivo en esta tanda.")
+            continue
+        try:
+            # El TTL es el de los avisos, no el del botón de prueba, y además
+            # recortado contra el arranque del silencio: ver
+            # `_push_ttl_efectivo()`.
+            enviados, borradas = _push_enviar(filas, p, cfg,
+                                              ttl=_push_ttl_efectivo(ahora, cfg))
+        except Exception as e:
+            # Ya está marcado como avisado y no se deshace. Se acepta a
+            # propósito: reintentar es el camino a mandar dos veces lo mismo,
+            # y el dato sigue estando en la campana. Un push que no llegó no
+            # es información perdida.
+            log(f"AVISO: Motor de push: no se pudo mandar [{clave}] "
+                f"({type(e).__name__}); el aviso sigue en la campana.")
+            continue
+        if borradas:
+            # `_push_enviar` devuelve CUÁNTAS borró, no cuáles, así que la
+            # lista se vuelve a leer de la base en vez de adivinar.
+            try:
+                filas = list(database.obtener_suscripciones_push())
+            except Exception:
+                filas = []
+        # ⚠ EL TOKEN CAMBIA SI NO ENTRÓ EN NINGUNO. "aviso mandado (entregado
+        # en 0 dispositivo(s))" se contradice a sí mismo en la misma línea, y
+        # es justo la línea que alguien va a grepear para contestar "¿por qué
+        # no me llegó el aviso de anoche?". La clave queda avisada igual — eso
+        # no se deshace — pero el log no miente al respecto.
+        log(f"PUSH: aviso {'mandado' if enviados else 'SIN ENTREGAR'} "
+            f"[{clave}] -> titulo=\"{p['titulo']}\" "
             f"cuerpo=\"{p['cuerpo']}\" url={p['url']} "
-            f"(vigentes ahora: {len(vigentes)})")
+            f"(entregado en {enviados} dispositivo(s), "
+            f"{enviados_total}/{_PUSH_TOPE_DIA} hoy)")
 
     # Las vueltas SIN novedad no loguean: son 144 por día y taparían las que
     # importan. Pero el silencio total de un hilo de fondo es indistinguible de
     # un hilo muerto, así que queda UNA línea por día — y lleva la salud de los
     # providers, porque "0 avisos vigentes" dice exactamente lo mismo estando
     # todo tranquilo que estando ciego.
-    if not nuevas:
+    #
+    # ⚠ La condición mira `candidatas`, NO `a_mandar`. Con `a_mandar` el latido
+    # salía también cuando los frenos habían retenido TODO, y entonces decía
+    # "sin flancos nuevos" habiendo cinco pendientes — contradiciendo, en el
+    # mismo día y a veces en la línea de al lado, al aviso de "quedaron en
+    # horas de silencio". El latido tiene que poder leerse solo y no mentir.
+    if not candidatas:
         _push_seco_decir(
             'latido',
-            f"OK: Ensayo push: sin flancos nuevos; {len(vigentes)} aviso(s) "
-            f"vigente(s); providers OK {sanos}/{len(PUSH_AVISOS)}.", ahora)
+            f"OK: Motor de push ({'encendido' if encendido else 'en ensayo'}): "
+            f"sin flancos nuevos; {len(vigentes)} aviso(s) vigente(s); "
+            f"providers OK {sanos}/{len(PUSH_AVISOS)}.", ahora)
 
-    return nuevas
+    return a_mandar
 
 
 def _scheduler_push():
     """
-    Hilo de fondo del ensayo en seco: una vuelta cada `_PUSH_INTERVALO`.
+    Hilo de fondo del motor de avisos: una vuelta cada `_PUSH_INTERVALO`.
+    Manda o solo loguea según `push_enabled`, que se lee adentro de la vuelta
+    —nunca acá— para que apagarlo no necesite reiniciar el servicio.
 
     TODO el cuerpo va adentro del try: un hilo de fondo que se muere no le
     avisa a nadie: no hay request que falle, no hay pantalla que quede en
@@ -5802,9 +6320,15 @@ def run_flask():
         modo = 'red local'
 
     horas_str = ', '.join(f"{h:02d}:00" for h in HORAS_REFRESH_COTIZACION)
+    # El estado del push va en la línea de arranque porque es lo primero que se
+    # mira al abrir el log: "¿esto está mandando avisos de verdad o todavía
+    # no?". Se lee del cfg, no de una constante, así que dice lo que va a pasar
+    # de verdad — el flag se puede haber cambiado sin que nadie toque el código.
+    push_modo = ('avisos push ACTIVOS' if _push_encendido(cfg)
+                 else 'avisos push en ensayo, sin mandar')
     log(f"OK: App iniciada — DB {os.path.basename(database.DB_PATH)} lista; backup automático diario; "
           f"cotización al inicio + diario a {horas_str}; "
-          f"avisos push en seco cada {_PUSH_INTERVALO // 60} min; "
+          f"{push_modo} (cada {_PUSH_INTERVALO // 60} min); "
           f"servidor en http://localhost:{port} (modo {modo}).")
 
     app.run(debug=False, host=host, port=port, use_reloader=False)

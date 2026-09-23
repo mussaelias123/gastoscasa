@@ -456,6 +456,40 @@ function pushDestino(url) {
 }
 
 
+// Avisarle a las pestañas ABIERTAS que llegó un push, para que la campana se
+// actualice sola. Sin esto, alguien que tiene la app abierta ve la
+// notificación del sistema y adentro de la app sigue sin haber nada hasta que
+// recargue — el aviso y el dato contradiciéndose en la misma pantalla.
+//
+// ⚠ ESTO NO PUEDE METERSE EN EL CAMINO DE `showNotification()`. Va COLGADO AL
+// FINAL de la cadena, después del último `.catch`, y encapsulado en el suyo
+// propio: mostrar la notificación es obligatorio (ver el ⚠ de arriba), y un
+// `postMessage` que falla —una pestaña que se cerró justo, un cliente que no
+// acepta mensajes— no puede ser el motivo por el que Chrome muestre "Este
+// sitio se actualizó en segundo plano".
+//
+// `includeUncontrolled: true` por lo mismo que en `notificationclick`: este SW
+// no hace `skipWaiting()`, así que las pestañas abiertas las puede estar
+// controlando la versión anterior y sin el flag no aparecerían en la lista.
+function pushAvisarVentanas() {
+    try {
+        if (!self.clients || !self.clients.matchAll) return null;
+        return self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+            .then(function (lista) {
+                var ventanas = lista || [];
+                for (var i = 0; i < ventanas.length; i++) {
+                    // Uno por uno adentro del try: una pestaña muerta no
+                    // puede dejar sin avisar a las demás.
+                    try { ventanas[i].postMessage({ tipo: 'push-recibido' }); } catch (e) { }
+                }
+                return null;
+            })['catch'](function () { return null; });
+    } catch (e) {
+        return null;
+    }
+}
+
+
 self.addEventListener('push', function (evento) {
     var datos = pushDatos(evento);
     var destino = pushDestino(datos.url);
@@ -473,7 +507,7 @@ self.addEventListener('push', function (evento) {
             // que ese navegador no banca), se muestra la pelada. Mostrar algo
             // es obligatorio: ver el ⚠ de arriba.
             return self.registration.showNotification(PUSH_TITULO, { body: PUSH_CUERPO });
-        }).catch(function () { })
+        }).catch(function () { }).then(pushAvisarVentanas)
     );
 });
 

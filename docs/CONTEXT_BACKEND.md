@@ -204,7 +204,7 @@ tareas/ocultos = permanente (todos los días).
 ## Schedulers en hilo
 - `iniciar_scheduler_backup()`: chequea cada hora; backup de `fondo.db` 1 vez/día y solo si cambiaron los datos (hash vs `ultimo_backup.json`). Detalle en `CONTEXT_DEPLOY.md`.
 - `iniciar_scheduler_cotizacion()`: refresh cotización USD a horarios fijos.
-- `iniciar_scheduler_push()` (hilo `push-scheduler`): detector de flancos del push, una vuelta cada `_PUSH_INTERVALO = 600` s. **EN SECO: no manda ningún push**, solo loguea `SECO: ...` lo que mandaría. No llama a `_push_enviar()` ni lee `push_suscripciones`. Detalle en `CONTEXT_PUSH.md` §5.
+- `iniciar_scheduler_push()` (hilo `push-scheduler`): el motor de avisos automáticos, una vuelta cada `_PUSH_INTERVALO = 600` s. **Ya está conectado al envío**, pero con `push_enabled` en `False` solo loguea `SECO: flanco push ...` lo que mandaría. Prendido manda con frenos (silencio, topes, intervalo entre tandas). Detalle completo en `CONTEXT_PUSH_MOTOR.md`.
 - Los tres se inician en `run_flask()`. NO bloquean request loop.
 
 ## Helpers de backup

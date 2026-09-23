@@ -592,70 +592,127 @@ class TestRellenoBase64(BasePush):
                          'la misma clave con relleno se guardo como distinta')
 
 
-class TestNadaCorreSolo(unittest.TestCase):
+class TestUnSoloCaminoDeEnvio(unittest.TestCase):
     """
-    Guarda de ETAPA, no de diseño. Antes se llamaba `TestNoSeMandaNada` y
-    congelaba DOS cosas: que nadie importara pywebpush y que nadie leyera
-    `push_enabled`.
+    Guarda de ETAPA, no de diseño. Ya se llamo `TestNoSeMandaNada` (cuando
+    nadie importaba pywebpush) y despues `TestNadaCorreSolo` (cuando lo unico
+    que mandaba un push era un boton). Las dos veces el nombre dejo de ser
+    cierto y hubo que venir a cambiarlo A MANO, que es exactamente para lo que
+    esta la clase: obligar a que encender algo sea una DECISION escrita.
 
-    LA PRIMERA MITAD SE BORRO A PROPOSITO en la etapa del boton de prueba: ahi
-    `app.py` empezo a importar pywebpush de verdad, adentro de `_push_enviar()`,
-    para la ruta POST /api/push/prueba. El propio docstring de la clase vieja
-    decia que se borraba cuando se prendiera el envio, y se prendio.
+    HOY SON DOS LOS CAMINOS DE ENVIO, y ninguno mas:
 
-    LA SEGUNDA MITAD SIGUE VIVA, y ahora es la que importa: SE MANDA CUANDO
-    ALGUIEN APRIETA UN BOTON, Y NADA MAS. Desde la etapa del ensayo en seco ya
-    hay un scheduler corriendo solo (`_scheduler_push`), pero ese motor
-    decide CUANDO habria que avisar y lo escribe en el log — no manda nada, no
-    llama a `_push_enviar()` y ni siquiera lee la tabla de suscripciones. Que
-    este test se ponga rojo significa que los avisos automaticos se colaron
-    antes de tiempo, sin el ensayo que dice si la frecuencia se banca.
+      1. POST /api/push/prueba — el boton de Settings. No mira `push_enabled`
+         a proposito: es el diagnostico del canal.
+      2. `_push_ciclo()` — el motor automatico. Ese SI mira `push_enabled`
+         (hoy en False), y encima tiene frenos propios: horas de silencio,
+         tope por vuelta y tope por dia. Se prueba en tests/test_push_encendido.py.
+
+    LO QUE ESTA CLASE SIGUE VIGILANDO ES QUE NO APAREZCA UN TERCERO. Un camino
+    de envio nuevo es un telefono que suena por algo que nadie decidio que
+    mereciera sonar, y un push no se puede desavisar. Si este test se pone
+    rojo, la pregunta no es como arreglarlo: es quien agrego el camino y por
+    que no esta documentado en docs/CONTEXT_PUSH.md.
     """
 
-    def test_nadie_lee_push_enabled(self):
-        for archivo in ('app.py', 'database.py', 'auth.py'):
-            with open(os.path.join(ROOT_DIR, archivo), encoding='utf-8') as f:
-                fuente = f.read()
-            self.assertNotIn("cfg.get('push_enabled')", fuente)
-            self.assertNotIn('cfg.get("push_enabled")', fuente)
-            self.assertNotIn("get('push_enabled')", fuente)
-
-    def test_el_envio_tiene_un_solo_disparador(self):
+    def test_push_enabled_lo_lee_el_motor_y_nadie_mas(self):
         """
-        `webpush(` aparece UNA vez en toda la app: adentro de `_push_enviar()`,
-        que hoy lo llama solo la ruta de prueba. Un segundo llamado es, por
-        definicion, algo que manda avisos por otro camino.
+        El interruptor dejo de ser decorativo en la etapa del encendido: ahora
+        SE LEE, y se lee EN CALIENTE adentro de la vuelta del scheduler (si se
+        leyera al importar, apagarlo pediria reiniciar el servicio y no seria
+        un kill switch).
 
-        Y el motor de flancos NO es ese camino: se mira su codigo fuente y no
-        aparece ni `_push_enviar` ni la lectura de las suscripciones. Mientras
-        dure el ensayo en seco, una vuelta del scheduler es una linea de log y
-        nada mas. El dia que el push se encienda de verdad, este test hay que
-        venir a cambiarlo A MANO — que es justamente el punto.
-
-        SE CUENTA SOBRE TODO EL ARCHIVO, ademas de mirar las tres funciones del
-        motor. Mirar solo esas tres funciones no alcanza: un
-        `def _push_anunciar(...): _push_enviar(...)` llamado desde `_push_ciclo`
-        las deja a las tres limpias, deja `webpush(` en 1 (sigue adentro de
-        `_push_enviar`) y pone el test en VERDE mientras los telefonos suenan
-        solos. El conteo global es lo unico que no se puede esquivar con una
-        indireccion. Los comentarios no cuentan: el `#` habla del codigo, no lo
-        ejecuta.
+        Lo que se congela es que lo lea UN SOLO lugar, `_push_encendido()`. Un
+        `push_enabled` consultado desde varios lados es un flag que apaga
+        algunas cosas y otras no — el peor resultado posible para un
+        interruptor de panico, que se toca justo cuando algo ya salio mal.
         """
         import inspect
+        import app as app_module
+        with open(os.path.join(ROOT_DIR, 'app.py'), encoding='utf-8') as f:
+            fuente = f.read()
+        self.assertEqual(fuente.count("cfg.get('push_enabled')"), 1)
+        self.assertIn("cfg.get('push_enabled')",
+                      inspect.getsource(app_module._push_encendido))
+        # Y NO por las otras formas de escribir lo mismo. Contar solo la
+        # variante con comillas simples dejaba pasar un
+        # `if cfg["push_enabled"] is not True` en api_push_prueba() con el
+        # test en VERDE: el boton de diagnostico empezaria a obedecer el flag,
+        # o sea que para probar el canal habria que encender antes la cosa que
+        # uno no sabe si funciona.
+        for variante in ('cfg.get("push_enabled")', "cfg['push_enabled']",
+                         'cfg["push_enabled"]'):
+            with self.subTest(variante=variante):
+                self.assertNotIn(variante, fuente)
+        # Y el motor lo consulta por esa puerta, no por su cuenta.
+        self.assertIn('_push_encendido(',
+                      inspect.getsource(app_module._push_ciclo))
+
+        # Ni la base ni el login tienen nada que opinar sobre esto.
+        for archivo in ('database.py', 'auth.py'):
+            with open(os.path.join(ROOT_DIR, archivo), encoding='utf-8') as f:
+                otro = f.read()
+            self.assertNotIn('push_enabled', otro)
+
+    def test_el_envio_tiene_dos_disparadores_y_ni_uno_mas(self):
+        """
+        `webpush(` aparece UNA vez en toda la app: adentro de `_push_enviar`,
+        que es la unica puerta a la red. Un segundo `webpush(` es, por
+        definicion, alguien mandando avisos por su cuenta.
+
+        Y `_push_enviar` se llama desde DOS lugares: la ruta de prueba y el
+        motor. Un tercero es un camino que nadie reviso.
+
+        SE CUENTA SOBRE TODO EL ARCHIVO, no sobre las funciones del motor.
+        Mirar solo esas funciones no alcanza: un
+        `def _push_anunciar(...): _push_enviar(...)` llamado desde
+        `_push_ciclo` las deja limpias, deja `webpush(` en 1 (sigue adentro de
+        `_push_enviar`) y pone el test en VERDE mientras los telefonos suenan
+        solos. El conteo global es lo unico que no se puede esquivar con una
+        indireccion.
+
+        DOS CONTEOS, a proposito:
+          · El textual saltea los comentarios (el `#` habla del codigo, no lo
+            ejecuta) pero NO los docstrings — por eso en app.py el nombre se
+            escribe sin parentesis cuando se lo menciona en prosa.
+          · El del AST cuenta LLAMADAS de verdad, y es el que no se puede
+            enganar ni con prosa ni con formato.
+        """
+        import ast
         with open(os.path.join(ROOT_DIR, 'app.py'), encoding='utf-8') as f:
             fuente = f.read()
         self.assertEqual(fuente.count('webpush('), 1)
 
         codigo_vivo = [l for l in fuente.split('\n') if not l.strip().startswith('#')]
         llamadas = sum(l.count('_push_enviar(') for l in codigo_vivo)
-        # 2 = la `def` + la UNICA llamada, la de /api/push/prueba.
-        self.assertEqual(llamadas, 2,
-                         "Aparecio un segundo llamador de _push_enviar(): "
-                         "algo manda push por fuera del boton de prueba.")
+        # 3 = la `def` + las DOS llamadas: /api/push/prueba y _push_ciclo.
+        self.assertEqual(llamadas, 3,
+                         "Cambio la cantidad de llamadores de _push_enviar(): "
+                         "o aparecio un camino de envio nuevo, o alguien lo "
+                         "nombro con parentesis en un docstring.")
 
-        for fn in (app_module._push_avisos_ahora,
-                   app_module._push_ciclo,
-                   app_module._scheduler_push):
+        arbol = ast.parse(fuente)
+        sitios = [n for n in ast.walk(arbol)
+                  if isinstance(n, ast.Call)
+                  and isinstance(n.func, ast.Name)
+                  and n.func.id == '_push_enviar']
+        self.assertEqual(len(sitios), 2,
+                         "Aparecio un TERCER camino de envio de push.")
+
+    def test_decidir_que_avisar_no_toca_la_red_ni_la_tabla(self):
+        """
+        `_push_avisos_ahora()` decide QUE se avisaria; `_push_ciclo()` decide
+        si eso sale y lo manda. Esa separacion es la que deja correr el ensayo
+        en seco por el MISMO camino que el encendido, y por eso la primera no
+        manda, no lee endpoints y no sabe que existe una tabla.
+
+        El hilo tampoco: `_scheduler_push()` es un `while True` con un sleep
+        al final — toda la decision vive en la vuelta, donde se la puede
+        testear con el reloj congelado.
+        """
+        import inspect
+        import app as app_module
+        for fn in (app_module._push_avisos_ahora, app_module._scheduler_push):
             with self.subTest(fn=fn.__name__):
                 codigo = inspect.getsource(fn)
                 self.assertNotIn('_push_enviar', codigo)
