@@ -24,6 +24,7 @@
 - Servicio Windows: NSSM (`E:\Fondo\nssm.exe`, raíz del clon PROD, binario fuera de git; no existe en DEV).
 - Túnel público: ngrok con dominio fijo.
 - Backups DB: diario via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings. Archivos sin fecha en el nombre (ej. `gastos_PreGitHub.db`) no cuentan como backup ni entran en la rotación.
+- **Hilos de fondo: son TRES** (todos daemon, arrancados en `run_flask()`): `backup-scheduler` (cada hora), `cotizacion-scheduler` (horarios fijos) y `push-scheduler` (cada 10 min, **en seco** — ver abajo).
 - **Rename 2026-07**: la base pasó de `gastos.db` a `fondo.db` (ver `docs/CONTEXT_DB.md`). Los backups nuevos usan prefijo `fondo_`; los viejos con prefijo `gastos_` se mantienen para siempre y siguen contando (listado, rotación y fecha-de-backup reconocen ambos prefijos — no hace falta migrarlos).
 
 ## Entornos dev / prod
@@ -81,10 +82,50 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 - En código se loguea con `log()` de `logutil.py` (NO `print()` directo). Formato de línea:
   `AA/MM/DD-HH:MM:SS | OK:/AVISO:/ERROR: mensaje` — el timestamp lo agrega `log()`,
   el mensaje no debe traer fecha/hora propia. Ej: `26/06/11-14:30:55 | OK: Login exitoso — Elías (...)`.
+  **Excepción temporal: `SECO:`**, cuarto prefijo, exclusivo del ensayo en seco del
+  push (ver abajo). Existe para ser grepeable y contable; se retira el día que el
+  push se encienda. No usarlo para nada más, ni "normalizarlo" a `OK:`.
 - Arranque: **una sola línea** `OK: App iniciada — ...` (DB, schedulers, puerto, modo). Sin separadores ni texto decorativo en la salida.
 - Se loguea: login/logout/acceso denegado, backups y restores, refrescos de cotización (incluido el del arranque), fallos de ngrok, modo DEV.
 - NO se loguea: URL pública de ngrok, aviso de first_run (el modo va dentro de la línea "App iniciada").
 - Decisión 2026-06: se evaluó migrar a Event Viewer de Windows y se descartó — los archivos de texto en `logs/` son directamente grepeables por agentes IA.
+
+## Cómo se lee el ENSAYO EN SECO del push
+
+El hilo `push-scheduler` corre en PROD y **no manda ningún aviso**: escribe en el
+log el push que mandaría. El entregable de esa etapa es justamente el log, y se
+lee con un grep:
+
+```powershell
+(Select-String -Path E:\Fondo\logs\*.log -Pattern 'SECO: flanco push').Count
+```
+
+⚠ El patrón va completo, **no `'SECO:'` a secas**. `Select-String` ignora
+mayúsculas, así que un `'SECO:'` pelado engancharía cualquier línea que diga "en
+seco:" y el conteo saldría multiplicado. Por eso ninguna otra línea de este
+bloque lleva la palabra "seco": el token contable es uno solo.
+
+- Formato de la línea:
+  `SECO: flanco push [lactancia|peligro|Partida vencida] -> titulo="Partida vencida" cuerpo="Lactancia · 3 avisos" url=/lactancia (vigentes ahora: 4)`
+  (clave de dedup entre corchetes; después campos con nombre — el `|` ya está
+  ocupado adentro de la clave).
+- **Lo que hay que mirar es la FRECUENCIA**: cuántas líneas por día. Si son un
+  par, el canal se puede encender; si son diez, hay que agrupar o silenciar
+  antes de que suene un teléfono de verdad. `(vigentes ahora: N)` dice si tres
+  flancos fueron una tanda o tres eventos separados.
+- Las vueltas sin novedad **no loguean**. Queda un latido de UNA línea por día:
+  `OK: Ensayo push: sin flancos nuevos; N aviso(s) vigente(s); providers OK x/y`.
+  Si eso tampoco aparece, el hilo se murió. Si dice `providers OK 0/2`, el hilo
+  está vivo pero **ciego** — que no es lo mismo que "no pasa nada".
+- Al arrancar por primera vez sale una línea de siembra
+  (`OK: Ensayo push: sin estado previo...`): esa vuelta nunca anuncia nada. Si
+  esa línea aparece **todos los días**, el estado no se está guardando: mirar el
+  `AVISO:` que la acompaña y revisar `backup_dir`.
+- Todo lo que se repite (provider roto, estado que no se puede guardar) sale
+  **1 vez por día**, no 144. Que una de esas líneas aparezca ya significa que
+  viene pasando hace rato.
+- Para verlo andar sin esperar días: `python TempScripts/simular_flancos_push.py`
+  (no toca nada real).
 
 ## codebase-memory-mcp (opcional, herramienta local)
 

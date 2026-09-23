@@ -1089,6 +1089,24 @@ def _lac_bebe(cfg=None, ahora=None):
 NOTIF_PROVIDERS = [_notif_lactancia, _notif_recordatorio_bajar]
 
 
+# Los providers que además pueden DESPERTAR UN TELÉFONO. Es una lista SEPARADA
+# de NOTIF_PROVIDERS a propósito, y no un flag adentro del ítem: no todo lo que
+# merece un puntito en la campana merece hacerle sonar el celular a alguien. La
+# campana es PULL (se evalúa cuando alguien la mira, y si nadie la mira no pasa
+# nada); el push EMPUJA, y del otro lado hay una persona que puede estar
+# durmiendo. Un provider entra a este canal con una línea explícita acá, nunca
+# por estar en la campana.
+#
+# La clave del primer elemento de la tupla PREFIJA la clave de deduplicación
+# (ver `_push_avisos_ahora`): dos providers distintos pueden tener un ítem con
+# el mismo título y la misma severidad, y sin el prefijo se pisarían entre
+# ellos — uno de los dos no avisaría nunca.
+PUSH_AVISOS = [
+    ('lactancia', _notif_lactancia),
+    ('recordatorio_bajar', _notif_recordatorio_bajar),
+]
+
+
 def _notificaciones():
     """Agrega los ítems de TODOS los providers de NOTIF_PROVIDERS. Cada
     provider corre aislado: si uno falla, se loguea (AVISO) y se sigue con
@@ -2061,10 +2079,15 @@ def api_push_baja():
 # =============================================================================
 #
 # ACÁ SÍ SE MANDA. Es lo primero de este dominio que le habla al servicio de
-# push, y por ahora tiene UN SOLO disparador: el botón "Mandarme un aviso de
-# prueba" de Settings. NADA CORRE SOLO — no hay scheduler, no hay provider, no
-# hay nada que despierte esto sin que alguien apriete un botón. Los avisos
-# automáticos son otra etapa, y son los que van a leer `push_enabled`.
+# push, y sigue teniendo UN SOLO disparador: el botón "Mandarme un aviso de
+# prueba" de Settings. Nadie más llama a `_push_enviar()`, y hay un test que
+# lo cuenta (`TestNadaCorreSolo` en tests/test_push_suscripciones.py).
+#
+# ⚠ Abajo en este mismo archivo SÍ hay un scheduler: `_scheduler_push()` corre
+# cada 10 minutos decidiendo CUÁNDO habría que avisar. Pero está EN SECO: solo
+# escribe en el log lo que mandaría, y no toca nada de este bloque ni lee las
+# suscripciones. Los avisos automáticos de verdad son la etapa siguiente, y
+# son los que van a leer `push_enabled`.
 #
 # ┌──────────────────────────────────────────────────────────────────────────┐
 # │ LA REGLA DEL PAYLOAD:  EL AVISO NUNCA LLEVA PLATA.                       │
@@ -2326,6 +2349,362 @@ def api_push_prueba():
         }), 502
 
     return jsonify({'ok': True, 'enviados': enviados, 'borradas': borradas})
+
+
+
+
+# =============================================================================
+# PUSH: el motor que decide CUÁNDO habría que avisar — POR AHORA, EN SECO
+# =============================================================================
+#
+# Esto es lo primero de este dominio que corre SOLO, sin que nadie apriete
+# nada. Y NO MANDA NI UN PUSH: escribe en el log el aviso que mandaría. La
+# idea es dejarlo así unos días en producción y recién después leer el log
+# para saber si la frecuencia es tolerable, ANTES de que un teléfono empiece a
+# sonar de verdad. Un aviso de más no se puede "desavisar", y el que se
+# quemó con dos noches de pitidos apaga los avisos para siempre.
+#
+# Acá NO se leen las suscripciones ni se toca la red: `_push_enviar()` no se
+# llama desde ningún lado de este bloque.
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ LA CAMPANA ES UN NIVEL. EL PUSH ES UN FLANCO.                            │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# Los providers contestan "¿hay algo?" cada vez que alguien mira: son una
+# señal de NIVEL, y mientras la partida siga vencida van a contestar que sí
+# para siempre. Si mandáramos el nivel, sonaría el teléfono cada 10 minutos
+# diciendo lo mismo. Así que se manda el FLANCO ASCENDENTE: suena cuando
+# aparece algo que la vuelta anterior no estaba. Cuando la señal se va (flanco
+# descendente) no suena nada, pero la señal queda REARMADA para la próxima.
+#
+# Es exactamente una detección de flanco de PLC, con la marca de memoria en un
+# archivo en vez de en una M.
+
+# Cada cuánto da una vuelta el motor. 10 minutos: los avisos de este proyecto
+# son de los que se miden en horas (una partida que vence, un recordatorio de
+# las 21:00), así que afinar más no cambia nada y solo agrega vueltas. Y en
+# seco, cada vuelta es una fila potencial en el log.
+_PUSH_INTERVALO = 600
+
+# Dónde queda la marca de memoria del detector de flancos.
+_PUSH_ESTADO_ARCHIVO = 'push_estado.json'
+
+
+# Lo ya dicho hoy: `token -> fecha`. Un scheduler que corre 144 veces por día
+# no puede loguear una condición persistente en cada vuelta: un módulo roto
+# una semana son 1000 líneas idénticas, y el ensayo en seco existe justo para
+# poder LEER este log. Mismo criterio que `_aviso_sin_cambios` en el scheduler
+# de backup, pero con un token por cosa en vez de un global por cosa.
+_push_seco_dicho = {}
+
+
+def _push_seco_decir(token, mensaje, ahora=None):
+    """Loguea `mensaje` como mucho UNA vez por día por `token`. Devuelve si
+    lo dijo. Lo que se repite todos los días es una condición que sigue rota,
+    no una novedad."""
+    hoy = (ahora or datetime.now()).date()
+    if _push_seco_dicho.get(token) == hoy:
+        return False
+    _push_seco_dicho[token] = hoy
+    log(mensaje)
+    return True
+
+
+def _push_avisos_ahora():
+    """
+    Los avisos VIGENTES en este momento. Devuelve tres cosas:
+
+      avisos      {clave: payload}  — los que se podrían mandar
+      sin_payload {clave}           — nivel alto pero el payload no se pudo armar
+      fallados    {clave_provider}  — providers que no contestaron esta vuelta
+
+    Las dos últimas parecen ruido y son justo lo contrario: las necesita el
+    ciclo para NO borrar de la memoria lo que no pudo mirar. Ver el arrastre
+    en `_push_ciclo()`.
+
+    Cada provider de PUSH_AVISOS corre AISLADO (try/except propio, igual que
+    en `_notificaciones()`): uno roto se loguea y se sigue con los demás —
+    nunca tumba el canal entero.
+
+    UN AVISO ES UN GRUPO, NO UN ÍTEM. Los ítems se agrupan por
+    `(provider, severidad, título)`: tres partidas vencidas son UN aviso, no
+    tres. Es deliberado — el payload no lleva plata ni detalle, así que tres
+    pushes que dicen "Partida vencida" y linkean todos a /lactancia son tres
+    veces el mismo aviso y ninguna información extra. El detalle se mira
+    adentro de la app.
+
+    ⚠ EL CAMPO `detalle` NO ENTRA NI EN LA CLAVE NI EN EL CUERPO, y esto es lo
+    más fácil de arruinar de todo el bloque:
+      - En la CLAVE no va porque `detalle` dice "vence en 3 días", y mañana
+        dice "vence en 2 días". Si formara parte de la clave, cada día
+        aparecería una clave "nueva" para la MISMA bolsita: flanco ascendente
+        falso, y el teléfono sonando todas las mañanas por algo de lo que ya
+        avisó.
+      - En el CUERPO no va porque ahí adentro viaja el volumen en ml, y el
+        cuerpo se lee en la pantalla bloqueada. Es la regla del payload.
+    El conteo `n` sí puede ir en el cuerpo: no es plata, y el cuerpo no forma
+    parte de la clave, así que si cambia no dispara nada.
+    """
+    grupos = {}
+    fallados = set()
+    for clave_provider, provider in PUSH_AVISOS:
+        # Los grupos de CADA provider se arman aparte y recién se fusionan si
+        # el provider terminó. Un provider que explota a la mitad ya contó
+        # algunos ítems, y esos a medias no son "lo que hay": o contesta
+        # entero, o no contestó.
+        propios = {}
+        try:
+            for it in (provider() or []):
+                clave = f"{clave_provider}|{it['severidad']}|{it['titulo']}"
+                grupo = propios.get(clave)
+                if grupo is None:
+                    propios[clave] = {
+                        'titulo': it['titulo'],
+                        'modulo_nombre': it['modulo_nombre'],
+                        'url': it['url'],
+                        'n': 1,
+                    }
+                else:
+                    grupo['n'] += 1
+        except Exception as e:
+            fallados.add(clave_provider)
+            # Una línea por día por provider, no una por vuelta: esto corre
+            # 144 veces al día, y un módulo roto una semana serían 1000 líneas
+            # idénticas tapando el log del ensayo. Y va el TIPO de excepción,
+            # no el texto: un error de sqlite puede arrastrar valores de la
+            # fila que lo rompió.
+            _push_seco_decir(
+                f"provider-roto:{clave_provider}",
+                f"AVISO: Ensayo push: provider '{clave_provider}' falló "
+                f"({type(e).__name__}); sus avisos no se evalúan esta vuelta. "
+                f"Se reintenta cada {_PUSH_INTERVALO // 60} min; esta línea "
+                f"sale 1 vez por día mientras siga roto.")
+            continue
+        grupos.update(propios)
+
+    avisos = {}
+    sin_payload = set()
+    for clave, g in grupos.items():
+        cuerpo = (g['modulo_nombre'] if g['n'] == 1
+                  else f"{g['modulo_nombre']} · {g['n']} avisos")
+        # El aviso pasa SÍ O SÍ por `_push_payload()`, aunque en seco no se
+        # mande: es el único lugar donde se validan las tres claves y la url
+        # relativa. Si se armara el dict a mano "porque total no sale", el día
+        # que se encienda saldría sin pasar por ninguna de las dos reglas.
+        try:
+            avisos[clave] = _push_payload(g['titulo'], cuerpo, g['url'])
+        except Exception as e:
+            # El nivel está ALTO igual (el ítem existe), solo que no se puede
+            # armar el aviso. Por eso la clave se devuelve aparte y el ciclo la
+            # cuenta como vigente: si se dejara caer, el día que se arregle la
+            # url volvería a ser flanco ascendente de algo que nunca dejó de
+            # estar pasando.
+            sin_payload.add(clave)
+            _push_seco_decir(
+                f"payload-roto:{clave}",
+                f"AVISO: Ensayo push: aviso descartado [{clave}] "
+                f"({type(e).__name__}); no se puede armar el payload. "
+                f"1 línea por día mientras siga así.")
+    return avisos, sin_payload, fallados
+
+
+# ── La marca de memoria: push_estado.json ────────────────────────────────────
+#
+# POR QUÉ UN JSON Y NO UNA TABLA EN fondo.db (es contraintuitivo, por eso está
+# escrito): el detector de backups compara el hash del DUMP LÓGICO de la base
+# (`_hash_datos_db`). Si el estado del push viviera en una tabla, CADA vuelta
+# del scheduler que escribiera algo cambiaría ese hash, y el backup diario se
+# dispararía todos los días por un movimiento de datos que no hizo nadie. Un
+# backup diario falso, todos los días, para siempre.
+#
+# Va junto a los backups (`_get_backup_dir()`) porque esa carpeta ya está en
+# .gitignore (`backups/` y `backupsdev/`), así que el archivo no ensucia el
+# worktree.
+
+def _push_estado_leer():
+    """Lee push_estado.json (las claves ya avisadas), o `{}` si no está o no
+    se puede leer. Un archivo corrupto se comporta igual que uno ausente: se
+    vuelve a sembrar en silencio, que es mucho más barato que inventar una
+    tanda de avisos."""
+    import json
+    ruta = os.path.join(_get_backup_dir(), _PUSH_ESTADO_ARCHIVO)
+    try:
+        with open(ruta, encoding='utf-8') as f:
+            estado = json.load(f)
+        return estado if isinstance(estado, dict) else {}
+    except Exception:
+        return {}
+
+
+def _push_estado_guardar(estado):
+    """Persiste push_estado.json junto a los backups. Devuelve True si quedó
+    escrito. NO loguea: quien decide si esto merece una línea es el ciclo, que
+    es el único que sabe si ya lo dijo hoy.
+
+    ESCRITURA ATÓMICA (.tmp + os.replace) y no un `open('w')` directo: el
+    `open('w')` trunca el archivo ANTES de escribir, así que un corte de luz o
+    un servicio que se reinicia en ese milisegundo deja un push_estado.json
+    vacío o partido. Eso se lee como "no hay estado" y re-siembra — que en
+    seco no se nota, pero encendido significa perder la memoria de todo lo ya
+    avisado. `os.replace` es atómico también en Windows."""
+    import json
+    carpeta = _get_backup_dir()
+    ruta = os.path.join(carpeta, _PUSH_ESTADO_ARCHIVO)
+    tmp = ruta + '.tmp'
+    try:
+        # La carpeta de backups puede no existir todavía (máquina nueva, o
+        # backup_dir recién cambiado en Settings): el scheduler de push arranca
+        # antes de que se haya hecho el primer backup, que es quien la crea.
+        os.makedirs(carpeta, exist_ok=True)
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(estado, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, ruta)
+        return True
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
+
+
+def _push_ciclo():
+    """
+    Una vuelta completa del detector. Devuelve la lista de claves NUEVAS
+    (las que dispararon flanco ascendente en esta vuelta) — devuelve algo
+    para poder testearla y para que el script de TempScripts la muestre.
+
+    LA SIEMBRA (primera vuelta): si no hay estado previo, se guarda el set
+    actual y NO se anuncia NADA, ni siquiera en seco. Es el bit de "primer
+    scan" del PLC. Sin esto, el primer arranque después de un deploy tomaría
+    todo lo que ya estaba pendiente —que pueden ser semanas de cosas— como
+    recién aparecido, y el día que esto se encienda de verdad eso sería una
+    tanda de avisos de golpe en el teléfono de alguien apenas se reinicia el
+    servicio.
+
+    SE MARCAN COMO AVISADAS AUNQUE ESTEMOS EN SECO. El punto del ensayo es
+    medir CUÁNTOS flancos por día hay; si no se marcaran, la misma clave se
+    reportaría cada 10 minutos y el log no diría nada útil.
+
+    LO QUE SE GUARDA SON LAS CLAVES VIGENTES AHORA, NO LA UNIÓN CON LAS VIEJAS.
+    Así el flanco descendente rearma solo: si una clave desaparece sale del
+    set, y si vuelve dentro de un mes vuelve a ser flanco ascendente. Guardar
+    la unión sería una señal que se enclava y no se suelta nunca.
+
+    PERO "NO CONTESTÓ" NO ES "YA NO HAY NADA", y confundir esas dos cosas es el
+    peor bug que puede tener este bloque. Si `_notif_lactancia` levanta
+    `database is locked` una sola vuelta —pasa: el hilo lee mientras alguien
+    guarda un movimiento o mientras `hacer_backup_db()` copia la base— el
+    provider devuelve nada, y guardar "nada" borraría de la memoria las tres
+    partidas vencidas que siguen vencidas. Diez minutos después el provider
+    anda de nuevo y las MISMAS partidas vuelven a ser flanco ascendente. En
+    seco eso infla el número que se va a leer a las 72 h para decidir si esto
+    se enciende; encendido, es un teléfono sonando por algo de lo que ya avisó.
+    Por eso las claves de un provider que falló se ARRASTRAN desde el estado
+    anterior: el nivel de ese provider quedó en DESCONOCIDO, no en bajo. El
+    prefijo del provider está en la clave justo para que esto sea una línea.
+
+    PRIMERO SE GUARDA, DESPUÉS SE ANUNCIA. Al revés, un guardado que falla
+    (backup_dir en un disco que se desenchufó, permisos, antivirus con el
+    archivo tomado) deja el estado viejo en disco y el mismo flanco se
+    reanuncia cada 10 minutos para siempre. En este orden, lo peor que pasa es
+    perder un aviso — que es el lado barato: el aviso sigue estando en la
+    campana, que es donde vive el dato. Un push que no llegó no es información
+    perdida; un push repetido cada 10 minutos no se puede desavisar.
+    """
+    avisos, sin_payload, fallados = _push_avisos_ahora()
+    previas = _push_estado_leer().get('avisadas')
+    ahora = datetime.now()
+    sanos = len(PUSH_AVISOS) - len(fallados)
+
+    conocidas = set(previas) if isinstance(previas, list) else set()
+    arrastradas = {c for c in conocidas if c.split('|', 1)[0] in fallados}
+    vigentes = sorted(set(avisos) | sin_payload | arrastradas)
+
+    def _guardar():
+        """Guarda solo si el set cambió. Sin esto serían 144 escrituras por
+        día del mismo contenido, y `backup_dir` puede apuntar a una carpeta
+        sincronizada. Devuelve si el estado en disco quedó al día."""
+        if isinstance(previas, list) and vigentes == sorted(previas):
+            return True
+        if _push_estado_guardar({
+                'avisadas': vigentes,
+                'actualizado': ahora.isoformat(timespec='seconds')}):
+            return True
+        _push_seco_decir(
+            'estado-no-guardado',
+            f"AVISO: Ensayo push: no se pudo guardar {_PUSH_ESTADO_ARCHIVO} en "
+            f"{_get_backup_dir()}. Sin memoria de flancos el detector no "
+            f"anuncia nada. Revisar backup_dir. (1 línea por día.)", ahora)
+        return False
+
+    if not isinstance(previas, list):
+        # Primera vuelta: se siembra y no se anuncia NADA. Ojo con el mensaje:
+        # NO dice "se sembró" si el guardado falló, porque entonces la vuelta
+        # siguiente vuelve a entrar por acá y el log afirmaría 144 veces por
+        # día haber sembrado algo que nunca se escribió.
+        if _guardar():
+            log(f"OK: Ensayo push: sin estado previo (archivo ausente o "
+                f"ilegible); sembrado con {len(vigentes)} aviso(s) "
+                f"vigente(s). Esta vuelta no anuncia nada.")
+        return []
+
+    if not _guardar():
+        return []
+
+    nuevas = [c for c in vigentes if c not in conocidas and c in avisos]
+
+    # El log ES el entregable de esta etapa. `SECO: flanco push` es el token
+    # contable: el resto de las líneas de este bloque NO lleva la palabra
+    # "seco" ni siquiera adentro de otra, porque `Select-String` de PowerShell
+    # ignora mayúsculas y un "en seco" en la línea de latido haría que el conteo
+    # del ensayo salga multiplicado. Campos con nombre y comillas: el `|` ya
+    # está ocupado separando la clave.
+    for clave in nuevas:
+        p = avisos[clave]
+        log(f"SECO: flanco push [{clave}] -> titulo=\"{p['titulo']}\" "
+            f"cuerpo=\"{p['cuerpo']}\" url={p['url']} "
+            f"(vigentes ahora: {len(vigentes)})")
+
+    # Las vueltas SIN novedad no loguean: son 144 por día y taparían las que
+    # importan. Pero el silencio total de un hilo de fondo es indistinguible de
+    # un hilo muerto, así que queda UNA línea por día — y lleva la salud de los
+    # providers, porque "0 avisos vigentes" dice exactamente lo mismo estando
+    # todo tranquilo que estando ciego.
+    if not nuevas:
+        _push_seco_decir(
+            'latido',
+            f"OK: Ensayo push: sin flancos nuevos; {len(vigentes)} aviso(s) "
+            f"vigente(s); providers OK {sanos}/{len(PUSH_AVISOS)}.", ahora)
+
+    return nuevas
+
+
+def _scheduler_push():
+    """
+    Hilo de fondo del ensayo en seco: una vuelta cada `_PUSH_INTERVALO`.
+
+    TODO el cuerpo va adentro del try: un hilo de fondo que se muere no le
+    avisa a nadie: no hay request que falle, no hay pantalla que quede en
+    blanco. Simplemente deja de pasar algo, y se nota semanas después.
+
+    El `sleep` va AL FINAL, nunca al principio, para que la primera vuelta
+    corra al arrancar el servicio (mismo criterio que `_scheduler_backup`).
+    """
+    while True:
+        try:
+            _push_ciclo()
+        except Exception as e:
+            log(f"AVISO: Error en scheduler de push: {e}")
+        time.sleep(_PUSH_INTERVALO)
+
+
+def iniciar_scheduler_push():
+    """Arranca el hilo del detector de flancos (la primera vuelta corre
+    enseguida, y en un estado sembrado no anuncia nada)."""
+    hilo = threading.Thread(target=_scheduler_push, daemon=True, name='push-scheduler')
+    hilo.start()
 
 
 # =============================================================================
@@ -5402,6 +5781,7 @@ def run_flask():
     database.inicializar_db()
     iniciar_scheduler_backup()
     iniciar_scheduler_cotizacion()
+    iniciar_scheduler_push()
 
     cfg = config.cargar_config(CONFIG_FILE)
     port = cfg.get('port', 5000)
@@ -5424,6 +5804,7 @@ def run_flask():
     horas_str = ', '.join(f"{h:02d}:00" for h in HORAS_REFRESH_COTIZACION)
     log(f"OK: App iniciada — DB {os.path.basename(database.DB_PATH)} lista; backup automático diario; "
           f"cotización al inicio + diario a {horas_str}; "
+          f"avisos push en seco cada {_PUSH_INTERVALO // 60} min; "
           f"servidor en http://localhost:{port} (modo {modo}).")
 
     app.run(debug=False, host=host, port=port, use_reloader=False)
