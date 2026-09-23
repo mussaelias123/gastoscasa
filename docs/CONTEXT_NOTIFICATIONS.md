@@ -138,7 +138,73 @@ server-rendered (`notif_badge`); (2) al ABRIR el panel, `initDrawers()` llama
 Lista vacía → `.notif-vacio` ("Sin notificaciones"). CSS: sección
 "PANEL NOTIFICACIONES" al final de `style.css`.
 
+## Push (aviso al teléfono con la app cerrada)
+
+> Es un canal **aparte** de la campana. La campana es *pull* (se evalúa cuando
+> alguien la mira); el push es *report by exception* (el servidor empuja). Hoy
+> lo único que dispara un push es un **botón**: nada corre solo todavía.
+
+**Las tres claves del payload, y ni una más** (`_PUSH_PAYLOAD_CLAVES` en
+`app.py`): `titulo`, `cuerpo`, `url`.
+
+⚠ **REGLA: el payload NUNCA lleva montos, saldos ni nombres de banco.** Un aviso
+se lee en la **pantalla bloqueada**, sin desbloquear el teléfono, y lo ve
+cualquiera que lo tenga en la mano. El número va adentro de la app; el aviso
+dice que hay algo para mirar.
+
+⚠ **La `url` va RELATIVA** (`/lactancia`, `/settings`), y `_push_payload()` lo
+rechaza si no empieza con `/`. El servidor no sabe su propia dirección pública:
+`cfg['ngrok_domain']` es un hostname pelado, sin esquema, y en DEV está vacío.
+Armar la absoluta sería adivinar, y el aviso quedaría clavado al dominio que
+había el día que se escribió. El service worker sí sabe de dónde salió.
+
+**Backend** (`app.py`): `_push_payload()` arma el JSON, `_push_enviar(filas,
+payload)` lo manda con `pywebpush` y devuelve `(enviados, borradas)`.
+
+- **`_PUSH_TIMEOUT = 5` va sí o sí.** `pywebpush` sin `timeout` explícito se lo
+  pasa a `requests` como `None`, o sea **sin límite**: un FCM que no contesta
+  dejaba el worker de Flask colgado para siempre.
+- **Un envío que falla no frena a los demás**: son teléfonos distintos.
+- **404 / 410 = suscripción muerta** (app desinstalada, datos del navegador
+  limpiados, buzón caducado). Esa fila **se borra ahí mismo**: no va a funcionar
+  nunca más, y dejarla hace que cada envío futuro la reintente, pague el timeout
+  y ensucie el log para siempre. Cualquier otro error se loguea y la fila queda
+  quieta — eso puede andar la próxima.
+- **Faltan las claves VAPID** → `_PushSinClaves`, que se contesta **503 con un
+  mensaje que dice qué hacer**. Es una config a medio hacer, no una falla.
+
+**Service worker** (`templates/sw.js`, mitad ACTIVO):
+
+- `push` → **SIEMPRE llama a `showNotification()`**, sin excepción. Si no,
+  Chrome muestra *"Este sitio se actualizó en segundo plano"* y Safari da de
+  baja la suscripción si se abusa del silencio. Con el payload roto o vacío,
+  muestra un texto genérico igual.
+- `notificationclick` → `clients.matchAll()` para enfocar una ventana del sitio
+  que ya esté abierta; si no hay ninguna, `clients.openWindow(url)`.
+
+**Frontend** (`window.Push` en `app.js`, mismo estilo que `window.Notif`):
+`estado()`, `activar()`, `desactivar()`, `prueba()`, `bajaYSeguir()`, `esIOS()`,
+`standalone()`.
+
+- **Nada pide permiso al cargar la página.** Chrome degrada a "prompt
+  silencioso" a los sitios que lo piden sin interacción, y en iOS
+  `requestPermission()` fuera de un gesto real directamente falla. Solo desde el
+  click del botón de Settings, y con un **modal explicativo antes** — en iOS el
+  permiso se pide **una sola vez por instalación**, y revertir un "No permitir"
+  ahí es borrar el ícono de la pantalla de inicio y volver a agregarlo.
+- La UI vive en la tarjeta de Settings (ver `CONTEXT_FRONTEND.md`). **El Inicio
+  no se toca** (regla 7).
+
+**El botón "Mandarme un aviso de prueba"** (`POST /api/push/prueba`) **no mira
+`push_enabled`, a propósito**: ese flag apaga los avisos *automáticos*, y esto
+es el diagnóstico del canal. Si lo respetara, para probar si el canal anda
+habría que prender antes los avisos automáticos — encender la cosa que uno
+todavía no sabe si funciona. Es lo único que separa "el canal no anda" de "no
+hay nada que avisar", y esa confusión cuesta dos horas la primera vez.
+
 ## Al modificar este dominio, actualizar:
 - Sección 2 (contrato) si cambia una clave o un valor posible de `severidad`.
 - Sección 3 si cambia el registry, `_notificaciones()`, la ruta o el context processor.
 - Sección 4 si cambia el provider de Lactancia, o sumar una sub-sección si se agrega un provider nuevo.
+- La sección de Push si cambian las claves del payload, el manejo del 410, o la
+  regla de que no viajan montos.

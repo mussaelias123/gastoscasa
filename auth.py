@@ -278,7 +278,16 @@ def callback():
     return redirect(url_for('index'))
 
 
-@auth_bp.route('/logout')
+# Tope del endpoint que puede llegar en el logout. Es el mismo criterio que
+# `_PUSH_ENDPOINT_MAX` de app.py y va repetido a propósito: auth.py NO importa
+# app.py (app.py importa auth.py — al revés sería un import circular), y lo
+# único que se hace con este string es meterlo en un `WHERE endpoint = ?`
+# parametrizado. Un endpoint inventado no borra nada; uno de 2 MB no tiene por
+# qué llegar hasta el driver de SQLite.
+_LOGOUT_ENDPOINT_MAX = 1000
+
+
+@auth_bp.route('/logout', methods=['GET', 'POST'])
 def logout():
     """Cierra la sesión y redirige al login.
 
@@ -294,15 +303,50 @@ def logout():
     disco lleno), el usuario TIENE que poder desloguearse igual. Una
     suscripción huérfana es un aviso de más en un teléfono; no poder salir de
     la sesión es quedarse adentro de la app.
+
+    SE BORRA SOLO EL NAVEGADOR QUE SE VA, si dice cuál es. El front
+    (`initSalir()` en app.js) desuscribe este navegador y manda su `endpoint`
+    por POST antes de navegar; con ese dato el borrado se acota a UNA fila.
+    Sin el dato —sin JavaScript, un link pegado a mano, un navegador sin push—
+    se cae al comportamiento de siempre: se borran todas las filas de esa
+    cuenta. Eso cierra la deuda que quedó anotada en `CONTEXT_AUTH.md`:
+
+      · el efecto colateral molesto: desloguearse en la notebook apagaba los
+        avisos del teléfono;
+      · y el filo del `/logout` GET y público, que con `SameSite=Lax` acepta
+        la navegación cross-site: un link desde cualquier lado se llevaba las
+        suscripciones de TODOS los dispositivos. Ahora, en el peor caso, se
+        lleva una sola — y solo si quien lo arma conoce ese endpoint.
+
+    El método POST se acepta por eso: el endpoint es el buzón de un teléfono y
+    no tiene por qué quedar en el log de accesos ni en el historial. GET sigue
+    andando igual, que es lo que hace que salir nunca dependa de JavaScript.
     """
     nombre = session.get('user_name', 'Usuario')
     email = session.get('user_email', '')
+    # SOLO del form, nunca del querystring. El endpoint es el buzón de un
+    # teléfono: en la URL quedaría en el historial del navegador y, en
+    # producción, en el inspector de ngrok, que registra la URL entera. El
+    # front lo manda por POST; aceptar `request.values` dejaba abierta por
+    # querystring la misma puerta que el POST venía a cerrar, y encima sin que
+    # nadie la usara.
+    endpoint = (request.form.get('endpoint') or '').strip()
 
     try:
         import database
-        borradas = database.borrar_suscripciones_push_de_email(email)
+        if email and endpoint and len(endpoint) <= _LOGOUT_ENDPOINT_MAX:
+            # ⚠ EL `email and` NO SOBRA. `borrar_suscripcion_push()` con
+            # `user_email` vacío borra por endpoint SOLO, sin dueño — y
+            # /logout es público, así que sin esa condición un pedido sin
+            # sesión con el endpoint de otro le borraría la fila. Con sesión,
+            # el DELETE va acotado al email, igual que /api/push/baja.
+            borradas = database.borrar_suscripcion_push(endpoint, email)
+            cuantas = f"{borradas} suscripción(es) push de este navegador"
+        else:
+            borradas = database.borrar_suscripciones_push_de_email(email)
+            cuantas = f"{borradas} suscripción(es) push (todas las de la cuenta)"
         if borradas:
-            log(f"OK: Logout — se borraron {borradas} suscripción(es) push de {email}.")
+            log(f"OK: Logout — se borraron {cuantas} de {email}.")
     except Exception as e:
         log(f"AVISO: No se pudieron borrar las suscripciones push de {email}: {e}")
 

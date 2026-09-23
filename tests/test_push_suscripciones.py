@@ -592,32 +592,45 @@ class TestRellenoBase64(BasePush):
                          'la misma clave con relleno se guardo como distinta')
 
 
-class TestNoSeMandaNada(unittest.TestCase):
+class TestNadaCorreSolo(unittest.TestCase):
     """
-    Guarda de ETAPA, no de diseño: congela que esta etapa solo GUARDA. Los dos
-    tests de esta clase se borran en la etapa que prenda el envio de verdad
-    (ahi `push_enabled` pasa a leerse y pywebpush a importarse); hasta
-    entonces, que se pongan rojos significa que algo se adelanto.
+    Guarda de ETAPA, no de diseño. Antes se llamaba `TestNoSeMandaNada` y
+    congelaba DOS cosas: que nadie importara pywebpush y que nadie leyera
+    `push_enabled`.
+
+    LA PRIMERA MITAD SE BORRO A PROPOSITO en la etapa del boton de prueba: ahi
+    `app.py` empezo a importar pywebpush de verdad, adentro de `_push_enviar()`,
+    para la ruta POST /api/push/prueba. El propio docstring de la clase vieja
+    decia que se borraba cuando se prendiera el envio, y se prendio.
+
+    LA SEGUNDA MITAD SIGUE VIVA, y ahora es la que importa: se manda cuando
+    alguien APRIETA UN BOTON, y nada mas. No hay scheduler, no hay provider, no
+    hay nada que se despierte solo — eso es la etapa que viene, y es la que va
+    a leer `push_enabled`. Que este test se ponga rojo significa que los avisos
+    automaticos se colaron antes de tiempo.
     """
-
-
-    def test_la_app_no_importa_pywebpush(self):
-        """
-        Esta etapa solo GUARDA a quien avisarle. El envio es de otra etapa, y
-        `push_enabled` sigue apagado y sin que nadie lo lea.
-        """
-        for archivo in ('app.py', 'database.py', 'auth.py'):
-            with open(os.path.join(ROOT_DIR, archivo), encoding='utf-8') as f:
-                fuente = f.read()
-            self.assertNotIn('import pywebpush', fuente)
-            self.assertNotIn('from pywebpush', fuente)
 
     def test_nadie_lee_push_enabled(self):
         for archivo in ('app.py', 'database.py', 'auth.py'):
             with open(os.path.join(ROOT_DIR, archivo), encoding='utf-8') as f:
                 fuente = f.read()
-            self.assertNotIn("'push_enabled'", fuente)
-            self.assertNotIn('"push_enabled"', fuente)
+            self.assertNotIn("cfg.get('push_enabled')", fuente)
+            self.assertNotIn('cfg.get("push_enabled")', fuente)
+            self.assertNotIn("get('push_enabled')", fuente)
+
+    def test_el_envio_tiene_un_solo_disparador(self):
+        """
+        `webpush(` aparece UNA vez en toda la app: adentro de `_push_enviar()`,
+        que hoy lo llama solo la ruta de prueba. Un segundo llamado es, por
+        definicion, algo que manda avisos por otro camino — y si ese camino no
+        pasa por una mano apretando un boton, es el scheduler adelantado.
+        """
+        with open(os.path.join(ROOT_DIR, 'app.py'), encoding='utf-8') as f:
+            fuente = f.read()
+        self.assertEqual(fuente.count('webpush('), 1)
+        # Y no hay hilo/timer nuevo colgado del push.
+        for pista in ('Thread(target=_push', 'scheduler_push', '_push_scheduler'):
+            self.assertNotIn(pista, fuente)
 
 
 if __name__ == '__main__':

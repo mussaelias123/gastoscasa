@@ -385,4 +385,146 @@ function responder(evento) {
     // respuesta de error sería PEOR: la página la tomaría por buena y
     // guardaría, por ejemplo, un style.css vacío.
 }
+// ---------------------------------------------------------------------------
+// push — el aviso que llega con la app CERRADA
+// ---------------------------------------------------------------------------
+//
+// ┌───────────────────────────────────────────────────────────────────────┐
+// │ LA REGLA DE ESTE BLOQUE:  EL AVISO NUNCA LLEVA PLATA.                    │
+// └───────────────────────────────────────────────────────────────────────┘
+//
+// Es la misma regla que la del caché, un paso más afuera. Un push se lee en la
+// PANTALLA BLOQUEADA: sin desbloquear el teléfono, sin sesión, y lo ve
+// cualquiera que esté cerca. Así que el payload no lleva montos, ni saldos, ni
+// nombres de banco, ni de quién es la cuenta. Lleva el QUÉ y un LINK; la plata
+// se mira adentro de la app, con sesión. Del lado del servidor eso lo arma
+// `_push_payload()` (app.py), que solo deja pasar tres claves — y se escribe
+// también acá, que es donde el texto termina en la pantalla de alguien.
+//
+// ⚠ SIEMPRE SE MUESTRA ALGO. `showNotification()` no es opcional ni "si el
+// payload vino bien":
+//   · Chrome: si el handler termina sin mostrar nada, la muestra ÉL, con el
+//     texto "Este sitio se actualizó en segundo plano". Un aviso que no
+//     escribimos, que no dice nada, y que encima parece un bug.
+//   · Safari / iOS: abusar del push silencioso hace que el navegador DÉ DE
+//     BAJA la suscripción. O sea que el olvido se paga con el canal entero,
+//     y en el teléfono que más cuesta volver a suscribir.
+// Por eso el parseo va adentro de un try y el catch NO corta: si el payload
+// viene vacío, roto o no es JSON, se cae al texto genérico y se muestra igual.
+
+var PUSH_TITULO = 'Núcleo';
+var PUSH_CUERPO = 'Tenés un aviso.';
+
+
+// El payload del evento, con default para CADA campo. Nunca tira.
+function pushDatos(evento) {
+    var datos = { titulo: PUSH_TITULO, cuerpo: PUSH_CUERPO, url: '/' };
+    try {
+        if (!evento || !evento.data) return datos;
+        // `.json()` tira si el cuerpo no es JSON (un texto suelto, un byte
+        // perdido). Cae en el catch y se muestra el genérico.
+        var crudo = evento.data.json();
+        if (!crudo || typeof crudo !== 'object') return datos;
+        if (typeof crudo.titulo === 'string' && crudo.titulo) datos.titulo = crudo.titulo;
+        if (typeof crudo.cuerpo === 'string' && crudo.cuerpo) datos.cuerpo = crudo.cuerpo;
+        if (typeof crudo.url === 'string' && crudo.url) datos.url = crudo.url;
+    } catch (e) { }
+    return datos;
+}
+
+
+// LA URL DEL PAYLOAD ES RELATIVA (`/lactancia`) Y SE RESUELVE ACÁ, contra el
+// origen del propio service worker. No es un detalle de estilo:
+//
+//   a. El servidor no sabe su propia dirección pública. `cfg["ngrok_domain"]`
+//      es un hostname pelado (sin esquema) y en DEV está vacío; armar la
+//      absoluta allá sería adivinar. El SW, en cambio, SABE de dónde salió.
+//   b. El mismo aviso sirve en localhost y en el dominio de ngrok, sin
+//      reescribir nada y sin quedar pegado al dominio de ayer.
+//
+// Y de paso es una guarda: una URL de OTRO origen (un payload armado por
+// alguien que consiguió firmar, un copy-paste con dominio adentro) no abre
+// nada afuera — cae a la raíz de esta app.
+function pushDestino(url) {
+    var base = self.location.origin;
+    try {
+        var u = new URL(url, base);
+        return u.origin === base ? u.href : base + '/';
+    } catch (e) {
+        return base + '/';
+    }
+}
+
+
+self.addEventListener('push', function (evento) {
+    var datos = pushDatos(evento);
+    var destino = pushDestino(datos.url);
+    evento.waitUntil(
+        self.registration.showNotification(datos.titulo, {
+            body: datos.cuerpo,
+            icon: '/static/img/icon-192.png',
+            badge: '/static/img/icon-192.png',
+            // Lo único que viaja al click. Va la URL YA RESUELTA: el que la
+            // validó fue este handler, y al `notificationclick` le llega el
+            // trabajo hecho.
+            data: { url: destino }
+        }).catch(function () {
+            // Si la versión con íconos falla (un PNG que no está, una opción
+            // que ese navegador no banca), se muestra la pelada. Mostrar algo
+            // es obligatorio: ver el ⚠ de arriba.
+            return self.registration.showNotification(PUSH_TITULO, { body: PUSH_CUERPO });
+        }).catch(function () { })
+    );
+});
+
+
+// ---------------------------------------------------------------------------
+// notificationclick — abrir la app donde corresponde
+// ---------------------------------------------------------------------------
+//
+// SE ENFOCA UNA VENTANA QUE YA ESTÉ ABIERTA antes de abrir otra. Sin esto,
+// cada aviso tocado deja una pestaña más de la misma app dando vueltas en el
+// teléfono.
+//
+// `includeUncontrolled: true` NO es decorativo: este SW no hace
+// `skipWaiting()`, así que las pestañas abiertas las puede estar controlando
+// la versión ANTERIOR. Sin ese flag no aparecerían en la lista y el click
+// abriría una ventana nueva al lado de la que ya estaba.
+
+self.addEventListener('notificationclick', function (evento) {
+    // Primero cerrar: en Android la notificación queda pegada en la barra si
+    // no se la cierra a mano.
+    evento.notification.close();
+
+    var datos = evento.notification.data || {};
+    var destino = pushDestino(datos.url || '/');
+
+    evento.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+            .then(function (lista) {
+                var ventanas = lista || [];
+                for (var i = 0; i < ventanas.length; i++) {
+                    var cliente = ventanas[i];
+                    var propia = false;
+                    try {
+                        propia = new URL(cliente.url).origin === self.location.origin;
+                    } catch (e) { }
+                    if (!propia) continue;
+                    if (cliente.url === destino) return cliente.focus();
+                    // `navigate()` solo anda si esa ventana la controla ESTE
+                    // service worker; si no, rechaza. Ahí se la enfoca igual:
+                    // mejor la app abierta en otra pantalla que una pestaña
+                    // nueva de más.
+                    if (!cliente.navigate) return cliente.focus();
+                    return cliente.navigate(destino).then(function (c) {
+                        return (c || cliente).focus();
+                    }).catch(function () { return cliente.focus(); });
+                }
+                if (self.clients.openWindow) return self.clients.openWindow(destino);
+                return null;
+            })
+            .catch(function () { })
+    );
+});
+
 // ==== FIN ACTIVO ====

@@ -554,5 +554,137 @@ class TestListaBlanca(unittest.TestCase):
         self.assertNotIn('ignoreSearch', self.cuerpo)
 
 
+# ── 11. Los handlers de push (etapa 6) ──────────────────────────────────────
+#
+# POR QUE ESTA CLASE
+#   Los dos handlers de abajo corren en el TELEFONO, con la app cerrada, y no
+#   hay forma de mirarlos desde la maquina de desarrollo: no hay consola, no
+#   hay DevTools y el aviso que sale mal se ve exactamente igual que el que
+#   sale bien (uno mas en la barra de notificaciones). Lo que se puede romper
+#   sin que nadie se entere se congela por texto.
+#
+#   Las dos cosas que se congelan son las dos que fallan feo:
+#     1. `showNotification()` SIEMPRE, incluso con el payload roto. Si el
+#        handler termina sin mostrar nada, Chrome muestra el suyo ("Este sitio
+#        se actualizo en segundo plano") y Safari, si se repite, DA DE BAJA la
+#        suscripcion — el olvido se paga con el canal entero.
+#     2. La URL del payload es RELATIVA y la resuelve el service worker contra
+#        SU PROPIO origen. El servidor no sabe su direccion publica
+#        (`ngrok_domain` es un hostname pelado y en DEV esta vacio): una
+#        absoluta armada alla queda pegada al dominio de ayer.
+
+class TestPushEnElSW(unittest.TestCase):
+
+    def setUp(self):
+        self.client = app_module.app.test_client()
+        with unittest.mock.patch.object(config, 'cargar_config',
+                                        _cfg_con(sw_enabled=True)):
+            crudo = self.client.get('/sw.js').get_data(as_text=True)
+        self.cuerpo = _sin_comentarios(crudo)
+        with unittest.mock.patch.object(config, 'cargar_config',
+                                        _cfg_con(sw_enabled=False)):
+            self.lapida = _sin_comentarios(
+                self.client.get('/sw.js').get_data(as_text=True))
+
+    # -- Los handlers existen y estan en la mitad correcta -------------------
+
+    def test_el_activo_escucha_push_y_click(self):
+        self.assertIn("addEventListener('push'", self.cuerpo)
+        self.assertIn("addEventListener('notificationclick'", self.cuerpo)
+
+    def test_la_lapida_no_escucha_nada(self):
+        """
+        La lapida sigue siendo lo que era: un SW que se borra solo. Sin fetch,
+        sin push y sin click. Que la mitad ACTIVO crezca no la toca.
+        """
+        self.assertNotIn("addEventListener('push'", self.lapida)
+        self.assertNotIn("addEventListener('notificationclick'", self.lapida)
+        self.assertNotIn("addEventListener('fetch'", self.lapida)
+
+    # -- 1. Siempre se muestra algo ------------------------------------------
+
+    def test_el_handler_de_push_siempre_muestra(self):
+        """
+        `showNotification` aparece DOS veces: la buena y el respaldo pelado de
+        su propio `.catch`. Si alguna vez queda una sola, o peor, ninguna, es
+        que el "mostrar siempre" se volvio un "mostrar si el payload vino
+        bien" — que es justo lo que Chrome y Safari castigan.
+        """
+        bloque = self._bloque("addEventListener('push'")
+        self.assertGreaterEqual(bloque.count('showNotification'), 2)
+
+    def test_el_payload_roto_no_corta_el_handler(self):
+        """
+        El parseo va adentro de un try y el catch NO aborta: un payload vacio,
+        con un byte perdido o que no es JSON cae en el texto generico y se
+        muestra igual.
+        """
+        bloque = self._bloque('function pushDatos')
+        self.assertIn('try {', bloque)
+        self.assertIn('catch', bloque)
+        self.assertIn('return datos;', bloque)
+        # Y los defaults existen antes de mirar nada.
+        self.assertRegex(bloque, r'titulo:\s*PUSH_TITULO')
+        self.assertRegex(bloque, r'cuerpo:\s*PUSH_CUERPO')
+
+    def test_el_titulo_generico_no_esta_vacio(self):
+        self.assertRegex(self.cuerpo, r"var PUSH_TITULO = '[^']+'")
+        self.assertRegex(self.cuerpo, r"var PUSH_CUERPO = '[^']+'")
+
+    # -- 2. La URL es relativa y se resuelve contra el propio origen ----------
+
+    def test_la_url_se_resuelve_contra_el_propio_origen(self):
+        bloque = self._bloque('function pushDestino')
+        self.assertIn('self.location.origin', bloque)
+        self.assertIn('new URL(url, base)', bloque)
+
+    def test_una_url_de_otro_origen_no_abre_nada_afuera(self):
+        """
+        Cinturon: si el payload trajera una absoluta de otro dominio, el click
+        cae a la raiz de esta app en vez de abrirla.
+        """
+        bloque = self._bloque('function pushDestino')
+        self.assertRegex(bloque, r'u\.origin\s*===\s*base')
+
+    def test_no_hay_ningun_dominio_escrito_en_el_sw(self):
+        """
+        Ni ngrok, ni localhost, ni un http de ningun lado. El dia que cambie el
+        dominio, este archivo no se toca.
+        """
+        for pista in ('ngrok', 'localhost', '127.0.0.1', 'http:'):
+            with self.subTest(pista=pista):
+                self.assertNotIn(pista, self.cuerpo)
+
+    # -- 3. El click enfoca antes de abrir -----------------------------------
+
+    def test_el_click_enfoca_una_ventana_abierta(self):
+        bloque = self._bloque("addEventListener('notificationclick'")
+        self.assertIn('matchAll', bloque)
+        self.assertIn('.focus()', bloque)
+        self.assertIn('openWindow', bloque)
+
+    def test_el_matchall_incluye_las_no_controladas(self):
+        """
+        Este SW no hace `skipWaiting()`, asi que las pestañas abiertas las
+        puede estar controlando la version ANTERIOR. Sin
+        `includeUncontrolled` no aparecen en la lista y el click abre una
+        ventana nueva al lado de la que ya estaba.
+        """
+        bloque = self._bloque("addEventListener('notificationclick'")
+        self.assertIn('includeUncontrolled: true', bloque)
+
+    def test_la_notificacion_se_cierra_al_tocarla(self):
+        """En Android queda pegada en la barra si no se la cierra a mano."""
+        bloque = self._bloque("addEventListener('notificationclick'")
+        self.assertIn('notification.close()', bloque)
+
+    # -- Ayudante ------------------------------------------------------------
+
+    def _bloque(self, firma, largo=2200):
+        ini = self.cuerpo.find(firma)
+        self.assertNotEqual(ini, -1, f'falta `{firma}` en el SW activo')
+        return self.cuerpo[ini:ini + largo]
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
