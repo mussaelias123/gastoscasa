@@ -240,6 +240,76 @@
       </div>
     </div>
 
+
+    {# ── AVISOS EN EL CELULAR (Web Push) ─────────────────────────────────── #}
+    {# CSS NUEVO: CERO. Todo sale de clases que ya existían — la tarjeta
+       "Reparar app" de acá arriba es el molde (.settings-card,
+       .settings-card-header, .settings-ayuda, .settings-cotizacion-msg), la
+       fila de botones usa .settings-cotizacion-acciones (la única que hace
+       wrap, y acá hay dos botones que en un celular no entran en un renglón)
+       y el modal reusa el de "¿Querés salir?" (.modal-fondo / .modal-caja /
+       .modal-texto / .modal-botones). Regla 1 de CLAUDE.md: los colores son
+       todos de la paleta porque ninguna de esas clases hardcodea nada.
+
+       La lógica vive en `window.Push` (static/app.js); acá abajo solo se
+       cablean los botones y se elige qué cartel mostrar. #}
+    <div class="tarjeta settings-card" id="avisos-push">
+      <div class="settings-card-header">
+        <h3 class="settings-titulo-seccion">Avisos en el celular</h3>
+        <span class="settings-card-meta">Notificaciones del sistema</span>
+      </div>
+
+      <span class="settings-ayuda">
+        Avisos que llegan al teléfono <strong>con la app cerrada</strong>: los
+        recordatorios de la rutina y del banco de leche. Se activan por
+        dispositivo — el celular y la notebook se piden por separado.
+        <strong>Nunca viajan montos, saldos ni nombres de banco</strong>: el
+        aviso se lee en la pantalla bloqueada, así que solo dice qué pasó y
+        linkea a la pantalla donde mirarlo.
+      </span>
+
+      <div class="settings-cotizacion-acciones">
+        <button type="button" class="btn btn-secundario" id="btn-push-activar">
+          🔔 Activar avisos
+        </button>
+        <button type="button" class="btn btn-secundario" id="btn-push-prueba">
+          📨 Mandarme un aviso de prueba
+        </button>
+        <span id="push-msg" class="settings-cotizacion-msg" role="status"></span>
+      </div>
+
+      {# Instrucciones de iOS. Arrancan ocultas y las muestra el JS si el
+         navegador es de iPhone/iPad Y NO está en modo standalone. La
+         condición se pregunta así —"no está en standalone"— y NUNCA con
+         `navigator.standalone === false`: esa propiedad existe solo en
+         Safari, y en iOS Chrome vale `undefined`, con lo cual el `=== false`
+         daría falso y esto quedaría escondido justo donde más falta hace. #}
+      <span class="settings-ayuda" id="push-ios" hidden style="display:none">
+        <strong>En iPhone hay un paso previo.</strong> iOS solo deja avisar a
+        las apps agregadas a la pantalla de inicio: tocá
+        <strong>Compartir</strong> (el cuadradito con la flecha) →
+        <strong>Agregar a inicio</strong>, y después abrí Núcleo
+        <strong>desde ese ícono</strong>, no desde el navegador. Recién ahí
+        aparece el botón de activar.
+      </span>
+
+      {# El caso INSTALADO va primero, y no es un detalle de redacción: abierta
+         desde el ícono (que es como se usa, y el único modo en que llegan los
+         avisos) la app NO TIENE barra de direcciones, así que no hay ningún
+         candado que tocar. Mandar a alguien a buscarlo ahí lo deja sin avisos
+         y sin camino de vuelta. #}
+      <span class="settings-ayuda" id="push-revertir">
+        ¿Dijiste “No permitir” sin querer? En <strong>Android</strong>, con la
+        app abierta desde el ícono: mantené apretado el ícono de Núcleo →
+        Información de la app → Notificaciones → permitir. Si la abriste en el
+        navegador, tocá el ícono a la izquierda de la barra de direcciones →
+        Notificaciones → permitir. Después volvé a activar acá.
+        En <strong>iPhone</strong> no hay vuelta desde los ajustes: hay que
+        <strong>borrar el ícono de inicio y volver a agregarlo</strong> — el
+        permiso se pide una sola vez por instalación.
+      </span>
+    </div>
+
     {# El banco de leche se configura desde el panel "Ajustes" de /lactancia,
        no acá: la pantalla se trajo entera de la app suelta y configura el
        módulo desde adentro del propio módulo. #}
@@ -292,6 +362,35 @@
   </aside>
 
 </div>{# fin settings-layout #}
+
+  {# Modal explicativo — OBLIGATORIO ANTES del cartel del navegador.
+     No es cortesía: el permiso del navegador se pide UNA vez (en iOS, una
+     por instalación), y el cartel del sistema no explica nada. Esta es la
+     única frase de margen que hay para decir qué se va a avisar antes de
+     quemar el único tiro. Por eso el botón "Activar avisos" NO pide permiso
+     directo: abre esto, y el permiso sale del click en "Continuar". #}
+  <div id="modal-push" class="modal-fondo" hidden>
+    <div class="tarjeta modal-caja" role="dialog" aria-modal="true"
+         aria-labelledby="modal-push-titulo">
+      <h3 id="modal-push-titulo">Antes de activar</h3>
+      <p class="modal-texto">
+        Te vamos a avisar de los recordatorios de la rutina y del banco de
+        leche, en el momento en que tocan. Nada de madrugada y nada de
+        publicidad.<br><br>
+        <strong>Nunca van montos, saldos ni nombres de banco.</strong> El
+        aviso se lee en la pantalla bloqueada: dice qué pasó y te lleva a la
+        pantalla donde mirarlo.<br><br>
+        Al continuar, el navegador va a preguntarte si permitís las
+        notificaciones. <strong>En el iPhone esa pregunta aparece una sola
+        vez</strong>: si decís que no, hay que borrar el ícono de inicio y
+        volver a agregarlo.
+      </p>
+      <div class="modal-botones">
+        <button type="button" id="modal-push-no" class="btn-secundario">Ahora no</button>
+        <button type="button" id="modal-push-si" class="btn-primario">Continuar</button>
+      </div>
+    </div>
+  </div>
 
 {% endblock %}
 
@@ -631,6 +730,254 @@ setInterval(fetchMetrics, 3000);
       }
     });
   });
+})();
+
+// ── Avisos en el celular (Web Push) ─────────────────────────────────────────
+// El trabajo de verdad está en `window.Push` (static/app.js): permiso,
+// suscripción, alta y baja. Acá se decide QUÉ OFRECER y QUÉ DECIR.
+//
+// ⚠ ACÁ NO SE PIDE NINGÚN PERMISO AL CARGAR LA PÁGINA. `Push.estado()` solo
+// mira. Pedir permiso sin que nadie lo haya pedido hace que Chrome degrade el
+// sitio a "prompt silencioso" para siempre, y en iOS directamente falla si no
+// sale de un gesto. El permiso sale del click en "Continuar" del modal.
+(function () {
+  var btnActivar = document.getElementById('btn-push-activar');
+  var btnPrueba  = document.getElementById('btn-push-prueba');
+  var msg        = document.getElementById('push-msg');
+  var ayudaIOS   = document.getElementById('push-ios');
+  var modal      = document.getElementById('modal-push');
+  var modalNo    = document.getElementById('modal-push-no');
+  var modalSi    = document.getElementById('modal-push-si');
+  // Sin `window.Push` (app.js no cargó) no se cablea nada: los botones quedan
+  // inertes en vez de tirar un error al tocarlos. Mismo criterio que
+  // "Reparar app" con `window.SW`.
+  if (!btnActivar || !window.Push) return;
+
+  function decir(texto, error) {
+    if (!msg) return;
+    msg.textContent = texto || '';
+    msg.className = 'settings-cotizacion-msg' +
+                    (error ? ' settings-cotizacion-msg-error' : '');
+  }
+
+  // ⚠ NO ALCANZA CON EL ATRIBUTO `hidden`. El `display: none` que trae
+  // `hidden` es del navegador y PIERDE contra cualquier clase que defina
+  // display — y acá las hay: `.settings-ayuda` es `display: block` y `.btn` es
+  // `display: inline-block`. Un `el.hidden = true` a secas deja el cartel a la
+  // vista igual (pasó: las instrucciones de iPhone se mostraban en la
+  // notebook). El proyecto ya resuelve esto de dos maneras — guardas
+  // `.foo[hidden] { display: none }` en style.css y el `style.display` de
+  // `_pintarResultado()` acá arriba —; se elige la segunda para no sumar CSS
+  // nuevo. El atributo se setea igual, que es lo que leen los lectores de
+  // pantalla.
+  function mostrar(el, si) {
+    if (!el) return;
+    el.hidden = !si;
+    el.style.display = si ? '' : 'none';
+  }
+
+  // ── La foto inicial: qué botón tiene sentido ofrecer ──────────────────────
+  function pintarEstado() {
+    return window.Push.estado().then(function (e) {
+      // Instrucciones de iOS: se muestran si es iOS y NO está en standalone
+      // (agregado a la pantalla de inicio). La negación es la que importa —
+      // ver el comentario del template.
+      mostrar(ayudaIOS, e.ios && !e.standalone);
+
+      // Sin PushManager no hay nada que activar: el botón se ESCONDE (no se
+      // deshabilita) para no ofrecer algo que ese navegador no puede hacer.
+      if (!e.soportado) {
+        mostrar(btnActivar, false);
+        mostrar(btnPrueba, false);
+        // ⚠ EN iOS "no soportado" NO QUIERE DECIR "este teléfono no puede".
+        // La API `Notification` solo existe adentro de la app agregada a la
+        // pantalla de inicio: en una pestaña de Safari no está, y Safari es
+        // justo donde Mari abre esto ANTES de agregarla. Decirle ahí que su
+        // teléfono no soporta avisos es mentirle y hacerla cerrar la página —
+        // encima contradiciendo el instructivo que está dos renglones abajo,
+        // que es el único camino que iOS deja.
+        if (e.ios && !e.standalone) {
+          decir('En iPhone hay que agregar Núcleo a la pantalla de inicio '
+                + 'primero. Abajo está cómo.');
+        } else {
+          decir('Este navegador no soporta avisos del sistema.');
+        }
+        return e;
+      }
+
+      mostrar(btnActivar, true);
+      mostrar(btnPrueba, true);
+      btnPrueba.disabled = !e.suscripto;
+
+      if (!e.configurado) {
+        // Las claves VAPID viajan en <body data-push-vapid>; vacías = el
+        // servidor todavía no tiene el par generado.
+        btnActivar.disabled = true;
+        decir('Falta configurar las claves VAPID en el servidor.', true);
+      } else if (!e.sw) {
+        // Sin service worker registrado no existe `pushManager`. Pasa con
+        // `sw_enabled` apagado, que es el default. Se dice qué falta en vez
+        // de fallar raro al apretar.
+        //
+        // El texto NO nombra `sw_enabled`: esto lo lee Mari, no el que edita
+        // config.json. Un nombre de flag interno no le dice qué hacer, solo
+        // que algo se rompió.
+        btnActivar.disabled = true;
+        decir('Los avisos todavía no están habilitados en el servidor.', true);
+      } else if (e.permiso === 'denied') {
+        btnActivar.disabled = true;
+        decir('Este navegador tiene los avisos bloqueados. Mirá cómo revertirlo acá abajo.', true);
+      } else if (e.suscripto) {
+        btnActivar.disabled = false;
+        btnActivar.textContent = '🔕 Desactivar avisos';
+        decir('Avisos activados en este dispositivo.');
+      } else {
+        btnActivar.disabled = false;
+        btnActivar.textContent = '🔔 Activar avisos';
+        decir('');
+      }
+      return e;
+    })['catch'](function (err) {
+      console.warn('Push: no se pudo leer el estado.', err);
+      return null;
+    });
+  }
+
+  // ── El modal explicativo ──────────────────────────────────────────────────
+  function abrirModal() {
+    if (!modal) return activarDeVerdad();     // sin modal, no se bloquea nada
+    modal.hidden = false;
+    if (modalSi) modalSi.focus();
+  }
+
+  function cerrarModal() {
+    if (modal) modal.hidden = true;
+    btnActivar.focus();
+  }
+
+  var CARTELES = {
+    'no-soportado': ['Este navegador no soporta avisos del sistema.', true],
+    'sin-claves':   ['Falta configurar las claves VAPID en el servidor.', true],
+    'sin-sw':       ['Los avisos necesitan el service worker prendido (sw_enabled).', true],
+    'denegado':     ['Dijiste que no. Mirá abajo cómo revertirlo.', true],
+    'cancelado':    ['Quedó sin activar. Podés volver a intentarlo.', false],
+    'error':        ['No se pudieron activar los avisos. Probá de nuevo.', true]
+  };
+
+  function activarDeVerdad() {
+    btnActivar.disabled = true;
+    decir('Activando...');
+    // `activar()` pide el permiso PRIMERO y sin nada asincrónico antes: la
+    // activación del gesto se gasta, y en iOS un `requestPermission()` tardío
+    // muere sin cartel. Por eso esto se llama derecho desde el click.
+    return window.Push.activar().then(function (r) {
+      var cartel = r.ok ? ['✓ Listo. Probá el aviso de prueba.', false]
+                        : (CARTELES[r.motivo] || CARTELES.error);
+      // ⚠ EL ORDEN: `pintarEstado()` deja los botones como corresponde, pero
+      // ESCRIBE SU PROPIO MENSAJE. Si el cartel puntual ("dijiste que no",
+      // "falta el service worker") se escribiera antes, lo pisaría y la
+      // persona vería un texto genérico que no explica lo que acaba de pasar.
+      // Primero se repinta, y el cartel se escribe último.
+      return pintarEstado().then(function () { decir(cartel[0], cartel[1]); });
+    })['catch'](function (e) {
+      // El camino feliz era el único que soltaba el botón. Sin esto queda en
+      // "Activando..." y deshabilitado para siempre.
+      console.warn('Push: falló la activación.', e);
+      decir('No se pudieron activar los avisos. Probá de nuevo.', true);
+      btnActivar.disabled = false;
+    });
+  }
+
+  function desactivar() {
+    btnActivar.disabled = true;
+    decir('Desactivando...');
+    return window.Push.desactivar().then(function () {
+      // Mismo orden que arriba: pintar primero, decir después.
+      return pintarEstado().then(function () {
+        decir('Avisos desactivados en este dispositivo.');
+      });
+    })['catch'](function (e) {
+      console.warn('Push: falló la desactivación.', e);
+      decir('No se pudieron desactivar. Probá de nuevo.', true);
+      btnActivar.disabled = false;
+    });
+  }
+
+  btnActivar.addEventListener('click', function () {
+    // El botón es de ida y de vuelta: si ya está suscripto, desactiva (y ahí
+    // no hace falta explicar nada de nuevo).
+    window.Push.estado().then(function (e) {
+      if (e.suscripto) return desactivar();
+      abrirModal();
+    })['catch'](function () { abrirModal(); });
+  });
+
+  if (modalNo) modalNo.addEventListener('click', cerrarModal);
+  if (modalSi) {
+    modalSi.addEventListener('click', function () {
+      cerrarModal();
+      activarDeVerdad();
+    });
+  }
+  if (modal) {
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) cerrarModal();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !modal.hidden) cerrarModal();
+    });
+  }
+
+  // ── El aviso de prueba ────────────────────────────────────────────────────
+  // Es lo que separa "el canal no anda" de "no hay nada que avisar". Sin esto,
+  // la primera vez que un aviso no llega hay que adivinar entre seis capas.
+  if (btnPrueba) {
+    btnPrueba.addEventListener('click', function () {
+      var original = btnPrueba.textContent;
+      btnPrueba.disabled = true;
+      btnPrueba.textContent = 'Mandando...';
+      decir('');
+      window.Push.prueba().then(function (r) {
+        btnPrueba.textContent = original;
+        btnPrueba.disabled = false;
+        if (r && r.ok) {
+          decir('✓ Mandado a ' + (r.enviados || 1) + ' dispositivo(s). Mirá el teléfono.');
+        } else {
+          decir((r && r.error) || 'No se pudo mandar el aviso.', true);
+        }
+        // Un 404/410 del servicio de push borra la fila muerta del lado del
+        // servidor: hay que volver a mirar el estado para no ofrecer probar
+        // algo que ya no existe.
+        if (r && r.borradas) pintarEstado();
+      })['catch'](function (e) {
+        console.warn('Push: falló el aviso de prueba.', e);
+        btnPrueba.textContent = original;
+        btnPrueba.disabled = false;
+        decir('No se pudo mandar el aviso.', true);
+      });
+    });
+  }
+
+  // ⚠ SE PINTA DOS VECES, Y LA SEGUNDA ES LA QUE VALE.
+  //
+  // El service worker se registra en el `load` de base.html; esto corre
+  // mientras el documento todavía se está parseando. O sea que la primera
+  // foto pregunta por un SW que nadie registró todavía y siempre contesta
+  // "no hay": el botón queda muerto y el cartel dice que falta habilitarlo en
+  // el servidor, mintiendo.
+  //
+  // En el iPhone no es un caso de borde, es EL caso: una app agregada a la
+  // pantalla de inicio estrena su propio almacenamiento, así que el primer
+  // arranque desde el ícono nunca tiene SW registrado — y ese primer arranque
+  // es exactamente cuando Mari entra acá, porque el instructivo de iOS la
+  // manda. Se auto-curaba recargando, pero nadie se lo decía.
+  //
+  // La primera pasada igual va: deja la tarjeta con algo escrito en vez de
+  // vacía mientras carga el resto.
+  pintarEstado();
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', function () { pintarEstado(); });
+  }
 })();
 
 </script>

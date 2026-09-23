@@ -32,6 +32,21 @@ Cada página hija define su propio {% block contenido %}.
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="{{ cfg.paleta_dark.superficie }}">
 
+  {# iOS NO LEE EL MANIFEST para el ícono de "Agregar a inicio": mira ESTA
+     etiqueta y nada más. Sin ella, el iPhone se guarda una CAPTURA de la
+     página como ícono — una miniatura ilegible del header con un pedazo de
+     tabla. Y el ícono importa más de lo que parece acá: en iOS las
+     notificaciones push SOLO funcionan si la app se agregó a la pantalla de
+     inicio y se abre DESDE ESE ÍCONO.
+
+     Apunta al PNG de 192 de la PWA (los mismos que usa el manifest). iOS lo
+     recorta a sus esquinas redondeadas solo, así que no hace falta una
+     variante aparte; el maskable de 512 es para Android. Va sin `sizes`: con
+     un solo candidato, iOS lo usa para todos los tamaños. Lleva `?v=` como
+     todo lo de static/ para que un ícono regenerado no quede pegado. #}
+  <link rel="apple-touch-icon"
+        href="{{ url_for('static', filename='img/icon-192.png') }}?v={{ static_version }}">
+
   {# Anti-flicker: aplica data-theme antes del primer paint, sin esperar JS externo #}
   <script>
     (function () {
@@ -281,7 +296,11 @@ Cada página hija define su propio {% block contenido %}.
   {# Confirmación de salida — la abre el círculo del avatar (`#user-toggle`).
      Modal propio y NO el `#modal-confirmacion` de arriba: aquel tiene el texto
      fijo del borrado y está cableado a `formPendiente.submit()` en app.js.
-     El "Sí, salir" es un <a> porque /logout es un GET simple (auth.py). #}
+     El "Sí, salir" sigue siendo un <a> a /logout (GET simple, auth.py) y
+     funciona sin JavaScript. Con JS, `initSalir()` (app.js) le intercepta el
+     click para desuscribir el push de ESTE navegador y mandar su endpoint por
+     POST, así el logout borra SOLO esa fila y no los avisos del resto de los
+     dispositivos de la cuenta. De ahí el id. #}
   {% if user_email %}
   <div id="modal-salir" class="modal-fondo" hidden>
     <div class="tarjeta modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-salir-titulo">
@@ -289,7 +308,7 @@ Cada página hija define su propio {% block contenido %}.
       <p class="modal-texto">Vas a cerrar tu sesión en este dispositivo.</p>
       <div class="modal-botones">
         <button type="button" id="modal-salir-no" class="btn-secundario">No</button>
-        <a href="{{ url_for('auth.logout') }}" class="btn-primario">Sí, salir</a>
+        <a href="{{ url_for('auth.logout') }}" id="modal-salir-si" class="btn-primario">Sí, salir</a>
       </div>
     </div>
   </div>

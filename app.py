@@ -2057,6 +2057,278 @@ def api_push_baja():
 
 
 # =============================================================================
+# PUSH: mandar un aviso de verdad (pywebpush)
+# =============================================================================
+#
+# ACÁ SÍ SE MANDA. Es lo primero de este dominio que le habla al servicio de
+# push, y por ahora tiene UN SOLO disparador: el botón "Mandarme un aviso de
+# prueba" de Settings. NADA CORRE SOLO — no hay scheduler, no hay provider, no
+# hay nada que despierte esto sin que alguien apriete un botón. Los avisos
+# automáticos son otra etapa, y son los que van a leer `push_enabled`.
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ LA REGLA DEL PAYLOAD:  EL AVISO NUNCA LLEVA PLATA.                       │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# Un push se lee en la PANTALLA BLOQUEADA: sin desbloquear el teléfono, sin
+# sesión, y lo ve cualquiera que esté cerca — en la mesa, en el colectivo, en
+# la mano de un nene. Así que el payload no lleva montos, ni saldos, ni
+# nombres de banco, ni de quién es la cuenta. Lleva el QUÉ y un LINK; la plata
+# se mira adentro de la app, con sesión.
+#
+# Eso NO se deja a criterio de cada uno: el payload lo arma `_push_payload()`,
+# que tiene tres claves y ninguna más. Un aviso que quiera decir "entraron
+# $50.000" tiene que decir "entró un movimiento" y linkear a /gastos. La misma
+# regla está escrita en el handler `push` de templates/sw.js, que es donde el
+# texto termina apareciendo en la pantalla de alguien.
+
+# Las ÚNICAS claves que cruzan al teléfono. Cerrada a propósito: si mañana
+# hace falta una cuarta, que sea una decisión con esta lista delante.
+_PUSH_PAYLOAD_CLAVES = ('titulo', 'cuerpo', 'url')
+
+# Cuánto se espera a cada servicio de push antes de darlo por perdido. VA SÍ O
+# SÍ: `pywebpush` sin `timeout` explícito se lo pasa a `requests` como `None`,
+# o sea SIN límite. Un FCM que no contesta dejaba el worker de Flask colgado
+# para siempre y la página girando del otro lado.
+_PUSH_TIMEOUT = 3
+
+# Y un techo para la tanda entera, porque el de arriba es POR teléfono y los
+# envíos van de a uno: con cuatro dispositivos mudos (Elías y Mari, celular y
+# notebook) eran 20 segundos de un solo request, con el botón clavado en
+# "Mandando...". Justo el diagnóstico que tiene que contestar rápido era el que
+# más tardaba. Pasado el techo se corta y se devuelve lo que se alcanzó a
+# mandar: los que quedaron afuera se reintentan en el próximo aviso.
+_PUSH_TOPE_TANDA = 10
+
+# Cuánto guarda el servicio el aviso si el teléfono está apagado. Un minuto:
+# esto es una prueba de canal, y un "andá a Settings" que llega media hora
+# después no le sirve a nadie. Los avisos de verdad elegirán el suyo.
+_PUSH_TTL = 60
+
+
+class _PushSinClaves(Exception):
+    """Faltan las VAPID (o el contacto) en config.json. NO es un error de
+    programa: es una config incompleta, y se contesta como tal."""
+
+
+def _push_payload(titulo, cuerpo, url):
+    """
+    El JSON que viaja al teléfono. TRES claves, ni una más (ver la regla de
+    arriba). `url` va RELATIVA (`/settings`, `/lactancia`): la resuelve el
+    service worker contra su propio origen.
+
+    POR QUÉ RELATIVA Y NO ABSOLUTA: el servidor no sabe su propia dirección
+    pública. `cfg["ngrok_domain"]` es un hostname pelado, sin esquema, y en
+    DEV está vacío; armar la absoluta acá sería adivinar, y el aviso quedaría
+    pegado al dominio que había el día que se escribió. El service worker, en
+    cambio, sabe de dónde salió.
+    """
+    url = (url or '/').strip() or '/'
+    if not url.startswith('/'):
+        raise ValueError("La url del aviso tiene que ser relativa (empezar con '/').")
+    return {
+        'titulo': str(titulo or 'Núcleo'),
+        'cuerpo': str(cuerpo or ''),
+        'url': url,
+    }
+
+
+def _push_enviar(filas, payload, cfg=None):
+    """
+    Manda `payload` a cada suscripción de `filas`. Devuelve
+    `(enviados, borradas)`.
+
+    Tira `_PushSinClaves` si el par VAPID o el contacto no están cargados —
+    que es una config a medio hacer, no una falla, y se contesta con un
+    mensaje que dice qué hacer en vez de un 500 que no dice nada.
+
+    UN ENVÍO QUE FALLA NO FRENA A LOS DEMÁS: son teléfonos distintos y el de
+    Mari no tiene por qué quedarse sin aviso porque el de Elías se rompió.
+
+    404 / 410 = SUSCRIPCIÓN MUERTA, y el servicio de push lo dice así: la app
+    se desinstaló, se limpiaron los datos del navegador, el buzón caducó. Esa
+    fila no va a funcionar NUNCA MÁS, así que se borra acá mismo. Si no, cada
+    envío futuro la reintenta, paga el timeout y ensucia el log para siempre.
+    Cualquier otro error (un 500 del servicio, la red caída) se loguea y se
+    deja la fila quieta: eso puede andar la próxima.
+    """
+    import json
+    from pywebpush import webpush, WebPushException
+
+    cfg = cfg if cfg is not None else config.cargar_config(CONFIG_FILE)
+    secreta = (cfg.get('push_vapid_secreta') or '').strip()
+    publica = (cfg.get('push_vapid_publica') or '').strip()
+    contacto = (cfg.get('push_contacto_mailto') or '').strip()
+    if not secreta or not publica or not contacto:
+        raise _PushSinClaves(
+            "Faltan las claves VAPID. Generarlas con "
+            "`python TempScripts/generar_vapid.py` y pegar "
+            "push_vapid_publica, push_vapid_secreta y push_contacto_mailto "
+            "en config.json.")
+
+    # Que la clave ESTÉ no quiere decir que SIRVA. Una mal copiada, truncada o
+    # con un salto de línea adentro revienta al deserializarla, y eso pasaba
+    # adentro del bucle: caía en el except de cada teléfono, la ruta terminaba
+    # en el 502 genérico y le decía a la persona "probá desactivar y volver a
+    # activar los avisos". O sea, la mandaba a re-suscribir el teléfono por un
+    # problema que está en el config.json del servidor — y por más que lo
+    # hiciera, iba a fallar igual. Se chequea UNA vez, antes de empezar, y una
+    # clave rota se contesta igual que una clave ausente.
+    try:
+        from py_vapid import Vapid
+        Vapid.from_string(secreta)
+    except Exception as e:
+        raise _PushSinClaves(
+            "La clave VAPID está cargada pero no es válida "
+            f"({type(e).__name__}). Regenerar el par con "
+            "`python TempScripts/generar_vapid.py` y pegarlo de nuevo en "
+            "config.json.")
+
+    cuerpo = json.dumps(payload, ensure_ascii=False)
+    enviados = 0
+    borradas = 0
+    arranque = time.monotonic()
+
+    for fila in filas:
+        if time.monotonic() - arranque > _PUSH_TOPE_TANDA:
+            log(f"AVISO: se cortó la tanda de push por tiempo "
+                f"({enviados} enviados, quedaron sin intentar los demás).")
+            break
+        endpoint = fila['endpoint']
+        suscripcion = {
+            'endpoint': endpoint,
+            # Las claves se guardan SIN el relleno base64 (ver
+            # `_push_leer_suscripcion`). `pywebpush` lo repone solo antes de
+            # decodificar, así que van tal cual salieron de la base.
+            'keys': {'p256dh': fila['p256dh'], 'auth': fila['auth']},
+        }
+        try:
+            webpush(
+                subscription_info=suscripcion,
+                data=cuerpo,
+                vapid_private_key=secreta,
+                # `aud` y `exp` los completa pywebpush solo, a partir del
+                # endpoint. Acá va únicamente el `sub`: a quién le reclama el
+                # servicio de push si la app se manda una macana.
+                vapid_claims={'sub': contacto},
+                ttl=_PUSH_TTL,
+                timeout=_PUSH_TIMEOUT,
+            )
+            enviados += 1
+        except WebPushException as e:
+            # `status_code` es una property de la excepción que sabe leer tanto
+            # una respuesta de `requests` como una de `aiohttp`. Va adentro de
+            # un try porque es código que corre sobre una respuesta que ya
+            # salió mal: si ahí adentro explota algo, el envío igual tiene que
+            # seguir con los demás teléfonos.
+            try:
+                estado = e.status_code
+            except Exception:
+                estado = getattr(getattr(e, 'response', None), 'status_code', None)
+            if estado in (404, 410):
+                try:
+                    borradas += database.borrar_suscripcion_push(
+                        endpoint, fila['user_email'])
+                except Exception as e2:
+                    log(f"AVISO: no se pudo borrar la suscripción muerta: {e2}")
+                log(f"AVISO: suscripción push muerta ({estado}), se borró la fila.")
+            else:
+                # El endpoint NO se loguea: es el buzón de un teléfono, y quien
+                # lo tiene puede mandarle avisos a ese aparato. El log se lee,
+                # se copia y se manda por chat.
+                #
+                # ⚠ POR ESO TAMPOCO VA LA EXCEPCIÓN CRUDA. `requests` mete la
+                # URL COMPLETA en el texto de sus errores ("Max retries exceeded
+                # with url: /fcm/send/<endpoint>"), así que un `{e}` pelado
+                # filtraba el endpoint justo en el caso más común: la red que se
+                # cayó. Va el tipo, que es lo único que sirve para diagnosticar.
+                log(f"AVISO: no se pudo mandar el push "
+                    f"(estado {estado}, {type(e).__name__}).")
+        except Exception as e:
+            log(f"AVISO: falló el envío de un push ({type(e).__name__}).")
+
+    return enviados, borradas
+
+
+@app.route('/api/push/prueba', methods=['POST'])
+def api_push_prueba():
+    """
+    Manda un aviso de prueba a los navegadores de QUIEN LO PIDE.
+
+    PARA QUÉ EXISTE: es lo único que separa "el canal no anda" de "no hay nada
+    que avisar". Sin esto, la primera vez que un aviso no llega hay que
+    adivinar entre seis capas —permiso del navegador, service worker
+    registrado, suscripción viva, claves VAPID, el servicio de push, la ruta
+    que manda— y se van dos horas. Con esto, o llega o dice por qué no.
+
+    PROTEGIDA (no está en `rutas_publicas`) y ACOTADA A LO PROPIO: se le manda
+    solo a las suscripciones del email de la sesión. Nadie puede hacerle sonar
+    el teléfono al otro, ni siquiera con sesión válida.
+
+    ⚠ NO MIRA `push_enabled`, Y ES A PROPÓSITO. Ese flag apaga los avisos
+    AUTOMÁTICOS (los que van a correr solos en la etapa del scheduler); este
+    botón no es un aviso automático, es el diagnóstico del canal. Si
+    respetara el flag, para probar si el canal anda habría que prender antes
+    los avisos automáticos — o sea, encender la cosa que uno todavía no sabe
+    si funciona, que es exactamente al revés de lo que hay que hacer. Y no
+    puede molestar a nadie: lo dispara un click, va solo a los dispositivos de
+    quien lo apretó, y manda UN aviso por click.
+
+    Respuestas (siempre JSON, nunca un 500 por config a medias):
+      200 {'ok': True,  'enviados': n}
+      409 {'ok': False, 'error': ...}   este navegador no está suscripto
+      503 {'ok': False, 'error': ...}   faltan las claves VAPID
+    """
+    from flask import session as flask_session
+    email = (flask_session.get('user_email') or '').strip().lower()
+
+    try:
+        # Por EMAIL y no por persona: lo que se está probando es el canal de
+        # la cuenta que está logueada. En DEV el email es `dev@local`, que es
+        # el mismo con el que se guardó el alta, así que también funciona.
+        filas = [f for f in database.obtener_suscripciones_push()
+                 if (f['user_email'] or '').strip().lower() == email]
+    except Exception as e:
+        log(f"ERROR: no se pudieron leer las suscripciones push: {e}")
+        return jsonify({'ok': False, 'error': 'No se pudieron leer las suscripciones.'}), 500
+
+    if not filas:
+        return jsonify({
+            'ok': False,
+            'error': 'Todavía no hay ningún dispositivo suscripto en esta cuenta. '
+                     'Activá los avisos primero.',
+        }), 409
+
+    payload = _push_payload(
+        'Núcleo',
+        'Si ves esto, los avisos funcionan.',
+        '/settings',
+    )
+
+    try:
+        enviados, borradas = _push_enviar(filas, payload)
+    except _PushSinClaves as e:
+        # Config a medio hacer, NO un error de programa: 503 con el texto que
+        # dice qué falta. Un 500 acá mandaba a buscar el bug adentro del
+        # código cuando lo que faltaba era pegar tres líneas en config.json.
+        return jsonify({'ok': False, 'error': str(e)}), 503
+    except Exception as e:
+        log(f"ERROR: el aviso de prueba falló: {e}")
+        return jsonify({'ok': False, 'error': 'No se pudo mandar el aviso.'}), 500
+
+    if not enviados:
+        return jsonify({
+            'ok': False,
+            'enviados': 0,
+            'borradas': borradas,
+            'error': 'No se pudo entregar el aviso en ningún dispositivo. '
+                     'Probá desactivar y volver a activar los avisos.',
+        }), 502
+
+    return jsonify({'ok': True, 'enviados': enviados, 'borradas': borradas})
+
+
+# =============================================================================
 # RUTA: Módulo Gastos — Saldos + formulario + tabla de movimientos (ex /)
 # URL: http://localhost:5000/gastos
 # =============================================================================

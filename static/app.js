@@ -816,7 +816,8 @@ Propósito:
   Reemplaza a la tarjeta de texto "Salir" que había antes al lado de la foto.
 
   El "Sí, salir" NO necesita JS: es un <a href="/logout"> y /logout es un GET
-  simple (auth.py). Acá solo se maneja abrir y cerrar.
+  simple (auth.py). Acá se maneja abrir y cerrar — y se le intercepta el click
+  para apagar el push de ESTE navegador antes de irse (ver abajo).
 
   Modal propio (`#modal-salir`), no el `#modal-confirmacion` del borrado: aquel
   tiene el texto fijo y está atado a `formPendiente.submit()` (inicializarModal).
@@ -850,6 +851,52 @@ function initSalir() {
 
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !modal.hidden) cerrar();
+    });
+
+    // ── Apagar el push de ESTE navegador antes de salir ───────────────────
+    //
+    // QUÉ ARREGLA: `/logout` borra las suscripciones push de la cuenta. Sin
+    // esto no sabe CUÁL navegador se está yendo, así que las borra TODAS —
+    // salir en la notebook dejaba sin avisos al teléfono, y un link
+    // cross-site a /logout (es GET y es público) se llevaba puestos los
+    // avisos de todos los dispositivos. Mandando el endpoint del que se va,
+    // el servidor borra esa fila sola.
+    //
+    // SALIR NUNCA PUEDE QUEDAR BLOQUEADO. Por eso:
+    //   · el link sigue siendo un <a href="/logout"> de verdad: sin app.js, o
+    //     sin `window.Push`, salir funciona igual (con el borrado viejo);
+    //   · `bajaYSeguir()` corre contra un reloj y nunca rechaza;
+    //   · el POST va por un form armado al vuelo y no por querystring: el
+    //     endpoint es el buzón de ese teléfono y no tiene por qué quedar en el
+    //     log de accesos del servidor ni en el historial del navegador.
+    var salida = document.getElementById('modal-salir-si');
+    if (!salida || !window.Push || !window.Push.bajaYSeguir) return;
+
+    var yendose = false;
+
+    function irse(endpoint) {
+        if (!endpoint) {
+            window.location.href = salida.getAttribute('href');
+            return;
+        }
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = salida.getAttribute('href');
+        var campo = document.createElement('input');
+        campo.type = 'hidden';
+        campo.name = 'endpoint';
+        campo.value = endpoint;
+        form.appendChild(campo);
+        document.body.appendChild(form);
+        form.submit();
+    }
+
+    salida.addEventListener('click', function (e) {
+        if (yendose) return;
+        e.preventDefault();
+        yendose = true;
+        salida.textContent = 'Saliendo...';
+        window.Push.bajaYSeguir().then(irse)['catch'](function () { irse(''); });
     });
 }
 
@@ -1041,6 +1088,373 @@ window.SW = (function () {
     }
 
     return { barrer: barrer };
+})();
+
+
+/*
+================================================================================
+window.Push — avisos del sistema (Web Push)
+================================================================================
+API pública, mismo estilo que `window.Notif` y `window.SW`: ES5, sin innerHTML,
+todo devuelve una promesa que NUNCA rechaza, y un fallo es un `console.warn` —
+esto no puede romper la página de nadie.
+
+  estado()      → { soportado, configurado, sw, permiso, suscripto, ios,
+                    standalone }. Solo MIRA: no pide permiso, no suscribe y no
+                    manda nada. Es lo que usa Settings para decidir qué ofrecer
+                    ANTES de que nadie apriete nada.
+  activar()     → { ok, motivo }. Pide permiso, suscribe y da de alta.
+  desactivar()  → { ok }. Desuscribe y da de baja.
+  prueba()      → { ok, error, enviados }. POST /api/push/prueba.
+  bajaYSeguir() → para el logout: desuscribe y devuelve el endpoint que se va,
+                  con reloj, para que salir nunca quede colgado.
+
+⚠ NADA DE ESTO SE DISPARA SOLO AL CARGAR LA PÁGINA, y no es una preferencia de
+estilo:
+  · Chrome degrada a "prompt silencioso" (nunca más se ve el cartel) a los
+    sitios que piden permiso sin interacción del usuario.
+  · En iOS, `requestPermission()` fuera de un gesto real directamente falla.
+    Y el permiso se pide UNA SOLA VEZ POR INSTALACIÓN: si se quema con un "no
+    permitir", el único camino de vuelta es borrar el ícono de inicio y volver
+    a agregarlo.
+El permiso sale del click del botón de Settings, después de un modal que
+explica qué se va a avisar. Un tiro, y avisado.
+================================================================================
+*/
+window.Push = (function () {
+    var URL_ALTA   = '/api/push/alta';
+    var URL_BAJA   = '/api/push/baja';
+    var URL_PRUEBA = '/api/push/prueba';
+
+    // Leer un global que puede no estar, o que puede TIRAR al leerlo (storage
+    // bloqueado, iframe sandbox). Mismo helper y mismo motivo que window.SW.
+    function global(leer) {
+        try { return leer(); } catch (e) { return null; }
+    }
+
+    function vapid() {
+        try {
+            return (document.body && document.body.dataset.pushVapid) || '';
+        } catch (e) { return ''; }
+    }
+
+    function soportado() {
+        return !!(global(function () { return navigator.serviceWorker; })
+                  && global(function () { return window.PushManager; })
+                  && global(function () { return window.Notification; }));
+    }
+
+    function permisoActual() {
+        var N = global(function () { return window.Notification; });
+        if (!N) return 'no-soportado';
+        try { return N.permission; } catch (e) { return 'no-soportado'; }
+    }
+
+    // Instalada en la pantalla de inicio (iOS) o abierta en ventana propia.
+    //
+    // ⚠ SE PREGUNTA POR "ESTÁ EN STANDALONE", NUNCA por
+    // `navigator.standalone === false`: esa propiedad la tiene SOLO Safari.
+    // En iOS Chrome (que por dentro también es WebKit) vale `undefined`, así
+    // que `=== false` daría falso y las instrucciones de iOS quedarían
+    // ocultas justo en el navegador donde más falta hacen. Quien pregunte,
+    // que pregunte por la negación de esto.
+    function standalone() {
+        var m = global(function () {
+            return window.matchMedia && window.matchMedia('(display-mode: standalone)');
+        });
+        if (m && m.matches) return true;
+        return global(function () { return navigator.standalone; }) === true;
+    }
+
+    function esIOS() {
+        var ua = global(function () { return navigator.userAgent; }) || '';
+        if (/iPad|iPhone|iPod/.test(ua)) return true;
+        // iPadOS 13+ se hace pasar por Mac de escritorio. Lo delata el touch.
+        var toques = global(function () { return navigator.maxTouchPoints; }) || 0;
+        return /Macintosh/.test(ua) && toques > 1;
+    }
+
+    // -----------------------------------------------------------------------
+    // applicationServerKey quiere BYTES, no el string base64url.
+    //
+    // Es el paso donde falla la mitad de las primeras integraciones, y falla
+    // raro: `subscribe()` tira un InvalidCharacterError que no nombra la
+    // clave. Dos cosas que hay que hacer y son fáciles de saltear:
+    //   a. base64url usa '-' y '_' donde base64 usa '+' y la barra. `atob()`
+    //      habla base64 a secas y no traduce: hay que reemplazarlos.
+    //   b. base64url viaja SIN relleno; `atob()` lo exige. Hay que agregarle
+    //      los '=' que falten para llegar a un múltiplo de 4.
+    // -----------------------------------------------------------------------
+    function base64urlABytes(clave) {
+        var faltan = (4 - clave.length % 4) % 4;
+        var relleno = '';
+        while (relleno.length < faltan) relleno += '=';
+        var base64 = (clave + relleno).replace(/-/g, '+').replace(/_/g, '/');
+        var crudo = window.atob(base64);
+        var bytes = new Uint8Array(crudo.length);
+        for (var i = 0; i < crudo.length; i++) bytes[i] = crudo.charCodeAt(i);
+        return bytes;
+    }
+
+    function esperar(ms, valor) {
+        return new Promise(function (resolver) {
+            setTimeout(function () { resolver(valor); }, ms);
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // El registro del service worker, o null.
+    //
+    // ⚠ NO SE USA `navigator.serviceWorker.ready` A SECAS: si no hay NINGÚN
+    // service worker registrado —el caso de hoy, con `sw_enabled` apagado—
+    // esa promesa no resuelve NUNCA. Ni rechaza: se queda esperando para
+    // siempre, y con ella el botón que la estaba esperando. Por eso primero
+    // se pregunta con `getRegistration()`, que sí contesta que no hay nada, y
+    // recién si hay algo se espera a que esté activo, contra un reloj.
+    // -----------------------------------------------------------------------
+    function registro() {
+        var sw = global(function () { return navigator.serviceWorker; });
+        if (!sw || !sw.getRegistration) return Promise.resolve(null);
+        return sw.getRegistration()
+            .then(function (reg) {
+                if (!reg) return null;
+                return Promise.race([sw.ready, esperar(8000, reg)]);
+            })
+            ['catch'](function () { return null; });
+    }
+
+    // -----------------------------------------------------------------------
+    // estado() — la foto, sin efectos
+    // -----------------------------------------------------------------------
+    function estado() {
+        var base = {
+            soportado:   soportado(),
+            configurado: !!vapid(),
+            sw:          false,
+            permiso:     permisoActual(),
+            suscripto:   false,
+            ios:         esIOS(),
+            standalone:  standalone()
+        };
+        if (!base.soportado) return Promise.resolve(base);
+        return registro().then(function (reg) {
+            if (!reg || !reg.pushManager) return base;
+            base.sw = true;
+            return reg.pushManager.getSubscription().then(function (sub) {
+                base.suscripto = !!sub;
+                return base;
+            });
+        })['catch'](function (e) {
+            console.warn('Push: no se pudo leer el estado.', e);
+            return base;
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // El permiso. Va PRIMERO y SIN NADA ASINCRÓNICO ANTES.
+    //
+    // La "activación transitoria" que deja pedir permiso dura poco y se gasta:
+    // si antes de llamar a `requestPermission()` se espera una promesa (mirar
+    // el registro del service worker, por ejemplo), en iOS el pedido puede
+    // morir sin que aparezca ningún cartel. Por eso los chequeos de
+    // `activar()` son todos SINCRÓNICOS y lo que necesita esperar va DESPUÉS.
+    //
+    // Se pasa callback Y se usa el valor devuelto a propósito: Safari viejo
+    // solo tiene la forma con callback, el resto devuelve promesa. El candado
+    // `listo` hace que gane el que conteste primero y el otro no haga nada.
+    // -----------------------------------------------------------------------
+    function pedirPermiso() {
+        return new Promise(function (resolver) {
+            var N = global(function () { return window.Notification; });
+            if (!N) return resolver('no-soportado');
+            var actual;
+            try { actual = N.permission; } catch (e) { actual = 'default'; }
+            if (actual === 'granted' || actual === 'denied') return resolver(actual);
+
+            var listo = false;
+            function fin(p) {
+                if (listo) return;
+                listo = true;
+                try { resolver(p || N.permission); } catch (e) { resolver('denied'); }
+            }
+            var devuelto;
+            try {
+                devuelto = N.requestPermission(fin);
+            } catch (e) {
+                return fin('denied');
+            }
+            if (devuelto && typeof devuelto.then === 'function') {
+                devuelto.then(fin)['catch'](function () { fin('denied'); });
+            }
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // La suscripción del navegador, creándola si hace falta.
+    //
+    // SI YA HABÍA UNA, se compara la clave con la que se suscribió contra la
+    // que sirve el servidor hoy. Si no coinciden (alguien regeneró el par
+    // VAPID) la vieja NO SIRVE MÁS, y encima falla en silencio: el navegador
+    // la conserva, el servicio de push rechaza el envío y el teléfono
+    // simplemente no recibe nada. Se la da de baja y se suscribe de nuevo,
+    // que es lo único que lo arregla desde acá. Sin esta comparación,
+    // `subscribe()` con otra clave tira InvalidStateError y el botón queda
+    // fallando para siempre en ese teléfono.
+    // -----------------------------------------------------------------------
+    function mismaClave(sub, bytes) {
+        var guardada;
+        try { guardada = sub.options && sub.options.applicationServerKey; } catch (e) { }
+        // Sin `options` (Safari viejo) no hay con qué comparar: se deja la que
+        // hay. Romper una suscripción buena es peor que arrastrar una dudosa.
+        if (!guardada) return true;
+        var vista = new Uint8Array(guardada);
+        if (vista.length !== bytes.length) return false;
+        for (var i = 0; i < bytes.length; i++) {
+            if (vista[i] !== bytes[i]) return false;
+        }
+        return true;
+    }
+
+    function suscribir(reg, clave) {
+        var bytes = base64urlABytes(clave);
+        return reg.pushManager.getSubscription().then(function (sub) {
+            if (sub && mismaClave(sub, bytes)) return sub;
+            var previa = sub
+                ? sub.unsubscribe()['catch'](function () { return null; })
+                : Promise.resolve(null);
+            return previa.then(function () {
+                return reg.pushManager.subscribe({
+                    // OBLIGATORIO. `false` es push silencioso, y los
+                    // navegadores que nos importan no lo permiten.
+                    userVisibleOnly: true,
+                    applicationServerKey: bytes
+                });
+            });
+        });
+    }
+
+    function postear(url, cuerpo) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(cuerpo || {})
+        }).then(function (r) {
+            return r.json()['catch'](function () { return { ok: false }; });
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // activar() — permiso → suscripción → alta
+    //
+    // Cada paso se puede cortar, y cada corte tiene su `motivo` porque el
+    // cartel que ve la persona es distinto en cada uno:
+    //   no-soportado → ese navegador no puede, y no hay nada que hacer.
+    //   sin-claves   → faltan las VAPID en config.json. Se arregla en el
+    //                  servidor, no en el teléfono.
+    //   sin-sw       → `sw_enabled` apagado: sin service worker registrado no
+    //                  hay `pushManager`. Se dice, no se falla raro.
+    //   denegado     → dijo que no (o ya estaba dicho): hay que ir a mano.
+    //   cancelado    → cerró el cartel sin decidir. Se puede volver a probar.
+    //   error        → cualquier otra cosa; el detalle queda en consola.
+    // -----------------------------------------------------------------------
+    function activar() {
+        // TODO lo sincrónico primero: ver el comentario de pedirPermiso().
+        if (!soportado()) return Promise.resolve({ ok: false, motivo: 'no-soportado' });
+        var clave = vapid();
+        if (!clave) return Promise.resolve({ ok: false, motivo: 'sin-claves' });
+
+        return pedirPermiso().then(function (permiso) {
+            if (permiso === 'denied') return { ok: false, motivo: 'denegado' };
+            if (permiso !== 'granted') return { ok: false, motivo: 'cancelado' };
+            return registro().then(function (reg) {
+                if (!reg || !reg.pushManager) return { ok: false, motivo: 'sin-sw' };
+                return suscribir(reg, clave).then(function (sub) {
+                    // El alta manda la suscripción TAL CUAL la dio el
+                    // navegador: la ruta entiende el JSON de
+                    // `PushSubscription.toJSON()`, con las claves anidadas.
+                    return postear(URL_ALTA, sub.toJSON()).then(function (data) {
+                        if (data && data.ok) return { ok: true };
+                        // El navegador quedó suscripto pero el servidor no lo
+                        // anotó. NO se desuscribe: volver a apretar el botón
+                        // reintenta el alta con la MISMA suscripción.
+                        return { ok: false, motivo: 'error',
+                                 error: (data && data.error) || '' };
+                    });
+                });
+            });
+        })['catch'](function (e) {
+            console.warn('Push: no se pudo activar.', e);
+            return { ok: false, motivo: 'error' };
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // desactivar() — el camino de vuelta.
+    // NO toca el permiso del navegador: eso solo lo saca la persona, a mano.
+    // -----------------------------------------------------------------------
+    function desactivar() {
+        return registro().then(function (reg) {
+            if (!reg || !reg.pushManager) return { ok: true };
+            return reg.pushManager.getSubscription().then(function (sub) {
+                if (!sub) return { ok: true };
+                var endpoint = sub.endpoint;
+                return sub.unsubscribe()['catch'](function () { return false; })
+                    .then(function () { return postear(URL_BAJA, { endpoint: endpoint }); })
+                    .then(function () { return { ok: true }; });
+            });
+        })['catch'](function (e) {
+            console.warn('Push: no se pudo desactivar.', e);
+            return { ok: false };
+        });
+    }
+
+    function prueba() {
+        return postear(URL_PRUEBA, {})['catch'](function (e) {
+            console.warn('Push: falló el aviso de prueba.', e);
+            return { ok: false, error: 'No se pudo hablar con el servidor.' };
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // bajaYSeguir() — para el logout
+    //
+    // Desuscribe ESTE navegador y devuelve su endpoint, para que el logout
+    // borre SOLO esa fila y no las de todos los dispositivos de la cuenta.
+    //
+    // TODO corre contra un reloj y nada puede fallar hacia arriba: salir de la
+    // sesión no se puede quedar esperando a un service worker. Si gana el
+    // reloj se devuelve '' y el logout hace lo de siempre (borrar todas las
+    // filas de ese email): molesto, pero nada roto.
+    // -----------------------------------------------------------------------
+    function bajaYSeguir(ms) {
+        var tope = ms || 1200;
+        var trabajo = registro().then(function (reg) {
+            if (!reg || !reg.pushManager) return '';
+            return reg.pushManager.getSubscription().then(function (sub) {
+                if (!sub) return '';
+                var endpoint = sub.endpoint;
+                return Promise.race([
+                    sub.unsubscribe()['catch'](function () { return false; }),
+                    esperar(tope, false)
+                ]).then(function () { return endpoint; });
+            });
+        })['catch'](function () { return ''; });
+
+        return Promise.race([trabajo, esperar(tope * 2, '')]);
+    }
+
+    return {
+        estado: estado,
+        activar: activar,
+        desactivar: desactivar,
+        prueba: prueba,
+        bajaYSeguir: bajaYSeguir,
+        esIOS: esIOS,
+        standalone: standalone
+    };
 })();
 
 

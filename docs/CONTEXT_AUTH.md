@@ -72,19 +72,23 @@ Dos detalles que parecen de estilo y no lo son:
   más en un teléfono; no poder salir de la sesión es quedarse adentro de la
   app.
 
-⚠ **Deuda conocida, a cerrar cuando exista el front del push.** `/logout` es
-GET y es pública, y desde que limpia suscripciones **borra datos**. La cookie
-es `SameSite=Lax`, que tapa el POST cross-site pero **no** la navegación GET:
-un link desde cualquier lado a `<dominio>/logout` se lleva puestas las
-suscripciones de **todos** los dispositivos de esa cuenta, no solo del
-navegador que hizo el pedido. Se recupera re-suscribiendo cada uno, pero
-mientras tanto no llega nada y nadie sabe por qué.
+**Se borra SOLO el navegador que se va, si dice cuál es** (deuda de la etapa
+anterior, cerrada acá). El front (`initSalir()` en `app.js`) desuscribe este
+navegador y manda su `endpoint` por POST antes de navegar; con ese dato el
+borrado se acota a **una fila**.
 
-El arreglo barato no es pasar el logout a POST: es que borre **solo el
-endpoint del navegador que se va** (que el front manda en el mismo pedido) en
-vez de todas las filas del email. Eso además saca un efecto colateral molesto
-que hoy existe: desloguearse en la notebook apaga los avisos del teléfono. No
-se hizo antes porque hasta esta etapa no hay front que mande ese endpoint.
+Sin ese dato —sin JavaScript, un link pegado a mano, un navegador sin push— se
+cae al comportamiento viejo y se borran todas las filas de esa cuenta. Ese
+fallback es a propósito, pero conviene saber qué tapa y qué no:
+
+- **Lo que arregla**: desloguearse en la notebook ya no apaga los avisos del
+  teléfono.
+- **Lo que NO arregla del todo**: `/logout` sigue siendo **GET y público**, y
+  la cookie es `SameSite=Lax` — que tapa el POST cross-site pero **no** la
+  navegación GET. Un link desde cualquier lado a `<dominio>/logout` sigue
+  entrando por el camino sin endpoint y se lleva las suscripciones de todos los
+  dispositivos de esa cuenta. Se recupera re-suscribiendo cada uno. Cerrarlo del
+  todo es pasar el logout a POST con token, que es un cambio de otro tamaño.
 
 Otro efecto esperable del borrado, para que no se investigue como bug: el
 ciclo **logout → login → alta** regenera la fila con `creada` nueva, así que
