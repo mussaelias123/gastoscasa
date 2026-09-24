@@ -7,7 +7,7 @@
 ```
 0. PREPARAR     → Worktree limpio + main fresco antes de abrir rama (ver §5).
 1. CLARIFICAR  → AskUserQuestion si la tarea no es trivial.
-2. LEER         → Solo el contexto necesario (ver tabla en CLAUDE.md §3).
+2. LEER         → Solo el contexto necesario (ver tabla en CLAUDE.md §3). Para ubicar código: grafo primero (§3c).
 3. EJECUTAR     → Cambio mínimo y reversible.
 4. ACTUALIZAR   → CONTEXT_*.md del dominio tocado (ver §1 abajo).
 5. VERIFICAR    → Sub-agente verifier en ngrok.
@@ -57,6 +57,46 @@ Reglas:
 1. **Información del proyecto y cómo trabajar en él** → mantener actualizados los `CONTEXT_*.md` (tabla del §1). Si un agente aprende algo útil del proyecto, va al doc del dominio, no a la memoria.
 2. **Decisiones históricas** ("qué se hizo y cuándo") NO se guardan en ningún lado nuevo: la bitácora son los PRs y el git log.
 3. La memoria local de Claude queda solo para lo estrictamente de esta máquina/instalación (si es que hay algo); ante la duda, va al repo.
+
+## §3c Mapa del proyecto en grafo — `codebase-memory-mcp` (regla 2026-09-24)
+
+Índice del código (funciones, clases, rutas Flask, llamadas, tests) consultable
+por MCP. Sirve para **tener el pantallazo de todo el proyecto y ubicar cosas sin
+leer archivos**: una consulta devuelve decenas de líneas donde `Grep` + `Read`
+traen miles de tokens. Proyecto indexado: **`E-FondoDev`** (al 2026-09-24: 1848
+nodos, 78 rutas, 26 `.py` / 11 `.js` / 18 `.html`). Vale igual para sub-agentes.
+
+**Usarlo ANTES de Grep/Glob/Read cuando la pregunta es estructural.** Todas las
+tools llevan el prefijo `mcp__codebase-memory-mcp__` y `project="E-FondoDev"`:
+
+| Pregunta                                        | Tool                                                                 |
+|-------------------------------------------------|----------------------------------------------------------------------|
+| Qué hay, cómo se reparte, qué es lo más usado   | `get_architecture` con `aspects` puntuales (`["hotspots","boundaries"]`, `["layers"]`, `["clusters"]`, `["routes"]`). **NO `["all"]`**: vuelca ~8k tokens |
+| Dónde vive X, qué rutas hay                     | `search_graph` (`query="lactancia"`, o `label="Route"` + `name_pattern=".*push.*"`) |
+| Quién llama a X / qué rompo si lo toco          | `trace_path` (`function_name`, `direction="inbound"`, `depth=2`)     |
+| Código exacto de un símbolo                     | `get_code_snippet` (el `qualified_name` sale de `search_graph`)      |
+| Texto en el código, con contexto de grafo       | `search_code`                                                        |
+| Consulta compleja / impacto del diff            | `query_graph` (Cypher) / `detect_changes`                            |
+
+Ejemplo real: `trace_path(function_name="_push_enviar", direction="inbound")`
+→ `api_push_prueba` y `_push_ciclo`. Son los dos llamadores que `CLAUDE.md` §2
+afirma, contestado sin abrir `app.py` (miles de líneas).
+
+**Cuándo NO sirve:**
+- Contenido de `.md`, CSS, HTML/Jinja: el grafo los ve como archivos y secciones. Leerlos normal.
+- Antes de EDITAR un archivo: `Read` igual. El grafo es un mapa, no la fuente.
+- "Nadie llama a X" **no prueba nada**: resuelve solo parte de las llamadas (Flask, JS dinámico; medición 2026-07: 1355 de 3852). Confirmar con `Grep` antes de borrar código.
+- Las rutas salen con método `ANY`.
+
+**Frescura (lo que más muerde):** no hay watcher y `auto_index` **no refresca**
+lo ya indexado. Un índice viejo responde igual, sin avisar. Al empezar una tarea
+de código, reindexar: tool `index_repository` con `repo_path="E:/FondoDev"`
+(incremental, ~0,5 s; comando CLI y detalle en `CONTEXT_DEPLOY.md`).
+
+**Si esas tools no existen en tu sesión**: es una herramienta local por máquina,
+no viaja con el repo. Seguir con `Grep`/`Glob`. No instalarla ni actualizarla
+por cuenta propia (la versión está fijada, ver `CONTEXT_DEPLOY.md`): es decisión
+del usuario. Visor gráfico: `http://localhost:9749`.
 
 ## §4 Cuando un sub-agente cierra una tarea
 Reportar siempre:
