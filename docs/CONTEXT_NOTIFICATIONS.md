@@ -1,153 +1,171 @@
-# Contexto: Notificaciones
+# Contexto: Notificaciones — el estándar de Núcleo
 
-> Leer junto con `CLAUDE.md`. Para tareas sobre la campana de notificaciones
-> del header, o para sumar notificaciones desde un módulo nuevo.
+> Leer junto con `CLAUDE.md`. Este doc define **CÓMO avisa Núcleo**, para
+> cualquier módulo. El push al teléfono es un canal de este mismo estándar y
+> tiene su propio doc (`CONTEXT_PUSH.md` / `CONTEXT_PUSH_MOTOR.md`).
+>
+> ⚠ Excepción aceptada al tope de 150 líneas de `CLAUDE.md` §5: esto es un
+> estándar transversal y partirlo en dos archivos rompe justo lo que tiene que
+> lograr — que haya UN lugar donde está escrito cómo se avisa. Ya se movieron
+> afuera el push (2 docs) y el DOM/CSS de la campana (`CONTEXT_FRONTEND.md`).
+> Antes de recortar más, leer §3 y §4: son el estándar, y no se tocan.
 
-## 1. Qué es el dominio
+## 1. De quién es este dominio
 
-Sistema de notificaciones genérico y extensible. Reemplaza los badges de nav
-por módulo (ej. el viejo `lac_badge` de Lactancia) por UNA campana en el
-header, con un panel/drawer a la derecha que lista los ítems de TODOS los
-módulos juntos, ordenados por severidad. Cualquier módulo de negocio puede
-sumar sus propias notificaciones sin tocar la campana ni los demás módulos:
-solo escribe un "provider" (función que arma sus ítems) y lo registra.
+**Las notificaciones son de NÚCLEO, no de un módulo.** Que hoy solo las use
+Lactancia es un dato de hoy, no la arquitectura: mañana avisa Gastos, Rutina, o
+un módulo que todavía no existe. **Todos avisan por acá, con el mismo contrato,
+el mismo canal y el mismo código.**
 
-## 2. Contrato JSON del ítem (CERRADO — no agregar ni quitar claves)
+Un módulo NO escribe su propia campana, su propio badge ni su propio aviso:
+escribe un **provider** y lo registra. Eso es todo.
 
-| Clave           | Tipo | Notas                                                              |
-|------------------|------|---------------------------------------------------------------------|
-| `modulo`         | str  | Slug del módulo origen. Ej. `"lactancia"`.                          |
-| `modulo_nombre`  | str  | Nombre legible. Ej. `"Lactancia"`.                                   |
-| `icono`          | str  | Emoji del módulo. Ej. `"🍼"`.                                        |
-| `titulo`         | str  | Título corto del ítem. Ej. `"Partida vencida"`.                     |
-| `detalle`        | str  | Línea descriptiva. Ej. `"Freezer · 180 ml · venció hace 2 días"`.   |
-| `url`            | str  | A dónde navega el click. Ej. `"/lactancia"`.                         |
-| `severidad`      | str  | `"peligro"` \| `"alerta"` \| `"info"`.                               |
+⚠ Antes cada módulo tenía su badge propio (`lac_badge`) y había que tocar el
+header cada vez que uno quería avisar algo. Se eliminó por eso. Si un agente
+vuelve a proponer un contador propio en el nav de un módulo, la respuesta es
+este archivo.
 
-`severidad` → variable de paleta (el frontend la mapea; ver `CONTEXT_FRONTEND.md`):
+## 2. El contrato del ítem — CERRADO, 7 claves
 
-| `severidad` | Variable de paleta |
-|--------------|----------------------|
-| `peligro`    | `--color-peligro`    |
-| `alerta`     | `--color-alerta`     |
-| `info`       | `--color-acento`     |
+| Clave           | Tipo | Notas                                                          |
+|-----------------|------|----------------------------------------------------------------|
+| `modulo` / `modulo_nombre` | str | Slug y nombre legible. Ej. `"lactancia"` / `"Lactancia"`. |
+| `icono`     | str | Emoji del módulo. Ej. `"🍼"`.                              |
+| `titulo`    | str | Título corto. ⚠ **Es la IDENTIDAD del aviso** — ver §4.     |
+| `detalle`   | str | Línea descriptiva. Puede cambiar todo lo que quiera.       |
+| `url`       | str | A dónde navega el click. **Relativa**, empieza con `/`.    |
+| `severidad` | str | `"peligro"` \| `"alerta"` \| `"info"` → color de la paleta. |
 
-Ejemplo real (provider Lactancia, partida vencida):
-```json
-{ "modulo": "lactancia", "modulo_nombre": "Lactancia", "icono": "🍼",
-  "titulo": "Partida vencida", "detalle": "Freezer · 180 ml · venció hace 2 días",
-  "url": "/lactancia", "severidad": "peligro" }
+Ni una clave más, ni una menos.
+
+## 3. CÓMO SE AGREGA UNA NOTIFICACIÓN (el procedimiento, completo)
+
+**1. Escribir el provider en `app.py`**, al lado de los otros `_notif_*`:
+
+```python
+def _notif_<modulo>():
+    """Provider de <Módulo>: un ítem por <cosa que hay que mirar>."""
+    items = []
+    for x in <lo que ya calculan los helpers del módulo>:
+        items.append({
+            'modulo': '<modulo>', 'modulo_nombre': '<Módulo>', 'icono': '<emoji>',
+            'titulo': '<título ESTABLE>',        # ver §4
+            'detalle': f'<lo que cambia>',
+            'url': '/<modulo>', 'severidad': 'alerta',
+        })
+    return items
 ```
 
-## 3. Backend (`app.py`)
+**2. Registrarlo en la campana** — una línea:
 
-- **Registry `NOTIF_PROVIDERS`**: lista de funciones sin argumentos; cada una
-  devuelve `list[dict]` con el contrato de la sección 2.
-- **`_notificaciones()`**: agrega TODOS los providers de `NOTIF_PROVIDERS`.
-  Cada llamada a un provider corre en su propio try/except — si uno falla,
-  se loguea `AVISO:` (vía `log()` de `logutil.py`, NUNCA `print()` directo) y
-  se sigue con los demás; un módulo roto nunca tumba la campana. Ordena el
-  resultado final por severidad: `peligro` → `alerta` → `info` (sort
-  estable: respeta el orden interno de cada provider y, dentro de una misma
-  severidad, el orden de `NOTIF_PROVIDERS` entre módulos distintos).
-- **Ruta `GET /api/notificaciones`**: solo lectura, sin parámetros. Devuelve
-  `{'ok': True, 'total': int, 'items': [...]}`. Misma protección de auth que
-  el resto de las rutas (middleware `before_request` de `auth.py`; sin
-  decorador propio, igual que `/api/lactancia` y `/api/actividades`).
-- **Context processor `inject_notif_badge`**: expone `notif_badge`
-  (`= len(_notificaciones())`) a TODOS los templates, con try/except → 0 (un
-  fallo jamás rompe un render). Reemplaza al viejo
-  `inject_lactancia_badge`/`lac_badge` (eliminados junto con
-  `_lac_badge_count()`, que quedó huérfana).
+```python
+NOTIF_PROVIDERS = [_notif_lactancia, _notif_recordatorio_bajar, _notif_<modulo>]
+```
 
-## 4. Providers actuales: Lactancia
+Listo: ya aparece en la campana y en el badge. **No se toca** la ruta, ni el
+context processor, ni el frontend, ni `base.html`, ni el CSS.
 
-`_notif_lactancia()` — un ítem por partida ABIERTA (sin `motivo_cierre`) en
-estado `vencida` o `vence_pronto`. Reusa `_lac_params()` y `_lac_enriquecer()`
-tal cual (NUNCA reimplementa el cálculo de vencimiento, que vive solo en los
-helpers `_lac_*` — ver `CONTEXT_BACKEND.md`). Mapeo: `vencida` → severidad
-`peligro`, título "Partida vencida"; `vence_pronto` → severidad `alerta`,
-título "Partida por vencer". `detalle` combina ubicación + volumen + tiempo
-relativo: freezer en días ("vence en 3 días" / "venció hace 2 días" / "vence
-hoy" si 0, singular/plural correcto), heladera en horas ("vence en 5 h"); una
-heladera vencida muestra solo "venció" (sin cantidad de horas, ya que
-`horas_restantes` redondea hacia el pasado y podría subestimar cuánto hace
-que venció). Orden interno: vencidas primero, luego por vencer; dentro de
-cada grupo, por vencimiento ascendente.
+**3. ¿También tiene que despertar un teléfono?** Es una decisión aparte y
+explícita — no todo lo que merece un puntito merece hacer sonar un celular a
+las 11 de la noche. Si la respuesta es sí, una línea más:
 
-`_notif_recordatorio_bajar()` — recordatorio nocturno de bajar bolsitas del
-freezer a la heladera (para el día siguiente de jardín). Devuelve 0 o 1 ítem:
-icono `🌙`, severidad `alerta`, título "Bajá bolsitas para mañana". La condición
-la decide `_lac_recordatorio_pendiente()` (ver `CONTEXT_BACKEND.md`): activo +
-ya pasó la hora configurada + hay leche ABIERTA en el freezer + todavía no se
-bajó ninguna hoy. Se **autolimpia** al bajar una bolsa (nace una partida
-`descongelada` con `cargada` de hoy).
+```python
+PUSH_AVISOS = [..., ('<modulo>', _notif_<modulo>)]
+```
 
-`NOTIF_PROVIDERS = [_notif_lactancia, _notif_recordatorio_bajar]`.
+Antes de agregarla, leer `CONTEXT_PUSH_MOTOR.md`: ahí está el flanco, las
+horas de silencio y los topes. **Si no se agrega, el módulo avisa igual — solo
+que in-app.**
 
-## 5. Checklist — cómo sumar notificaciones desde un módulo nuevo
+**4. En el JS del módulo**, después de cualquier alta/edición/borrado:
 
-1. Escribir `_notif_<modulo>()` en `app.py`: función sin argumentos que arma
-   y devuelve una lista de ítems con el contrato de la sección 2 (mismas 7
-   claves, ni una más ni una menos).
-2. Agregarla a `NOTIF_PROVIDERS` (una línea). Listo — no hay que tocar la
-   ruta, el context processor, ni el frontend: la campana la muestra sola.
-3. NO recalcular lógica de estado/vencimiento que ya exista en helpers del
-   módulo (mismo espíritu que `_lac_*`): el provider solo LEE y da formato,
-   no decide.
-4. Si el provider puede fallar (ej. depende de una API externa), dejar que
-   la excepción suba: `_notificaciones()` ya la aísla con try/except + log
-   `AVISO:`. No hace falta duplicar ese try/except adentro del provider.
-5. En el JS del módulo nuevo, llamar `window.Notif.refrescar()` después de
-   cualquier mutación (alta/edición/borrado) para que la campana se
-   actualice sin esperar el próximo render de página.
+```js
+if (window.Notif) window.Notif.refrescar();
+```
 
-## Frontend
+Sin esto el badge queda viejo hasta el próximo render de página.
 
-Campana `#notif-toggle` en `.header-acciones` (header, ver `CONTEXT_FRONTEND.md`)
-con pill `#notif-badge` (server-rendered vía `notif_badge`). Al abrirla se
-despliega el drawer derecho `#notif-panel` y su lista `#notif-lista`.
+**5. Actualizar el apéndice §8 de este archivo** con el provider nuevo.
 
-**`window.Notif.refrescar()`** (en `app.js`) — API pública del estándar. Hace
-`fetch('/api/notificaciones', {headers:{'X-Requested-With':'XMLHttpRequest'}})`,
-lee `{ok, total, items}`, sincroniza el badge (crea/actualiza/borra `#notif-badge`
-según `total`) y re-renderiza `#notif-lista`. Los nodos se arman con
-`createElement`/`textContent` (NUNCA `innerHTML` con datos del server). Error de
-red = silencioso (`console.warn`): la campana nunca rompe la página. **Cuándo
-llamarla desde un módulo**: después de cualquier mutación (alta/edición/borrado)
-para que el badge se actualice sin recargar — ej. `lactancia.js` la llama en
-`renderTodo()` (`if (window.Notif) window.Notif.refrescar();`).
+## 4. Las reglas que hacen que esto funcione
 
-**Flujo de refresco (3 momentos)**: (1) al cargar la página el badge viene
-server-rendered (`notif_badge`); (2) al ABRIR el panel, `initDrawers()` llama
-`Notif.refrescar()`; (3) tras una mutación, el módulo llama `Notif.refrescar()`.
+- **Un provider devuelve un NIVEL, no un evento.** Contesta "¿qué hay AHORA?"
+  cada vez que se lo llama, sin memoria y sin saber qué contestó antes.
+  Detectar que algo *apareció* es trabajo del motor de push, no del provider.
+- ⚠ **El `titulo` es la identidad del aviso, y tiene que ser ESTABLE.** El push
+  deduplica por `(provider, severidad, titulo)`. Un título con un número
+  adentro —`"3 tareas pendientes"`, `"Vence el 12/05"`— genera una clave nueva
+  cada vez que ese número cambia, y eso es **un teléfono sonando de nuevo por
+  lo mismo**. El número va en `detalle`, que no entra en ninguna clave.
+- ⚠ **El `titulo` no lleva plata, ni saldos, ni nombres de banco.** Vía push se
+  lee en la **pantalla bloqueada**, sin desbloquear el teléfono. El monto se
+  mira adentro de la app; el aviso dice que hay algo para mirar.
+- **El provider tiene que ser BARATO.** Corre en CADA render de CADA página
+  (el context processor del badge) y además cada 10 minutos en el hilo de push.
+  Una query pesada o una llamada a una API externa sin caché se paga en todas
+  las pantallas de la app. Si hace falta algo caro, cachearlo antes.
+- **El provider solo LEE y da formato.** No recalcula estados ni vencimientos
+  que ya vivan en los helpers del módulo, y no escribe nada en la base.
+- **Que falle está contemplado**: dejar que la excepción suba.
+  `_notificaciones()` la aísla con try/except + `AVISO:`, y un módulo roto
+  nunca tumba la campana. No hace falta un try/except propio adentro.
+- **La `url` va relativa** (`/lactancia`). El servidor no conoce su dirección
+  pública, y por push la resuelve el service worker.
 
-**Ítem** (`.notif-item`, un `<a href="{url}">`): `.notif-item-icono` (emoji) +
-`.notif-item-cuerpo` con `.notif-item-modulo` (pill uppercase muted = `modulo_nombre`),
-`.notif-item-titulo` (negrita), `.notif-item-detalle` (muted). Severidad → clase
-`is-{severidad}` → borde izquierdo 3px + tinte de fondo `color-mix`:
+## 5. Los dos canales
 
-| `severidad` | clase       | variable de paleta |
-|-------------|-------------|--------------------|
-| `peligro`   | `.is-peligro` | `--color-peligro` |
-| `alerta`    | `.is-alerta`  | `--color-alerta`  |
-| `info`      | `.is-info`    | `--color-acento`  |
+- **Campana** (`NOTIF_PROVIDERS`, este doc): *pull* — se evalúa cuando alguien
+  mira, y muestra el NIVEL completo. Se ve con la app abierta.
+- **Push** (`PUSH_AVISOS`, `CONTEXT_PUSH_MOTOR.md`): *report by exception* — el
+  servidor empuja, y solo el **flanco** (lo que antes no estaba). Se ve con la
+  app cerrada, en la pantalla bloqueada.
 
-Lista vacía → `.notif-vacio` ("Sin notificaciones"). CSS: sección
-"PANEL NOTIFICACIONES" al final de `style.css`.
+Son **el mismo provider** leído por dos registries distintos. Estar en la
+campana no pone nada en el push: eso se decide con una línea explícita.
 
-## Push — vive en su propio doc
+## 6. Backend (`app.py`)
 
-El aviso al teléfono con la app cerrada va en **`docs/CONTEXT_PUSH.md`**. Lo
-único que comparte con este archivo es que **lee los mismos providers**, pero
-por un registry propio (`PUSH_AVISOS`).
+- **`_notificaciones()`**: agrega todos los providers de `NOTIF_PROVIDERS`,
+  cada uno en su propio try/except con `log()` (NUNCA `print()`). Ordena por
+  severidad `peligro` → `alerta` → `info`, con sort **estable**: respeta el
+  orden interno de cada provider y el del registry entre módulos.
+- **`GET /api/notificaciones`** → `{'ok', 'total', 'items'}`. Solo lectura,
+  auth por el `before_request` de `auth.py`.
+- **`inject_notif_badge`**: expone `notif_badge` (`= len(_notificaciones())`) a
+  TODOS los templates, con try/except → 0. Acá nace la regla "el provider
+  tiene que ser barato" de §4.
 
-⚠ Agregar un provider a `NOTIF_PROVIDERS` **no** lo hace mandar pushes: no todo
-lo que merece un puntito en la campana merece despertar a alguien. Eso se
-decide con una línea explícita en `PUSH_AVISOS`.
+## 7. Frontend
+
+**`window.Notif.refrescar()`** (`app.js`) — la API pública del estándar, y lo
+único que un módulo necesita saber del frontend. Hace
+`fetch('/api/notificaciones')`, sincroniza el badge y re-renderiza la lista con
+`createElement`/`textContent` (**nunca** `innerHTML` con datos del server). Un
+error de red es silencioso: la campana no rompe la página.
+
+**Se refresca en 4 momentos**: al cargar (server-rendered vía `notif_badge`), al
+abrir el panel, tras una mutación si el módulo la llama, y cuando llega un push
+(vía el `postMessage` del service worker).
+
+El DOM, las clases y el CSS están en `CONTEXT_FRONTEND.md`: un módulo no los toca.
+
+## 8. Apéndice — los providers que existen HOY
+
+> Esto es **el ejemplo, no la definición**. La lista cambia; §1-§7 no.
+
+**`_notif_lactancia()`** — un ítem por partida ABIERTA `vencida` o
+`vence_pronto`. Reusa `_lac_params()` / `_lac_enriquecer()` tal cual (el cálculo
+vive solo en los helpers `_lac_*`). `vencida` → `peligro` + "Partida vencida";
+`vence_pronto` → `alerta` + "Partida por vencer". ⚠ Los dos títulos son FIJOS —
+ubicación, volumen y tiempo relativo van en `detalle`. Es §4 aplicado.
+
+**`_notif_recordatorio_bajar()`** — 0 o 1 ítem: `🌙`, `alerta`, "Bajá bolsitas
+para mañana"; la condición la decide `_lac_recordatorio_pendiente()`.
+
+Los dos están también en `PUSH_AVISOS`.
 
 ## Al modificar este dominio, actualizar:
-- Sección 2 (contrato) si cambia una clave o un valor posible de `severidad`.
-- Sección 3 si cambia el registry, `_notificaciones()`, la ruta o el context processor.
-- Sección 4 si cambia el provider de Lactancia, o sumar una sub-sección si se agrega un provider nuevo.
-- Nada de Push: eso va en `docs/CONTEXT_PUSH.md`.
+- §2 si cambia una clave del contrato o un valor de `severidad`.
+- §3 o §4 si cambia el procedimiento o una regla — **son el estándar**.
+- §6 / §7 si cambia el registry, la ruta, el context processor o la campana.
+- §8 al sumar o sacar un provider (y `PUSH_AVISOS` si además va al teléfono).

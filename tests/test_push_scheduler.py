@@ -57,6 +57,7 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 import app as app_module  # noqa: E402
+import config  # noqa: E402
 import database  # noqa: E402
 
 
@@ -105,7 +106,20 @@ class BaseSeco(unittest.TestCase):
         # puesta al siguiente y la linea no aparece donde se la espera.
         app_module._push_seco_dicho.clear()
 
+        # ⚠ LA CONFIG SE FIJA, NO SE HEREDA DE LA MAQUINA. Este archivo prueba
+        # el motor EN SECO, y `_push_ciclo()` lee `push_enabled` en caliente del
+        # config.json de verdad. Sin este parche, los tests pasaban o fallaban
+        # segun como tuviera el flag la maquina del que los corre: el dia que
+        # alguien prendio los avisos en su DEV para probarlos, 9 tests de este
+        # archivo se pusieron rojos sin que nadie hubiera tocado el codigo.
+        self.cfg = dict(config.DEFAULTS)
+        self.cfg['push_enabled'] = False
+        self._p_cfg = unittest.mock.patch.object(
+            config, 'cargar_config', lambda ruta=None: dict(self.cfg))
+        self._p_cfg.start()
+
     def tearDown(self):
+        self._p_cfg.stop()
         self._p_log.stop()
         self._p_dir.stop()
         shutil.rmtree(self._dir, ignore_errors=True)
