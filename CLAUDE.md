@@ -69,7 +69,7 @@
 
 **Regla**: si la tarea entra en una sola fila, **no leer los demás `CONTEXT_*.md`**. Eso es el ahorro.
 
-**Pantallazo barato del proyecto**: si existen las tools `mcp__codebase-memory-mcp__*`, usar ese grafo de código ANTES de Grep/Glob/Read masivo para ubicar rutas, funciones y llamadores (una consulta = decenas de líneas, no miles de tokens). Cuándo sí, cuándo no y cómo mantenerlo fresco: `docs/METODOLOGIA.md` §3c.
+**Pantallazo barato del proyecto**: si existen las tools `mcp__codebase-memory-mcp__*`, usar ese grafo de código ANTES de Grep/Glob/Read masivo para ubicar rutas, funciones y llamadores (una consulta = decenas de líneas, no miles de tokens). Cuándo sí, cuándo no y cómo mantenerlo fresco: `docs/METODOLOGIA.md` §3c. **El índice no se actualiza solo: reindexarlo lo hace el propio agente antes de consultar (`index_repository`, ~0,5 s), nunca se le pide al usuario.**
 
 ---
 

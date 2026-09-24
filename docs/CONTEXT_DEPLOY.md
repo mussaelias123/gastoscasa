@@ -197,8 +197,8 @@ no viaja en el repo (nada suyo se commitea).
   Verificado 2026-09-24: FondoDev seguía en 754 nodos / 45 archivos mientras el
   repo llegó a 88. (Esta doc decía antes que reindexaba al abrir sesión: era
   falso.) Un índice viejo responde igual, sin avisar que está viejo.
-- **Reindexar a mano** (al empezar una tarea de código, antes de confiar en el
-  grafo): `codebase-memory-mcp cli index_repository '{"repo_path":"E:/FondoDev"}'`
+- **Reindexar a mano = lo corre el agente, no el usuario** (al empezar una tarea
+  de código, antes de confiar en el grafo): `codebase-memory-mcp cli index_repository '{"repo_path":"E:/FondoDev"}'`
   o la tool MCP `index_repository`. Incremental, ~0,5 s. Respeta `.gitignore`
   (deja afuera `fondo.db`, `backupsdev/`, `logs/`, `__pycache__/`).
 - **Cómo lo usan los agentes** (cuándo sí, cuándo no, qué tool): `docs/METODOLOGIA.md` §3c.
