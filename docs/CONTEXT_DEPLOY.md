@@ -190,13 +190,18 @@ no viaja en el repo (nada suyo se commitea).
   **`http://localhost:9749`**. No choca con el 5050 de la app. Si no responde,
   el server no está corriendo: arrancarlo con el binario sin argumentos.
 - **Sin watcher de archivos**: 0.8.1 no lo trae (es feature de la 0.9.0 rota).
-  `auto_index=true` reindexa al abrir sesión MCP, no al guardar un archivo.
   Decisión 2026-07-26: se evaluó una tarea programada de Windows y se descartó
-  — reindexar a mano cuando haga falta.
-- **Reindexar a mano** (el auto-index solo corre al abrir sesión MCP):
-  `codebase-memory-mcp cli index_repository '{"repo_path":"E:/FondoDev"}'`
-  Es incremental, ~0,5 s. Respeta `.gitignore` (deja afuera `fondo.db`,
-  `backupsdev/`, `logs/`, `__pycache__/`).
+  — el índice se refresca a mano (punto siguiente).
+- **`auto_index` NO refresca**: solo indexa proyectos que todavía no están
+  indexados (el setting dice "new projects"); uno ya indexado no se toca.
+  Verificado 2026-09-24: FondoDev seguía en 754 nodos / 45 archivos mientras el
+  repo llegó a 88. (Esta doc decía antes que reindexaba al abrir sesión: era
+  falso.) Un índice viejo responde igual, sin avisar que está viejo.
+- **Reindexar a mano** (al empezar una tarea de código, antes de confiar en el
+  grafo): `codebase-memory-mcp cli index_repository '{"repo_path":"E:/FondoDev"}'`
+  o la tool MCP `index_repository`. Incremental, ~0,5 s. Respeta `.gitignore`
+  (deja afuera `fondo.db`, `backupsdev/`, `logs/`, `__pycache__/`).
+- **Cómo lo usan los agentes** (cuándo sí, cuándo no, qué tool): `docs/METODOLOGIA.md` §3c.
 - **Desinstalar**: `codebase-memory-mcp uninstall -y`. Ojo: deja colgados el
   binario, `~/.cache/codebase-memory-mcp/`, `~/.profile` y los scripts
   `~/.claude/hooks/cbm-*` — borrarlos a mano.
