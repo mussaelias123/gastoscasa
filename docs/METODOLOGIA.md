@@ -89,9 +89,17 @@ afirma, contestado sin abrir `app.py` (miles de líneas).
 - Las rutas salen con método `ANY`.
 
 **Frescura (lo que más muerde):** no hay watcher y `auto_index` **no refresca**
-lo ya indexado. Un índice viejo responde igual, sin avisar. Al empezar una tarea
-de código, reindexar: tool `index_repository` con `repo_path="E:/FondoDev"`
-(incremental, ~0,5 s; comando CLI y detalle en `CONTEXT_DEPLOY.md`).
+lo ya indexado. Un índice viejo responde igual, sin avisar.
+
+**Reindexar lo hace EL AGENTE que va a consultar el grafo, por su cuenta.** Nunca
+se le pide ni se le avisa al usuario: no es una decisión, es un comando de ~0,5 s
+(incremental). Antes de la primera consulta de la tarea, llamar
+`index_repository` con `repo_path="E:/FondoDev"` y nada más.
+- **NO pasar `persistence=true`**: escribe `.codebase-memory/graph.db.zst` DENTRO
+  del repo y ensucia el worktree. El default (`false`) no toca nada del repo.
+- Si falla o no responde: seguir con `Grep`/`Glob` y decirlo en el reporte.
+  No frenar la tarea ni pedirle al usuario que lo arregle.
+- Comando CLI equivalente y detalle en `CONTEXT_DEPLOY.md`.
 
 **Si esas tools no existen en tu sesión**: es una herramienta local por máquina,
 no viaja con el repo. Seguir con `Grep`/`Glob`. No instalarla ni actualizarla
