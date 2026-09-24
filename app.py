@@ -877,16 +877,44 @@ def _lac_validar_capacidad(volumen_ml, params):
 
 
 # =============================================================================
-# MÓDULO NOTIFICACIONES — helpers y registry de providers
-# Propósito: campana de notificaciones genérica en el header (reemplaza los
-# badges de nav por módulo). Cada módulo de negocio expone un "provider":
-# una función sin argumentos que devuelve una lista de ítems con el contrato
-# CERRADO documentado en docs/CONTEXT_NOTIFICATIONS.md (claves: modulo,
-# modulo_nombre, icono, titulo, detalle, url, severidad). _notificaciones()
-# agrega los providers de NOTIF_PROVIDERS; un provider roto NUNCA tumba la
-# campana (try/except individual, logueado con AVISO). Para sumar un módulo
-# nuevo: escribir su función `_notif_<modulo>()` y agregarla a
-# NOTIF_PROVIDERS — nada más (ver checklist en CONTEXT_NOTIFICATIONS.md).
+# NOTIFICACIONES — EL ESTÁNDAR DE NÚCLEO PARA AVISAR
+# =============================================================================
+#
+# ⚠ ESTE DOMINIO ES DE NÚCLEO, NO DE UN MÓDULO. Que hoy los únicos providers
+# sean los de Lactancia es un dato de hoy, no la arquitectura: mañana avisa
+# Gastos, Rutina, o un módulo que todavía no existe. TODOS avisan por acá, con
+# el mismo contrato, el mismo canal y el mismo código. Un módulo NO escribe su
+# propia campana ni su propio badge — escribe un provider y lo registra.
+#
+# (Antes cada módulo tenía su badge propio, `lac_badge`, y había que tocar el
+# header cada vez que uno quería avisar algo. Se eliminó por eso.)
+#
+# UN PROVIDER es una función sin argumentos que devuelve una lista de ítems con
+# el contrato CERRADO de 7 claves: modulo, modulo_nombre, icono, titulo,
+# detalle, url, severidad.
+#
+# PARA SUMAR UNO, el procedimiento completo está en
+# docs/CONTEXT_NOTIFICATIONS.md §3. En resumen: escribir `_notif_<modulo>()`,
+# agregarlo a NOTIF_PROVIDERS (campana) y —solo si de verdad amerita despertar
+# a alguien— a PUSH_AVISOS (teléfono). Nada más: ni la ruta, ni el context
+# processor, ni el frontend se tocan.
+#
+# LAS DOS REGLAS QUE MÁS SE ROMPEN (§4 del doc):
+#
+#   1. EL `titulo` ES LA IDENTIDAD DEL AVISO Y TIENE QUE SER ESTABLE. El push
+#      deduplica por (provider, severidad, titulo). Un título con un número
+#      adentro —"3 tareas pendientes", "Vence el 12/05"— genera una clave nueva
+#      cada vez que ese número cambia, y eso es un teléfono sonando de nuevo
+#      por lo mismo. Lo que cambia va en `detalle`, que no entra en ninguna
+#      clave ni viaja en el push.
+#
+#   2. EL PROVIDER TIENE QUE SER BARATO. Corre en CADA render de CADA página
+#      (el context processor `inject_notif_badge`) y además cada 10 minutos en
+#      el hilo de push. Una query pesada o una API externa sin caché se paga en
+#      todas las pantallas de la app.
+#
+# Un provider roto NUNCA tumba la campana: `_notificaciones()` lo aísla con un
+# try/except propio y lo loguea con AVISO.
 # =============================================================================
 
 def _notif_lactancia():
@@ -1086,6 +1114,10 @@ def _lac_bebe(cfg=None, ahora=None):
             'edad_texto': edad['edad_texto'], 'mes_de_vida': edad['mes_de_vida']}
 
 
+# El registry de la CAMPANA. Sumar un provider acá es todo lo que hace falta
+# para que aparezca en el header, en el badge y en /api/notificaciones.
+# Que hoy los dos sean de Lactancia es circunstancial: acá entra cualquier
+# módulo (ver el encabezado del bloque y CONTEXT_NOTIFICATIONS.md §3).
 NOTIF_PROVIDERS = [_notif_lactancia, _notif_recordatorio_bajar]
 
 
