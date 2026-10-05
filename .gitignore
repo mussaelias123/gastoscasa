@@ -1,6 +1,11 @@
 # Configuración local (contiene tokens y ajustes del entorno)
 config.json
 
+# Temporal de config.guardar_config(): se escribe en `config.json.<azar>.tmp` y
+# se renombra encima. Si un corte de luz deja uno, trae una copia COMPLETA de la
+# config (con secretos): que no se cuele en un `git add -A`.
+config.json.*.tmp
+
 # Variables de entorno
 .env
 

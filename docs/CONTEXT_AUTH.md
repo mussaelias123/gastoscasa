@@ -3,9 +3,10 @@
 > Leer junto con `CLAUDE.md`. Para login, sesión, control de acceso.
 
 ## Archivos del dominio
-- `auth.py` (228 líneas). Blueprint `auth_bp` con prefix `/`.
-- `templates/login.html` (216 líneas).
+- `auth.py` (~470 líneas). Blueprint `auth_bp` con prefix `/`.
+- `templates/login.html` (~210 líneas).
 - Persistencia secret: `config.json` (`secret_key`, `google_client_id`, `google_client_secret`).
+- Tests: `tests/test_auth_cerrado.py` (falla cerrado) y `tests/test_config_seguro.py` (lectura/escritura de `config.json`).
 
 ## Whitelist de emails
 Hardcoded en `auth.py → EMAILS_PERMITIDOS`:
@@ -33,8 +34,12 @@ clave `persona_dev` de `config.json` (ver `CONTEXT_CONFIG.md`).
 |--------|---------------------------|-----------------|
 | GET    | `/login`                  | `login`         |
 | GET    | `/auth/google`            | `google_login`  |
-| GET    | `/auth/google/callback`   | `callback`      |
+| GET    | `/auth/callback`          | `callback`      |
 | GET    | `/logout`                 | `logout`        |
+
+⚠ El callback es **`/auth/callback`**, no `/auth/google/callback` (así decía este doc hasta
+2026-10-02 y esa URL no existe). Es la URI de redirección que va en Google Cloud Console.
+`/login`, `/auth/google` y `/auth/callback` cierran si faltan credenciales (ver "La app falla CERRADO").
 
 ## Flujo
 1. `init_auth(app, config_file)` se llama desde `app.py` antes de registrar rutas.
@@ -55,7 +60,33 @@ clave `persona_dev` de `config.json` (ver `CONTEXT_CONFIG.md`).
      apagado de emergencia (la lápida nunca llegaría al dispositivo). No expone
      datos: es código, y el cuerpo lo decide `sw_enabled` de `config.json`.
    - Y `session['user_email']` falta o no está en whitelist.
-4. Si `google_client_id` o `google_client_secret` faltan en config → middleware deja pasar (modo bootstrap para configurar).
+4. **Sin credenciales de Google → CERRADO** (hasta 2026-10-02 acá decía "deja pasar, modo bootstrap"). Si
+   `google_client_id` o `google_client_secret` faltan en la config EN CALIENTE, o `config.json` está ilegible, el
+   middleware redirige todo a `/login?error=no_configurado`. Orden: `rutas_publicas` → bypass DEV → **credenciales**
+   → sesión → whitelist. Detalle y recuperación en la sección siguiente.
+
+## La app falla CERRADO (sin credenciales de Google no entra nadie)
+Antes, sin credenciales el middleware "dejaba pasar para poder configurar". Por el túnel de ngrok eso era **todo
+internet**, y no hacía falta ningún descuido: un `config.json` roto, a medias o leído justo mientras se escribía
+hacía que `cargar_config()` devolviera DEFAULTS —sin credenciales— y la app quedaba abierta (comprobado: `GET /gastos`
+sin sesión daba 200). El modo bootstrap **se eliminó**: la puesta en marcha es 100% por `config.json`
+(`CONTEXT_CONFIG.md`), no hay primer arranque por la web.
+
+- **Qué cierra**: toda ruta fuera de `rutas_publicas` y del bypass DEV, páginas y POST, **incluso con sesión válida**
+  (una config que no se puede verificar no se arregla con la cookie de ayer). Config ilegible = sin credenciales.
+- **Las rutas del blueprint**: `/login` muestra el aviso `no_configurado` aunque no venga en la URL. Ese chequeo va
+  ANTES de mirar la sesión: al revés, con una cookie válida mandaría a `/`, el middleware lo devolvería a `/login` y
+  habría un **bucle de redirecciones**. `/auth/google` y `/auth/callback` NO hablan con Google: redirigen al aviso.
+- **Qué ve el usuario**: "Inicio de sesión no disponible: el servidor no tiene las credenciales de Google en su
+  `config.json`, o no puede leerlo; quien administra tiene que revisarlo y reiniciar el servicio" (`login.html`).
+- **Log**: `AVISO: login CERRADO — ...` (1 por minuto, sin datos del request) y, si el archivo está roto, `AVISO:
+  config.json ilegible: ...` con tipo y posición del error (de `config.py`).
+- **Recuperación**: mirar el log → cargar/arreglar `config.json` → **reiniciar el servicio**. Las credenciales se
+  registran en Authlib UNA vez, en `init_auth`: cargarlas con la app andando destraba el middleware, pero el cliente
+  de Authlib sigue con el placeholder `no-configurado` y Google las rechaza. Un JSON roto que se arregla sí se nota solo.
+- **Arrancar con el archivo ilegible**: `init_auth` no inventa una `secret_key` sobre un config que no puede leer;
+  corta con `ConfigIlegible` ("config.json ilegible: arreglarlo antes de arrancar").
+- DEV sin OAuth: el bypass (abajo). Congelado en `tests/test_auth_cerrado.py`: cada test "cerrado" tiene su contracara "abierto".
 
 ## El logout limpia las suscripciones push
 `logout()` borra las filas de `push_suscripciones` de ese `user_email` (vía
@@ -151,7 +182,9 @@ El criterio y la regla para nombrar una clave nueva están en
 2. **Whitelist es hardcode intencional** — se busca control estricto, no escala.
 3. Cambiar `secret_key` invalida todas las sesiones (logout forzado).
 4. OAuth scope: `openid email profile` (mínimo necesario).
-5. La ruta `/auth/google/callback` debe estar configurada **igual** en Google Cloud Console.
+5. La ruta `/auth/callback` debe estar configurada **igual** en Google Cloud Console (URI de redirección autorizada).
+6. **Fallar cerrado**: ningún código nuevo puede "dejar pasar" por faltar credenciales, estar la config ilegible o
+   fallar al leerla. Ante la duda, redirigir a `/login?error=no_configurado`.
 
 ## Al modificar este dominio, actualizar:
 - Whitelist en este doc si se agrega/quita email.

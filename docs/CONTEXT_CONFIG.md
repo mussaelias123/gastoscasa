@@ -3,17 +3,19 @@
 > Leer junto con `CLAUDE.md`. Para todo lo relacionado a `config.json`.
 
 ## Archivos
-- `config.py` (~130 líneas). API mínima: `cargar_config`, `guardar_config`, `es_primer_inicio`.
+- `config.py` (~610 líneas, casi todo comentario). API: `cargar_config`, `guardar_config`, `es_primer_inicio`, `ConfigIlegible`.
 - `config.json` (gitignored). Fuente única de verdad runtime.
+- `config.json.<azar>.tmp` (gitignored): temporal de `guardar_config`. No debería quedar ninguno suelto (tiene secretos).
 - `config.example.json` (en git). Plantilla.
 - `.env` (gitignored): solo si hace falta para ngrok local.
+- Tests: `tests/test_config_seguro.py` (lectura/escritura segura) y `tests/test_cfg_secretos.py` (recorte al template).
 
 ## Claves del config (DEFAULTS en `config.py`)
 
 | Clave                        | Default      | Uso                                          |
 |------------------------------|--------------|----------------------------------------------|
 | `port`                       | `5000`       | Puerto Flask                                 |
-| `first_run`                  | `True`       | Banner de primer inicio                      |
+| `first_run`                  | `True`       | Ya no hace falta el "primer arranque" por la web: poner `false` (ver "Puesta en marcha"). Con `true` `run_flask` solo escucha en localhost, NO levanta ngrok y `gastos.html` muestra un banner. No abre nada |
 | `ngrok_enabled`              | `False`      | Si arranca túnel ngrok                       |
 | `ngrok_authtoken`            | `""`         | Token ngrok                                  |
 | `ngrok_domain`               | `""`         | Dominio fijo (ej: miller-...)                |
@@ -41,9 +43,9 @@
 | `cotizacion_fecha`           | `None`       | Fecha del valor                              |
 | `cotizacion_ultimo_intento`  | `None`       | Timestamp último intento                     |
 | `cotizacion_ok`              | `False`      | Resultado último intento                     |
-| `google_client_id`           | `""`         | OAuth                                        |
-| `google_client_secret`       | `""`         | OAuth                                        |
-| `secret_key`                 | `""`         | Flask session signing                        |
+| `google_client_id`           | `""`         | OAuth. **Obligatoria**: sin las dos credenciales el login queda CERRADO (`CONTEXT_AUTH.md`). Se registran en Authlib al arrancar: cambiarlas exige reiniciar el servicio |
+| `google_client_secret`       | `""`         | OAuth. Ídem. Es secreta: nunca al log ni al HTML |
+| `secret_key`                 | `""`         | Flask session signing. Se genera sola en el primer arranque si falta (`init_auth`) |
 | `auth_disabled`              | `False`      | Bypass login SOLO dev (triple cerrojo, ver `auth.py`) |
 | `persona_dev`                | `"elias"`    | `elias` \| `mari`. Quién es el usuario con el bypass DEV activo: la sesión falsa es `dev@local`, que no está en el mapa email→persona de `auth.py`, y el módulo Personal necesita saber de quién es la cuenta. Cambiarla permite probar la vista de Mari sin OAuth. **En PROD no se lee nunca** (ahí la persona sale del email de Google) |
 | `sw_enabled`                 | `False`      | Interruptor del **service worker** (PWA). `False` → la ruta `/sw.js` sirve la LÁPIDA (un SW que borra todas las cachés, se desregistra y suelta el control) y `base.html` no registra nada: además barre lo que haya quedado. `True` → sirve el SW real y la página lo registra. Desde la etapa 3 ese SW **hace cosas**: precachea el esqueleto (~460 KiB: `style.css` y `app.js` con `?v=`, más las 4 fuentes) y atiende una **lista blanca de `/static/`** con cache-first — las páginas, que vienen con los saldos adentro, y las rutas `/api/*` no entran nunca. Detalle en `CONTEXT_FRONTEND.md`. Se lee EN CALIENTE (`cargar_config()` va al disco en cada llamada): apagarlo es editar `config.json`, sin deploy ni reiniciar el servicio. ⚠ **En un dispositivo que YA lo instaló, volver el flag a `False` no alcanza con recargar**: el SW activo no usa `skipWaiting()`, así que la lápida entra recién cuando se cierran TODAS las pestañas del sitio — o al toque, con el botón "Reparar app" de Settings. **Se escribe como booleano JSON sin comillas**: un `"false"` entre comillas es un string no vacío y PRENDERÍA el service worker (por eso el código lo lee con `is True`, igual que `auth_disabled`). **No tiene UI a propósito**: es un kill switch, no una preferencia |
@@ -75,14 +77,47 @@ re-suscribir cada dispositivo a mano. Por eso el script **aborta** si
 `config.json` ya tiene `push_vapid_publica` cargada (se saltea con `--forzar`).
 
 ## API
-- `cargar_config(ruta=None)` → dict con DEFAULTS + overrides del archivo. **Paletas: merge por clave** — si `config.json` trae una paleta guardada con menos claves que DEFAULTS (ej. anterior a `texto-invertido`), las claves nuevas de DEFAULTS sobreviven y los overrides guardados se respetan.
-- `guardar_config(data, ruta=None)` → merge `data` sobre lo existente y persiste.
+- `cargar_config(ruta=None)` → dict con DEFAULTS + overrides del archivo. **Paletas: merge por clave** — si `config.json` trae una paleta guardada con menos claves que DEFAULTS (ej. anterior a `texto-invertido`), las claves nuevas de DEFAULTS sobreviven y los overrides guardados se respetan. **Nunca lanza**: archivo inexistente → DEFAULTS; ilegible (tras reintentos) → DEFAULTS + `AVISO:`.
+- `guardar_config(data, ruta=None)` → merge `data` sobre lo existente y persiste, bajo candado y de forma atómica. Lanza `ConfigIlegible` SIN escribir nada si el archivo existe y no se puede leer.
+- `ConfigIlegible` → `Exception` (no `ValueError`, a propósito: las rutas atrapan `ValueError` antes y contestarían 400).
 - `es_primer_inicio()` → True si `first_run==True`.
 - `LIMITES_LACTANCIA` → dict `{clave_corta: (min, max)}` con los rangos válidos de los parámetros numéricos del módulo. Lo valida el servidor en `POST /api/lactancia/config`, además del `min`/`max` del HTML.
 - `MARCADORES_SECRETOS` → tupla de fragmentos de nombre: `('secret', 'token', 'password', 'clave_privada')`.
 - `es_clave_secreta(clave)` → True si el NOMBRE contiene alguno de esos fragmentos.
 - `sin_secretos(cfg)` → copia PLANA de `cfg` sin esas claves. Es lo que
   `app.py → inject_config()` le pasa a los templates bajo `cfg`.
+
+## Lectura y escritura seguras (desde 2026-10-02)
+`config.json` guarda lo que no se recupera (credenciales de Google, `secret_key`, VAPID, ngrok) y se escribe seguido
+(cotización al arrancar / 08:00 / 17:00 y cada guardado de ajustes). Antes `open('w')` truncaba primero: un lector veía el
+archivo a medias (~18% de las lecturas, medido), `cargar_config` se tragaba el error y devolvía DEFAULTS —sin credenciales— y
+la app quedaba abierta; y un `guardar_config` que leía a medias escribía DEFAULTS + su cambio y **borraba los secretos para
+siempre** (bastaban dos escritores a la vez). El porqué largo está en `config.py` ("LECTURA Y ESCRITURA SEGURAS").
+
+- **Candado** `_LOCK` (RLock, de proceso) sobre todo el leer-modificar-escribir y sobre cada lectura.
+- **Escritura atómica**: temporal `config.json.<azar>.tmp` en la MISMA carpeta (`indent=2`, `ensure_ascii=False`, `fsync`) +
+  `os.replace`. En Windows falla con `PermissionError` si otro proceso (editor, antivirus) tiene abierto el destino: reintenta
+  ~1 s. El temporal se borra en TODO camino de error (si ni así, `AVISO:` con el nombre). `.gitignore` cubre `config.json.*.tmp`.
+- **`guardar_config` es estricto**: JSON roto o vacío, raíz que no es objeto o UTF-8 inválido → `ConfigIlegible` y no escribe
+  nada (ni un temporal). Si el archivo no existe, parte de DEFAULTS y lo crea.
+- **`cargar_config` reintenta** (4 × 50 ms: cubre a un humano guardando con un editor) y lee UTF-8 con o sin BOM (lo
+  guardan varios editores de Windows y PowerShell 5.1). Un `AVISO:` por minuto como mucho (se llama en cada request); nunca loguea el contenido.
+- **Si `config.json` se rompe con la app andando**: login CERRADO para todos (`CONTEXT_AUTH.md`), `AVISO: config.json
+  ilegible: ...` con tipo y línea/columna del error, y los guardados de ajustes fallan SIN tocar el archivo (las rutas de
+  `app.py` lo devuelven por su `except Exception`; los schedulers lo loguean; `/settings` no tiene `try` y da 500). Se arregla
+  el JSON a mano, sin reiniciar. **Arrancar** con el archivo ilegible: `init_auth` corta con `ConfigIlegible`.
+- Límite: el candado es de PROCESO. Dos procesos escribiendo el mismo archivo no se frenan entre sí (`os.replace` solo protege a
+  los lectores).
+
+## Puesta en marcha: 100% por `config.json` (no hay primer arranque web)
+Decisión del usuario: la configuración inicial se edita en `config.json`, no en la web. Sin credenciales de Google la app no
+deja entrar a nadie (`CONTEXT_AUTH.md`), así que tampoco hay "modo configuración" por la web.
+1. Crear `config.json` (copiar `config.example.json`). Sin archivo, la app lo crea con DEFAULTS + `secret_key`, pero queda cerrada.
+2. Agregar `google_client_id` y `google_client_secret` (Google Cloud Console → Credenciales → ID de cliente OAuth; URI de
+   redirección autorizada: `https://<dominio>/auth/callback`). `config.example.json` no trae esas dos claves: se escriben a mano.
+3. `"first_run": false` (con el DEFAULT `true`, `run_flask` no levanta ngrok).
+4. PROD: `ngrok_enabled`, `ngrok_authtoken`, `ngrok_domain`, `port`. DEV sin OAuth: `auth_disabled: true` con ngrok apagado.
+5. Arrancar: `secret_key` se genera y guarda sola. Cambiar credenciales después → reiniciar el servicio.
 
 ## Qué de la config llega a los templates (y qué no)
 

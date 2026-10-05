@@ -14,6 +14,13 @@
 #   5. Si el email está en la lista de permitidos, se crea la sesión.
 #   6. Si no, se muestra un error de "acceso denegado".
 #
+# FALLA CERRADO:
+#   Si config.json no trae google_client_id / google_client_secret (o no se
+#   puede leer), la app queda CERRADA para todos: todo redirige a
+#   /login?error=no_configurado. Antes dejaba pasar a cualquiera ("para poder
+#   configurar"), y por el túnel de ngrok eso era todo internet. La puesta en
+#   marcha se hace editando config.json, no desde la web. Ver require_login.
+#
 # EMAILS PERMITIDOS:
 #   Solo estos emails de Google pueden acceder:
 #     - mussaelias123@gmail.com
@@ -25,12 +32,15 @@ import os
 import json
 import secrets
 import functools
+import threading
+import time
 from datetime import timedelta
 from flask import (
     Blueprint, session, redirect, url_for, request,
     render_template, flash, current_app
 )
 from authlib.integrations.flask_client import OAuth
+import config as cfg_module
 from logutil import log
 
 # ── Blueprint de autenticación ───────────────────────────────────────────────
@@ -71,6 +81,53 @@ def persona_de_email(email, defecto=None):
     return PERSONAS_POR_EMAIL.get((email or '').strip().lower(), defecto)
 
 
+# ── Login CERRADO cuando faltan las credenciales de Google ───────────────────
+# Es la única decisión de este bloque: sin credenciales NO se deja pasar a nadie.
+# Se aplica en el middleware y en las tres rutas que hablan con Google o
+# muestran el login, siempre contra la config EN CALIENTE (la que se lee del
+# disco en cada request), no contra la del arranque.
+#
+# Una config ilegible cae acá sola: `cargar_config` devuelve DEFAULTS, que no
+# traen credenciales. Por eso un config.json roto o a medias deja la app
+# cerrada y no abierta.
+_AVISO_CERRADO_CADA = 60.0       # segundos entre AVISOs: el middleware corre en cada request
+_aviso_cerrado = {'ultimo': None}
+_lock_aviso_cerrado = threading.Lock()
+
+
+def _faltan_credenciales(cfg):
+    """True si la config no trae las dos credenciales de Google OAuth."""
+    return not cfg.get('google_client_id') or not cfg.get('google_client_secret')
+
+
+def _cfg_en_caliente():
+    """La config leída del disco AHORA, desde las rutas del blueprint (que no
+    ven el `config_file` de `init_auth`, así que se guarda en app.config)."""
+    return cfg_module.cargar_config(current_app.config.get('AUTH_CONFIG_FILE'))
+
+
+def _login_cerrado():
+    """
+    Respuesta para todo pedido que llega sin credenciales de Google en la
+    config: AVISO en el log (como mucho uno por minuto, no uno por request) y
+    redirect al login con el aviso `no_configurado`.
+
+    El log no incluye la ruta pedida ni nada del request: la ruta la escribe
+    quien pide, y una línea de log no es lugar para texto ajeno.
+    """
+    ahora = time.monotonic()
+    with _lock_aviso_cerrado:
+        ultimo = _aviso_cerrado['ultimo']
+        avisar = ultimo is None or ahora - ultimo >= _AVISO_CERRADO_CADA
+        if avisar:
+            _aviso_cerrado['ultimo'] = ahora
+    if avisar:
+        log("AVISO: login CERRADO — config.json no tiene google_client_id / "
+            "google_client_secret (o no se pudo leer). Nadie entra hasta "
+            "cargarlas y reiniciar el servicio.")
+    return redirect(url_for('auth.login', error='no_configurado'))
+
+
 def init_auth(app, config_file):
     """
     Inicializa la autenticación OAuth con Google.
@@ -79,19 +136,36 @@ def init_auth(app, config_file):
     Parámetros:
         app: la instancia de Flask
         config_file: ruta al config.json (para leer client_id y secret)
-    """
-    import config as cfg_module
 
+    Lanza `ConfigIlegible` si config.json existe pero no se puede leer: ver
+    "Secret key persistente".
+    """
     cfg = cfg_module.cargar_config(config_file)
+
+    # Las rutas del blueprint (login, auth/google, auth/callback) necesitan leer
+    # la config en caliente y no ven este `config_file`.
+    app.config['AUTH_CONFIG_FILE'] = config_file
 
     # ── Secret key persistente ───────────────────────────────────────────────
     # Flask necesita un secret_key fijo para que las sesiones (cookies)
     # sobrevivan reinicios del servidor. Si usamos os.urandom() cada vez,
     # se pierden todas las sesiones al reiniciar.
+    #
+    # Si config.json está ilegible, `cargar_config` devolvió DEFAULTS (sin
+    # secret_key) y se llega acá a "generar una nueva". NO se escribe: sería
+    # inventar una clave sobre un archivo que ya tiene la suya —y las
+    # credenciales— y no se puede leer. `guardar_config` se niega y acá eso
+    # corta el arranque con un mensaje claro: arrancar a ciegas dejaría la app
+    # sin sesiones persistentes y sin saber por qué.
     secret_key = cfg.get('secret_key', '')
     if not secret_key:
         secret_key = secrets.token_hex(32)
-        cfg_module.guardar_config({'secret_key': secret_key}, config_file)
+        try:
+            cfg_module.guardar_config({'secret_key': secret_key}, config_file)
+        except cfg_module.ConfigIlegible as e:
+            raise cfg_module.ConfigIlegible(
+                f"config.json ilegible: arreglarlo antes de arrancar (no se "
+                f"genera ni se guarda nada a ciegas). Detalle: {e}") from e
         log("OK: Secret key generada y guardada en config.json.")
 
     app.secret_key = secret_key
@@ -103,6 +177,12 @@ def init_auth(app, config_file):
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
     # ── Configurar OAuth con Google ──────────────────────────────────────────
+    # ⚠ Las credenciales se registran en Authlib UNA vez, ACÁ, al arrancar. El
+    # middleware sí lee la config en caliente (para cerrar el login si faltan),
+    # pero cargar credenciales en config.json con la app corriendo NO alcanza:
+    # el cliente de Authlib sigue con las del arranque (o con el placeholder
+    # 'no-configurado') y Google las rechaza. Después de editar config.json hay
+    # que REINICIAR el servicio.
     google_client_id = cfg.get('google_client_id', '')
     google_client_secret = cfg.get('google_client_secret', '')
 
@@ -178,9 +258,19 @@ def init_auth(app, config_file):
                 session['user_name'] = 'DEV'
             return None
 
-        # Si no hay OAuth configurado, dejar pasar (para que puedan configurar)
-        if not cfg_actual.get('google_client_id') or not cfg_actual.get('google_client_secret'):
-            return None
+        # ── FALLAR CERRADO ────────────────────────────────────────────────────
+        # Sin credenciales de Google en la config en caliente (faltan, o
+        # config.json está ilegible y `cargar_config` devolvió DEFAULTS), NO se
+        # deja pasar a nadie. Esto antes decía "dejar pasar, para que puedan
+        # configurar": con el túnel de ngrok, un config.json roto o a medias
+        # dejaba la app abierta a todo internet. La puesta en marcha ya no es
+        # por la web: es editar config.json y reiniciar (ver CONTEXT_CONFIG.md).
+        #
+        # El orden importa: va ANTES de mirar la sesión. Una config que no se
+        # puede leer es un estado que no se puede verificar, y una cookie
+        # firmada de ayer no lo arregla.
+        if _faltan_credenciales(cfg_actual):
+            return _login_cerrado()
 
         # Verificar sesión
         if not session.get('user_email'):
@@ -203,7 +293,22 @@ def login():
     """
     Página de login. Muestra un botón de "Iniciar sesión con Google".
     Si ya está logueado, redirige al inicio.
+
+    Si faltan las credenciales de Google en la config, muestra SIEMPRE el aviso
+    `no_configurado`, aunque no venga en la URL: quien llega acá a mano (un
+    favorito, un link viejo) tiene que enterarse de que el login no anda.
+
+    ⚠ ESE CHEQUEO VA PRIMERO, ANTES de mirar la sesión, y no es estética: es lo
+    que evita un BUCLE DE REDIRECCIONES. Con una cookie válida de ayer y la
+    config sin credenciales (o ilegible), si esto mirara la sesión primero
+    mandaría a `/`; el middleware, que ve que faltan credenciales, devolvería
+    a `/login?error=no_configurado`; y así sin fin: el navegador mostraría
+    "demasiadas redirecciones" en vez del aviso. Por eso, sin credenciales, acá
+    NUNCA se redirige a `index`, aunque haya sesión.
     """
+    if _faltan_credenciales(_cfg_en_caliente()):
+        return render_template('login.html', error='no_configurado')
+
     if session.get('user_email') and session['user_email'] in EMAILS_PERMITIDOS:
         return redirect(url_for('index'))
 
@@ -216,7 +321,14 @@ def google_login():
     """
     Inicia el flujo OAuth con Google.
     Redirige al usuario a la página de login de Google.
+
+    Sin credenciales en la config NO se habla con Google: el cliente de Authlib
+    estaría registrado con el placeholder 'no-configurado' y lo único que se
+    lograría es mandar al usuario a un error de Google.
     """
+    if _faltan_credenciales(_cfg_en_caliente()):
+        return _login_cerrado()
+
     # Construir la redirect_uri dinámicamente para que funcione con ngrok
     redirect_uri = url_for('auth.callback', _external=True)
 
@@ -239,7 +351,13 @@ def callback():
     """
     Google redirige aquí después de que el usuario se autentica.
     Verifica el email y crea (o rechaza) la sesión.
+
+    Sin credenciales en la config no se crea ninguna sesión, ni siquiera si el
+    pedido trae un `code` de Google: es el mismo cierre que en el middleware.
     """
+    if _faltan_credenciales(_cfg_en_caliente()):
+        return _login_cerrado()
+
     try:
         token = oauth.google.authorize_access_token()
     except Exception as e:
