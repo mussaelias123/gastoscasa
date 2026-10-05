@@ -154,7 +154,11 @@ Cada página hija define su propio {% block contenido %}.
   </style>
 
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ static_version }}">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  {# Librerías de terceros: SIEMPRE locales, en static/vendor/<lib>-<versión>/, nunca
+     de un CDN (un paquete envenenado correría adentro de la app, con los saldos a
+     la vista). Va DESPUÉS de style.css, como siempre, para no mover la cascada.
+     Cómo actualizarlas: docs/CONTEXT_SEGURIDAD.md. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/flatpickr-4.6.13/flatpickr.min.css') }}?v={{ static_version }}">
 </head>
 
 {# ── PWA: clave PÚBLICA de VAPID ────────────────────────────────────────────
@@ -314,8 +318,8 @@ Cada página hija define su propio {% block contenido %}.
   </div>
   {% endif %}
 
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
+  <script src="{{ url_for('static', filename='vendor/flatpickr-4.6.13/flatpickr.min.js') }}?v={{ static_version }}"></script>
+  <script src="{{ url_for('static', filename='vendor/flatpickr-4.6.13/l10n/es.js') }}?v={{ static_version }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}?v={{ static_version }}"></script>
   {% block scripts %}{% endblock %}
 

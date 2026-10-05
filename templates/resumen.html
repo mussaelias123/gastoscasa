@@ -6,7 +6,7 @@
 
 {% block contenido %}
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chartjs-4.4.4/chart.umd.js') }}?v={{ static_version }}"></script>
 
 <script>
 var MOVIMIENTOS   = {{ movimientos_json | tojson }};

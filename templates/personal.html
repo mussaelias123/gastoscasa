@@ -192,7 +192,7 @@
 
 {% block scripts %}
 {% if movimientos_json %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chartjs-4.4.4/chart.umd.js') }}?v={{ static_version }}"></script>
 <script>
 /* Los mismos nombres que espera static/resumen.js en /resumen. GASTOS_FIJOS
    va vacío a propósito: son del fondo familiar, y su sección está escondida

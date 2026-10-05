@@ -68,6 +68,33 @@ var CATEGORIAS = {
 //     fondo familiar y no tiene persona ni ámbito.
 var CATEGORIAS_VEDADAS_PERSONAL = ['Sueldo', 'Fijo'];
 
+// ── Escape de HTML ──────────────────────────────────────────────────────────
+// REGLA: todo dato que viene del servidor o del usuario y se arma como HTML a
+// mano (innerHTML, concatenando '<td>' + dato + '</td>') pasa por escHtml().
+// Lo que no se escapa lo interpreta el navegador como código: una categoría
+// guardada como <img src=x onerror=...> se ejecutaría en la pantalla de la otra
+// persona. Sirve para texto y para atributos entre comillas (escapa & < > " ').
+// Lo más seguro sigue siendo no armar HTML: createElement + textContent no
+// necesitan escape. Los demás .js tienen su propio helper local (esc /
+// escapeHtml) porque viven dentro de IIFEs y no dependen del orden de carga
+// de este archivo.
+function escHtml(s) {
+    return String(s === null || s === undefined ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Devuelve `valor` solo si está en la lista blanca; si no, `porDefecto`.
+// Para armar clases CSS (class="badge-' + ...) con datos del servidor: la clase
+// sale de una lista cerrada, nunca del dato. Escapar no alcanza ahí: un valor
+// con un espacio seguiría metiendo dos clases.
+function valorPermitido(valor, permitidos, porDefecto) {
+    return permitidos.indexOf(valor) !== -1 ? valor : porDefecto;
+}
+
 // Llena un <select> con las categorías correspondientes al tipo dado.
 // Si se pasa valorSeleccionado, pre-selecciona esa opción.
 // `excluir` (array de nombres) saca categorías de la lista — lo usa el modo
@@ -1730,14 +1757,19 @@ function activarEdicion(fila) {
     var htmlOriginal = [];
     celdas.forEach(function(td) { htmlOriginal.push(td.innerHTML); });
 
+    // Todo lo que sale de los data-attributes pasa por escHtml() antes de ir a
+    // innerHTML: `dataset` devuelve el texto ya decodificado, o sea crudo, y un
+    // valor con comillas se saldría del atributo value="..." (o con "<" metería
+    // código). La regla vale para toda esta función.
+
     // Celda 0: fecha
     celdas[0].innerHTML =
-        '<input type="date" class="input-inline" name="fecha" value="' + fecha + '">';
+        '<input type="date" class="input-inline" name="fecha" value="' + escHtml(fecha) + '">';
 
     // Celda 1: descripcion
     celdas[1].innerHTML =
         '<input type="text" class="input-inline input-descripcion" name="descripcion" ' +
-        'value="' + descripcion.replace(/"/g, '&quot;') + '" maxlength="200">';
+        'value="' + escHtml(descripcion) + '" maxlength="200">';
 
     // Celda 2: Info — persona + moneda + tipo (los 3 juntos)
     celdas[2].innerHTML =
@@ -1758,7 +1790,7 @@ function activarEdicion(fila) {
 
     // Celda 3: categoría — opciones según el tipo actual
     var optsCategoria = (CATEGORIAS[tipo] || CATEGORIAS.gasto).map(function(c) {
-        return '<option value="' + c + '"' + (c === categoria ? ' selected' : '') + '>' + c + '</option>';
+        return '<option value="' + escHtml(c) + '"' + (c === categoria ? ' selected' : '') + '>' + escHtml(c) + '</option>';
     }).join('');
     celdas[3].innerHTML =
         '<select class="input-inline" name="categoria">' + optsCategoria + '</select>';
@@ -1769,12 +1801,12 @@ function activarEdicion(fila) {
     var labelDisplay  = tipo === 'gasto' ? '' : 'none';
     celdas[4].innerHTML =
         '<input type="number" class="input-inline input-monto" name="monto" ' +
-        'value="' + monto + '" step="0.01" min="0">' +
+        'value="' + escHtml(monto) + '" step="0.01" min="0">' +
         '<label class="checkbox-envio-inline" style="display:' + labelDisplay + '">' +
         '<input type="checkbox" class="chk-envio-inline"' + (envioVisible ? ' checked' : '') + '> Incluye envío' +
         '</label>' +
         '<input type="number" class="input-inline input-envio-inline" name="costo_envio" ' +
-        'value="' + costoEnvio + '" step="0.01" min="0" placeholder="0" style="display:' + envioDisplay + '">';
+        'value="' + escHtml(costoEnvio) + '" step="0.01" min="0" placeholder="0" style="display:' + envioDisplay + '">';
 
     // Celda 5: botones guardar/cancelar
     celdas[5].innerHTML =
@@ -2098,6 +2130,14 @@ function crearFilaMovimiento(mov) {
     var monedaLabel   = mov.moneda  === 'ars'   ? 'AR$'   : 'USD';
     var tipoLabel     = mov.tipo    === 'ingreso'? 'Ingreso' : 'Gasto';
 
+    // Las clases de los badges salen de una lista blanca, no del dato crudo:
+    // persona/moneda/tipo van dentro de class="..." y un valor con comillas o
+    // espacios abriría atributos nuevos. El valor por defecto coincide con el
+    // de los rótulos de arriba (lo que no es "elias" se rotula "Mari", etc.).
+    var personaCls = valorPermitido(mov.persona, ['elias', 'mari'], 'mari');
+    var monedaCls  = valorPermitido(mov.moneda,  ['ars', 'usd'],   'usd');
+    var tipoCls    = valorPermitido(mov.tipo,    ['ingreso', 'gasto', 'cambio'], 'gasto');
+
     var factorAplicado = mov.factor_aplicado != null ? mov.factor_aplicado : null;
     var montoEfectivo  = factorAplicado !== null ? mov.monto * factorAplicado : mov.monto;
     var montoFmt       = mov.moneda === 'ars' ? fmtArs(montoEfectivo) : fmtUsd(montoEfectivo);
@@ -2105,7 +2145,7 @@ function crearFilaMovimiento(mov) {
     var badgeEnvio = '';
     if (factorAplicado !== null) {
         var brutoFmt = mov.moneda === 'ars' ? fmtArs(mov.monto) : fmtUsd(mov.monto);
-        badgeEnvio = '<span class="badge-envio">Sueldo: ' + brutoFmt + ' × ' + factorAplicado + '</span>';
+        badgeEnvio = '<span class="badge-envio">Sueldo: ' + brutoFmt + ' × ' + escHtml(factorAplicado) + '</span>';
     } else if (mov.costo_envio) {
         var envioFmt = mov.moneda === 'ars' ? fmtArs(mov.costo_envio) : fmtUsd(mov.costo_envio);
         badgeEnvio = '<span class="badge-envio">📦 ' + envioFmt + '</span>';
@@ -2113,37 +2153,42 @@ function crearFilaMovimiento(mov) {
 
     var badgeCuota = '';
     if (mov.cuota_numero) {
-        badgeCuota = '<span class="badge-cuota">Cuota ' + mov.cuota_numero + '/' + mov.cuota_total + '</span>';
+        badgeCuota = '<span class="badge-cuota">Cuota ' + escHtml(mov.cuota_numero) + '/' + escHtml(mov.cuota_total) + '</span>';
     }
 
-    // Escapar descripción para uso en atributo HTML y en celda
-    var descAttr  = mov.descripcion.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    var descTexto = mov.descripcion.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // La descripción va a la celda como HTML (escapada) y al data-attribute
+    // CRUDA: setAttribute() no interpreta HTML, así que escaparla ahí la dejaba
+    // doblemente escapada (el dataset devolvía "&amp;"), distinta de la de las
+    // filas que arma Jinja, y la edición en línea —que la escapa al meterla en
+    // el input— la mostraría con el "&amp;" a la vista.
+    var desc      = (mov.descripcion === null || mov.descripcion === undefined)
+        ? '' : String(mov.descripcion);
+    var descTexto = escHtml(desc);
 
     var tr = document.createElement('tr');
     tr.setAttribute('data-persona',    mov.persona);
     tr.setAttribute('data-moneda',     mov.moneda);
     tr.setAttribute('data-id',         mov.id);
     tr.setAttribute('data-fecha',      mov.fecha);
-    tr.setAttribute('data-descripcion',descAttr);
+    tr.setAttribute('data-descripcion',desc);
     tr.setAttribute('data-tipo',       mov.tipo);
     tr.setAttribute('data-monto',      mov.monto);
     tr.setAttribute('data-categoria',  mov.categoria || '');
     tr.setAttribute('data-costo-envio',mov.costo_envio || '');
 
     tr.innerHTML =
-        '<td data-label="Fecha">' + fmtFecha(mov.fecha) + '</td>' +
+        '<td data-label="Fecha">' + escHtml(fmtFecha(mov.fecha)) + '</td>' +
         '<td class="col-descripcion" data-label="Descripción">' + descTexto + '</td>' +
         '<td class="col-info" data-label="Info">' +
-            '<span class="badge-persona badge-' + mov.persona + '" data-corto="' + personaNombre.charAt(0) + '">' + personaNombre + '</span> ' +
-            '<span class="badge-moneda badge-moneda-' + mov.moneda + '">' + monedaLabel + '</span> ' +
-            '<span class="badge-tipo badge-' + mov.tipo + '">' + tipoLabel + '</span>' +
+            '<span class="badge-persona badge-' + personaCls + '" data-corto="' + personaNombre.charAt(0) + '">' + personaNombre + '</span> ' +
+            '<span class="badge-moneda badge-moneda-' + monedaCls + '">' + monedaLabel + '</span> ' +
+            '<span class="badge-tipo badge-' + tipoCls + '">' + tipoLabel + '</span>' +
         '</td>' +
-        '<td data-label="Categoría">' + (mov.categoria || '—') + '</td>' +
+        '<td data-label="Categoría">' + escHtml(mov.categoria || '—') + '</td>' +
         '<td class="col-monto" data-label="Monto">' + montoFmt + badgeEnvio + badgeCuota + '</td>' +
         '<td class="col-acciones">' +
             '<button type="button" class="btn btn-editar btn-editar-fila" title="Editar">✎</button>' +
-            '<form action="/eliminar/' + mov.id + '" method="POST" class="form-inline">' +
+            '<form action="/eliminar/' + escHtml(mov.id) + '" method="POST" class="form-inline">' +
                 '<button type="button" class="btn btn-borrar" title="Eliminar" onclick="mostrarModalBorrado(this.closest(\'form\'))">✕</button>' +
             '</form>' +
         '</td>';
@@ -2169,7 +2214,9 @@ function mostrarToast(mov) {
     var personaNombre = mov.persona === 'elias'   ? 'Elías'   : 'Mari';
     var monedaLabel   = mov.moneda  === 'ars'     ? 'AR$'     : 'USD';
     var montoFmt      = mov.moneda  === 'ars'     ? fmtArs(mov.monto) : fmtUsd(mov.monto);
-    var categoriaLabel = mov.categoria || 'No Definido';
+    // La categoría es texto libre que viene del servidor y se arma dentro de
+    // innerHTML más abajo: se escapa acá, una sola vez.
+    var categoriaLabel = escHtml(mov.categoria || 'No Definido');
 
     // Un movimiento personal no toca el fondo y no aparece en su tabla: el
     // toast lo dice, si no parece que se perdió. Nombra a la persona porque
@@ -2179,7 +2226,8 @@ function mostrarToast(mov) {
         : '';
 
     var toast = document.createElement('div');
-    toast.className = 'toast toast-' + mov.tipo + (mov.personal ? ' toast-personal' : '');
+    toast.className = 'toast toast-' + valorPermitido(mov.tipo, ['ingreso', 'gasto', 'cambio'], 'gasto') +
+        (mov.personal ? ' toast-personal' : '');
     toast.innerHTML =
         '<span class="toast-icono">✓</span>' +
         '<span class="toast-texto">' +

@@ -370,7 +370,8 @@ class TestListaBlanca(unittest.TestCase):
         self._pos(r"\.method\s*!==\s*'GET'\s*\)\s*return\s*;", 'METODO (solo GET)')
 
     def test_guarda_solo_mismo_origen(self):
-        """Deja afuera el CDN (flatpickr, chart.js) y el avatar de Google."""
+        """Deja afuera el avatar de Google y cualquier otro dominio. (flatpickr y
+        chart.js ya no vienen de un CDN: están en /static/vendor/.)"""
         self._pos(r"\.origin\s*!==\s*self\.location\.origin\s*\)\s*return\s*;",
                   'ORIGEN (solo el propio)')
 

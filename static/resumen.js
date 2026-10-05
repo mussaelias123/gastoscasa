@@ -62,6 +62,18 @@ comparten las dos paginas.
   }
   function fmtPct(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + '%'; }
 
+  /* ── Escape de HTML ─────────────────────────────────────────────────────── */
+  /* Local a proposito: este archivo se carga en /resumen y en /personal y no
+     tiene que depender de que app.js (que tiene escHtml) este cargado antes.
+     Todo dato de los movimientos que se arme como HTML pasa por aca: la
+     categoria es texto libre, y sin escapar una categoria guardada como
+     <img src=x onerror=...> se ejecutaria al abrir el Resumen. */
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   /* ── Equivalente en USD (pre-calculado en backend) ─────────────────────── */
   /* Cada movimiento trae su campo `monto_usd` ya calculado al momento de
      guardarse, usando la cotización histórica del día correspondiente. La
@@ -529,7 +541,7 @@ comparten las dos paginas.
         row.innerHTML =
           '<div class="dash-ranking-pos">'+(i+1)+'</div>' +
           '<div class="dash-ranking-info">' +
-            '<div class="dash-ranking-header"><span class="dash-ranking-cat">'+cat+'</span><span class="dash-ranking-monto">'+fmtUSD(monto)+'</span></div>' +
+            '<div class="dash-ranking-header"><span class="dash-ranking-cat">'+esc(cat)+'</span><span class="dash-ranking-monto">'+fmtUSD(monto)+'</span></div>' +
             '<div class="dash-ranking-bar-bg"><div class="dash-ranking-bar" style="width:'+bw+'%;background:'+PALETA[i%PALETA.length]+'"></div></div>' +
             '<div class="dash-ranking-pct">'+pct+'% del total</div>' +
           '</div>';
