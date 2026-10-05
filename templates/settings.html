@@ -6,12 +6,12 @@
 
 {% block contenido %}
 
-{% with mensajes = get_flashed_messages() %}
-  {% if mensajes %}
-    <div class="banner-exito" role="alert">
-      {% for msg in mensajes %}{{ msg }}{% endfor %}
-    </div>
-  {% endif %}
+{# Cada aviso con su color: 'error' (algo que NO se aplicó, p.ej. una carpeta
+   de backups de red) va en rojo; el resto, en el verde de siempre. #}
+{% with mensajes = get_flashed_messages(with_categories=true) %}
+  {% for categoria, msg in mensajes %}
+    <div class="{{ 'banner-error' if categoria == 'error' else 'banner-exito' }}" role="alert">{{ msg }}</div>
+  {% endfor %}
 {% endwith %}
 
 <div class="settings-layout">

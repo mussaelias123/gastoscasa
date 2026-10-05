@@ -64,6 +64,7 @@ Si la página pide login: **detenerse y avisar al usuario**. La sesión está in
 ## Backups (de la base de datos)
 - Son copias de `fondo.db`, NO de código. Gestionados desde Settings → "Backup de la base de datos".
 - Carpeta configurable: campo "Ruta de guardado" (`backup_dir` en `config.json`). Default `backups/` relativo; acepta rutas absolutas. Se aplica sin reiniciar.
+- **Solo carpetas de disco local** (2026-10): se rechazan rutas de red (`\\servidor\carpeta`, unidades mapeadas). Con una ruta de red, el backup diario —la base entera— iba a otra máquina y Windows le entregaba la credencial de red del servicio. Una carpeta de OneDrive en disco local (la de PROD) sí vale: la sincroniza OneDrive, no la app. Si config.json trae una ruta inválida, se usa `backups/` y queda un `AVISO:` en el log.
 - Automático: uno por día (scheduler interno `_scheduler_backup`, chequea cada hora). La primera vuelta corre al arrancar, cubre días con el servicio apagado.
 - Solo si cambió algo: antes de backupear compara SHA-256 del dump lógico contra `ultimo_backup.json` (vive junto a los backups: archivo, fecha, hash). Sin cambios → no crea archivo (loguea "Backup omitido hoy" 1 vez/día). El backup manual desde Settings siempre crea archivo.
 - Manual: campo "Descripción" (opcional) + botón "Crear backup" → `POST /api/backups/crear` (form `descripcion`). Siempre crea archivo, aunque no haya cambios.

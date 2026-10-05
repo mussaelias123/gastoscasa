@@ -217,6 +217,6 @@
 
 {% block scripts %}
 <script>
-  var GASTOS_FIJOS = {{ gastos_fijos_json | safe }};
+  var GASTOS_FIJOS = {{ gastos_fijos_json | tojson }};
 </script>
 {% endblock %}

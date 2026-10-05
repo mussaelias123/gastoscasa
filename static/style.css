@@ -2010,6 +2010,18 @@ a.btn-filtro {
   font-size: 0.95rem;
 }
 
+/* Mismo cartel, para un aviso que NO se aplicó (flash con categoría 'error').
+   Un rechazo pintado de verde "éxito" se lee como que se guardó. */
+.banner-error {
+  background: var(--color-peligro-suave);
+  border: 1px solid var(--color-peligro);
+  border-radius: var(--radio-borde);
+  color: var(--color-peligro);
+  padding: 0.85rem 1.2rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
 /* =============================================================================
    PÁGINA SETTINGS
    ============================================================================= */
