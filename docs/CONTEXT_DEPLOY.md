@@ -21,6 +21,21 @@
   Anterior: `flask-compress` (2026-09-21, compresión de respuestas; arrastra
   `brotli` y `backports.zstd`, los dos con wheel precompilado para Windows +
   Python 3.13, no compilan nada).
+- **Pisos de seguridad (2026-10)**: `authlib>=1.6.12`, `urllib3>=2.8.0`,
+  `idna>=3.15` corrigen fallas publicadas (ver comentario en
+  `requirements.txt`). Probado con authlib 1.8.0 / urllib3 2.8.0 / idna 3.20:
+  suite verde y el login arma la redirección a Google igual. **Al deployar este
+  cambio**: `pip install -r requirements.txt` ANTES de reiniciar el servicio.
+- ⚠ **DEV y PROD comparten el MISMO Python** (`C:/Users/elias/AppData/Local/Programs/Python/Python313`,
+  sin entorno virtual): un `pip install` en DEV cambia también lo que PROD usa
+  en su próximo reinicio. Para probar versiones nuevas sin tocar PROD: un venv
+  aparte con `python -m venv --system-site-packages <carpeta-fuera-del-repo>` +
+  `pip install` ahí + correr los tests con ese python. A futuro conviene un
+  venv por entorno (ver `docs/CONTEXT_SEGURIDAD.md`).
+- **Revisar dependencias con fallas conocidas** (cada tanto, y antes de cada
+  deploy grande): PyPI informa las fallas de una versión en
+  `https://pypi.org/pypi/<paquete>/<versión>/json` (campo `vulnerabilities`).
+  O instalar `pip-audit` en un venv aparte y correr `pip-audit -r requirements.txt`.
 - Servicio Windows: NSSM (`E:\Fondo\nssm.exe`, raíz del clon PROD, binario fuera de git; no existe en DEV).
 - Túnel público: ngrok con dominio fijo.
 - Backups DB: diario via scheduler interno (`app.py → _scheduler_backup`) + manual desde Settings. Archivos sin fecha en el nombre (ej. `gastos_PreGitHub.db`) no cuentan como backup ni entran en la rotación.
