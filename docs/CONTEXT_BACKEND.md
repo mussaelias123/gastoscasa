@@ -27,7 +27,7 @@
 | GET/POST | `/editar/<id>`          | `editar`              | Edición completa de movimiento. **Guarda de privacidad en las dos ramas** (`_es_ajeno`): un movimiento personal de la otra persona no se muestra ni se edita — los ids son una secuencia compartida con el fondo y bastaba escribir la URL. El POST lee `ambito_presente` (ver regla 7) y puede mover el movimiento de bolsillo; si queda personal vuelve a `/personal`. Un `ValueError` de validación re-renderiza el formulario con el mensaje (400), no tira 500. |
 | GET    | `/resumen`                | `resumen`             | Dashboard con métricas mensuales.                |
 | GET    | `/personal`               | `personal`            | Módulo Personal: la cuenta propia de quien está logueado (`_persona_actual`). **Misma estructura que `/gastos`** (`.layout-desktop`, mismos partials, form arriba y tarjeta de saldos abajo), con el resumen colgando debajo — por eso esta página sí scrollea. La tarjeta de saldos muestra **Personal / Núcleo**: se le arma a `_calcular_gauges` un dict con la MISMA forma que el del fondo (lo personal donde va `elias`, lo del núcleo donde va `mari`), así los partials y el helper se reusan sin una rama nueva y lo único propio son las etiquetas. ⚠ **"Núcleo" es la parte de ESA persona en el fondo** (`fondo[f'{persona}_ars']`), **no el fondo entero**: la tarjeta responde "cuánta plata tengo yo, y de esa cuánta es mía y cuánta la tengo pero es del núcleo". Sumar la del otro rompía las tres filas (bug 2026-09-19, fijado en `tests/test_personal.py`). Query `mes` (`YYYY-MM`) y `vista` (`mes` \| `ultimos100` \| `todos`). **No hay parámetro de persona**: la identidad sale de la sesión y cada uno ve solo lo suyo. El resumen de abajo es el mismo dashboard que `/resumen` (partial + `static/resumen.js`) y va con el historial COMPLETO (`movimientos_json`), no con el mes: su navegador de mes es del cliente y dibuja "últimos 6 meses". `gastos_fijos_json=[]` + `dash_fijos=False` esconden esa sección. |
-| POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD.               |
+| POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD. `ok=False` + `mensaje` también cuando el valor nuevo se RECHAZA (0, inválido, salto de más de ±50%): el valor anterior queda. Ver `CONTEXT_COTIZACION.md` § "Blindaje del dato". |
 | GET    | `/api/metrics`            | `metrics`             | JSON con métricas (CPU, RAM, etc.).              |
 | GET    | `/api/notificaciones`     | `api_notificaciones`  | JSON `{ok, total, items}`. Agrega todos los `NOTIF_PROVIDERS`. Ver `docs/CONTEXT_NOTIFICATIONS.md`. |
 | GET    | `/api/saldos`             | `api_saldos`          | JSON `{saldos, gauges, historico, fecha}`. `?hasta=YYYY-MM-DD` = saldos a esa fecha; sin `hasta` = toda la DB. |
@@ -235,6 +235,51 @@ salida. **No hay nada que llamar por ruta** — anda solo.
 - Cache intacto: agrega `Vary: Accept-Encoding` y le pone sufijo de algoritmo al
   ETag (`"...:zstd"`), así la revalidación 304 sigue funcionando por algoritmo.
 - Medido en dev: `/resumen` 155 KB → 21 KB, `style.css` 328 KB → 78 KB.
+
+## Cabeceras de seguridad y CSP (2026-10)
+Bloque "CABECERAS DE SEGURIDAD + POLÍTICA DE SCRIPTS" de `app.py`, justo después
+de `init_auth`: un `after_request` global (`agregar_cabeceras_seguridad`) y un
+context processor (`inject_csp_nonce`). **Nada que llamar por ruta** — anda
+solo. El porqué de seguridad (amenaza por amenaza) vive en
+`docs/CONTEXT_SEGURIDAD.md`; acá, lo que hay que saber para tocar `app.py` o un
+template sin romperla. Tests: `tests/test_cabeceras_seguridad.py`.
+
+- **En toda respuesta** (con `setdefault`: si una ruta pone la suya, se la queda):
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: same-origin`, `Cross-Origin-Opener-Policy: same-origin` y
+  `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
+  (notificaciones y push **no** se bloquean: la app usa Web Push).
+- **`Strict-Transport-Security: max-age=31536000`** solo si el pedido llegó por
+  https: `X-Forwarded-Proto: https` del túnel (el primero de la lista si hay
+  varios proxies) o TLS directo. Nunca en DEV (`http://localhost`).
+- **`Content-Security-Policy`** solo en respuestas `text/html` (en JSON, estáticos,
+  `/sw.js` y `/manifest.json` no significa nada; esos reciben las generales y
+  conservan su Content-Type y su `Cache-Control`). Exactamente:
+  `default-src 'self'; script-src 'self' 'nonce-<N>'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'`.
+  `data:` en `img-src` por el favicon (SVG en un data-URI); `googleusercontent`
+  por la foto de perfil de Google. Los tests comparan la cadena carácter por
+  carácter: un cambio en `_csp_politica()` obliga a tocar el test a propósito.
+- **`'unsafe-inline'` SOLO en estilos**: hay cientos de `style=""` y un `<style>`
+  con la paleta. Lo que se bloquea es código; un estilo no ejecuta. Nunca
+  agregarlo (ni `'unsafe-eval'`) a `script-src` para "arreglar" un bloqueo: se
+  arregla el template.
+- **Contrato del nonce con los templates**: `csp_nonce` (str) llega a TODOS los
+  templates —también a `login.html`, que renderiza el blueprint `auth` y no
+  extiende `base.html`— por `inject_csp_nonce`. Es un valor por pedido
+  (`secrets.token_urlsafe(16)`, perezoso, guardado en `flask.g`): el template y
+  la cabecera de ESE pedido leen el mismo. **Todo `<script>` inline lleva
+  `nonce="{{ csp_nonce }}"`. Prohibidos: handlers inline (`onclick=`...), URLs
+  `javascript:`, `eval()`, `new Function()` y `setTimeout('texto')`.** Si un
+  template los trae el navegador los bloquea en silencio (el servidor ve un 200):
+  se ve como un botón muerto y, en la consola, `Refused to execute inline
+  script/event handler ... Content Security Policy`.
+- **Tope por pedido: 1 MB** (`app.config['MAX_CONTENT_LENGTH']`). Un cuerpo más
+  grande → `413` sin leerlo ni escribir temporales en disco (si viene por chunks,
+  sin tamaño declarado, se corta al llegar al tope). Existe por `/logout`:
+  es pública y lee `request.form`, y un multipart gigante sin tope se volcaba al
+  disco sin login. Ninguna ruta recibe archivos y lo más grande que viaja es el
+  form de la paleta (~2 KB). Si una ruta necesita más, se sube **solo para ella**
+  (`request.max_content_length = ...`), no el tope global.
 
 ## Modo servicio (Windows)
 `app.py` no tiene comandos de servicio propios. En producción NSSM envuelve

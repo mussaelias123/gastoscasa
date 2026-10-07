@@ -142,7 +142,7 @@
             <form action="{{ url_for('eliminar', id=mov.id) }}?mes={{ mes }}"
                   method="POST" class="form-inline">
               <button type="button" class="btn btn-borrar" title="Eliminar"
-                      onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
+                      data-accion="borrar">✕</button>
             </form>
           {% endif %}
         </td>
@@ -193,7 +193,7 @@
 {% block scripts %}
 {% if movimientos_json %}
 <script src="{{ url_for('static', filename='vendor/chartjs-4.4.4/chart.umd.js') }}?v={{ static_version }}"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
 /* Los mismos nombres que espera static/resumen.js en /resumen. GASTOS_FIJOS
    va vacío a propósito: son del fondo familiar, y su sección está escondida
    con dash_fijos=False. */

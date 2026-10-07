@@ -32,6 +32,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 import math
 import os
+import secrets
 import threading
 import time
 from datetime import datetime, timedelta, date
@@ -46,6 +47,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 import re as _re
 from flask import (Flask, render_template, request, redirect, url_for, jsonify,
                    flash, Response)
+# `g` va con alias, igual que `flask_session` más abajo: con una letra sola, el
+# primer `for g in gauges:` de cualquier función la taparía sin avisar.
+from flask import g as flask_g
 from flask_compress import Compress
 import database
 import config
@@ -1498,6 +1502,23 @@ app = Flask(__name__,
             static_folder=os.path.join(BASE_DIR, 'static'))
 app.config['TEMPLATES_AUTO_RELOAD'] = True  # Recargar templates sin reiniciar
 
+# ── Tope de tamaño por pedido: 1 MB ──────────────────────────────────────────
+# Un pedido con el cuerpo más grande que esto se corta con 413. Si declara su
+# tamaño (`Content-Length`, el caso de todo navegador) ni se lee: no se escribe
+# NADA en disco. Si viene sin tamaño, por chunks, se corta al llegar al tope.
+#
+# POR QUÉ HACE FALTA: sin tope, Flask lee el cuerpo entero de cualquier pedido
+# que toque `request.form`. Con un multipart, las partes "archivo" se vuelcan a
+# un temporal del disco apenas pasan los 500 KB. `/logout` es PÚBLICA (está en
+# `rutas_publicas` de auth.py) y lee `request.form`, así que cualquiera, sin
+# login, podía llenar los temporales del servidor con un solo POST gigante.
+#
+# POR QUÉ 1 MB ALCANZA: ninguna ruta de esta app recibe archivos, y lo más
+# grande que viaja es el form de la paleta (~2 KB). Si alguna vez una ruta
+# necesita más (un import, una foto), se sube el tope PARA ESA RUTA con
+# `request.max_content_length = ...` (Flask ≥ 3.1) y no acá, que es el de todas.
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
+
 # ── Compresión de respuestas ─────────────────────────────────────────────────
 # Comprime el HTML, el CSS, el JS y los JSON antes de mandarlos por la red.
 #
@@ -1525,6 +1546,148 @@ Compress(app)
 # middleware before_request que protege TODAS las rutas.
 from auth import init_auth
 init_auth(app, CONFIG_FILE)
+
+
+# =============================================================================
+# CABECERAS DE SEGURIDAD + POLÍTICA DE SCRIPTS (CSP CON NONCE)
+# =============================================================================
+#
+# QUÉ ES: lo que la app le pide al NAVEGADOR que haga —y que no haga— con cada
+# respuesta. Hasta 2026-10 no mandaba ninguna cabecera de seguridad.
+#
+# LA QUE IMPORTA ES `Content-Security-Policy`: dice de dónde puede salir el
+# CÓDIGO de una página. La política de abajo deja correr los scripts de este
+# mismo origen y los <script> inline que lleven el nonce de ESE pedido, y nada
+# más. Un <script> colado en un dato (la descripción de un gasto, el nombre de
+# una actividad), un `onclick=` inyectado o un `javascript:` quedan MUERTOS
+# aunque algún día se olvide un escape. Es la segunda llave: la primera es que
+# los datos entren validados y salgan escapados (ver CONTEXT_SEGURIDAD.md).
+#
+# CONTRATO CON LOS TEMPLATES (si se rompe, el navegador bloquea EN SILENCIO y
+# lo único que se ve es un error en la consola, no en la pantalla):
+#   * Todo <script> inline lleva `nonce="{{ csp_nonce }}"`. La variable llega a
+#     TODOS los templates —también a login.html, que no extiende base.html—
+#     por `inject_csp_nonce`.
+#   * Prohibidos: handlers inline (`onclick=`, `onsubmit=`...), URLs
+#     `javascript:`, `eval()`, `new Function()` y `setTimeout('texto')`. La
+#     lógica va en archivos de static/ y los eventos se enganchan con
+#     `addEventListener`.
+#
+# POR QUÉ `'unsafe-inline'` SOLO EN ESTILOS: la app tiene cientos de `style=""`
+# y un <style> con la paleta que arma base.html. Lo que hay que bloquear es
+# código, y un estilo no ejecuta código; con `img-src` y `font-src` cerrados a
+# este origen, un estilo inyectado tampoco tiene a dónde mandar un dato.
+#
+# EL RESTO DE LA POLÍTICA, directiva por directiva (cada una está por algo):
+#   img-src  `data:`  → el favicon es un SVG dentro de un data-URI.
+#            `*.googleusercontent.com` → la foto de perfil de Google.
+#   frame-src / frame-ancestors / object-src 'none' → ni la app se embebe en el
+#            sitio de otro (clickjacking) ni embebe nada ella.
+#   base-uri / form-action 'self' → un <base> o un <form> inyectado no puede
+#            redirigir los links ni mandar los datos a otro lado.
+#   worker-src / manifest-src 'self' → el service worker y el manifest de la PWA.
+#
+# `setdefault` EN TODAS: una ruta que ponga su propia cabecera se la queda.
+# `/sw.js` y `/manifest.json` reciben las generales pero NO la CSP —no son
+# HTML— y siguen siendo lo que eran: su Content-Type y el `Cache-Control:
+# no-cache` del service worker no cambian.
+# =============================================================================
+
+# Cámara, micrófono, ubicación, pagos y USB: la app no usa ninguno. Las
+# notificaciones y el push quedan AFUERA a propósito: sí los usa (Web Push), y
+# bloquearlos mataría los avisos del teléfono.
+_PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
+
+# Un año. Sin `includeSubDomains` ni `preload`: el dominio de ngrok no es
+# nuestro, y comprometer a sus subdominios no es cosa de esta app.
+_HSTS = 'max-age=31536000'
+
+
+def _csp_politica(nonce):
+    """
+    El valor de `Content-Security-Policy` para un pedido, con su nonce. Un solo
+    lugar para la política: los tests la comparan carácter por carácter contra
+    una copia escrita a mano, así que un cambio acá sin querer salta.
+    """
+    return '; '.join((
+        "default-src 'self'",
+        f"script-src 'self' 'nonce-{nonce}'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: https://*.googleusercontent.com",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "manifest-src 'self'",
+        "worker-src 'self'",
+        "frame-src 'none'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+    ))
+
+
+def _csp_nonce():
+    """
+    El nonce de ESTE pedido. Aleatorio, uno por pedido, y perezoso: nace la
+    primera vez que alguien lo pide (el template o la cabecera) y queda en
+    `flask.g`, así que ambos leen el MISMO valor. Un nonce que la cabecera y el
+    template no comparten bloquea todos los scripts de la página.
+
+    `g` vive lo que dura el pedido, por eso el valor no se repite entre pedidos:
+    un nonce reutilizable es una contraseña que el atacante ya conoce.
+    """
+    nonce = flask_g.get('csp_nonce')
+    if not nonce:
+        nonce = secrets.token_urlsafe(16)
+        flask_g.csp_nonce = nonce
+    return nonce
+
+
+def _llego_por_https():
+    """
+    True si el navegador pidió esto por https.
+
+    Detrás del túnel de ngrok el pedido llega a Flask en http plano; lo que
+    dice cómo lo mandó el navegador es `X-Forwarded-Proto` (ngrok lo pone). En
+    DEV (http://localhost) no hay proxy ni cabecera, y da False. Si hay varios
+    proxies la cabecera trae una lista ("https, http"): manda el primero, que
+    es el del navegador. `request.is_secure` cubre el día que Flask sirva TLS
+    directo.
+    """
+    proto = (request.headers.get('X-Forwarded-Proto') or '').split(',')[0]
+    return proto.strip().lower() == 'https' or request.is_secure
+
+
+@app.context_processor
+def inject_csp_nonce():
+    """Expone `csp_nonce` a TODOS los templates (ver el contrato arriba)."""
+    return {'csp_nonce': _csp_nonce()}
+
+
+@app.after_request
+def agregar_cabeceras_seguridad(resp):
+    """
+    Cabeceras de seguridad en TODAS las respuestas, y la CSP solo en las HTML
+    (una política es del documento: en un JSON o en un .css no significa nada).
+    """
+    h = resp.headers
+    # El navegador respeta el Content-Type que dijimos, no el que adivine. Sin
+    # esto, un archivo servido como texto podría ejecutarse como script.
+    h.setdefault('X-Content-Type-Options', 'nosniff')
+    # Mismo efecto que `frame-ancestors 'none'`, para los navegadores viejos que
+    # no leen la CSP.
+    h.setdefault('X-Frame-Options', 'DENY')
+    # Los links a otro sitio no se llevan la URL de la app. `same-origin`
+    # (y no `no-referrer`) deja el referer entre páginas propias.
+    h.setdefault('Referrer-Policy', 'same-origin')
+    h.setdefault('Permissions-Policy', _PERMISSIONS_POLICY)
+    # Una ventana de otro origen no puede quedar con una referencia a esta.
+    h.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+    if _llego_por_https():
+        h.setdefault('Strict-Transport-Security', _HSTS)
+    if resp.mimetype == 'text/html':
+        h.setdefault('Content-Security-Policy', _csp_politica(_csp_nonce()))
+    return resp
 
 
 # =============================================================================

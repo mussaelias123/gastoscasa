@@ -47,8 +47,11 @@ Cada página hija define su propio {% block contenido %}.
   <link rel="apple-touch-icon"
         href="{{ url_for('static', filename='img/icon-192.png') }}?v={{ static_version }}">
 
-  {# Anti-flicker: aplica data-theme antes del primer paint, sin esperar JS externo #}
-  <script>
+  {# Anti-flicker: aplica data-theme antes del primer paint, sin esperar JS externo.
+     Cada <script> inline lleva `nonce="{{ csp_nonce }}"`: la política de
+     scripts del servidor (Content-Security-Policy) solo deja correr los inline
+     que traen el nonce de ESTA respuesta. Sin él, el navegador lo bloquea. #}
+  <script nonce="{{ csp_nonce }}">
     (function () {
       var raiz = document.documentElement;
       var t = localStorage.getItem('tema') || 'light';
@@ -100,7 +103,7 @@ Cada página hija define su propio {% block contenido %}.
      Todo cuelga de `load` por dos razones: no pelear ancho de banda con los
      recursos de la página, y porque el barrido vive en `window.SW`, que se
      define en app.js (al final del <body>) y todavía no existe acá arriba. #}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     (function () {
       // Sin soporte no hay nada que registrar ni nada que barrer: ese
       // navegador nunca pudo haber instalado un service worker.

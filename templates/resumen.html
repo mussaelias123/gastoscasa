@@ -8,7 +8,7 @@
 
 <script src="{{ url_for('static', filename='vendor/chartjs-4.4.4/chart.umd.js') }}?v={{ static_version }}"></script>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 var MOVIMIENTOS   = {{ movimientos_json | tojson }};
 var GASTOS_FIJOS  = {{ gastos_fijos_json | tojson }};
 </script>

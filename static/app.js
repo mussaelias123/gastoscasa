@@ -154,8 +154,14 @@ Propósito:
   Muestra un modal de confirmación antes de borrar un gasto.
   Reemplaza el confirm() nativo (que bloqueaba el browser bajo automatización).
 
-Cómo se usa (en index.html):
-  <button type="button" onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
+Cómo se usa (gastos.html, personal.html, settings.html y las filas que arma
+crearFilaMovimiento): el botón va DENTRO del <form> que se borra y se marca con
+un atributo; el listener delegado de ACCIONES DECLARATIVAS (más abajo) llama a
+mostrarModalBorrado(boton.closest('form')):
+  <button type="button" data-accion="borrar">✕</button>
+
+NO escribir onclick="mostrarModalBorrado(...)": la política de scripts del
+servidor (CSP) bloquea todo manejador inline, y el botón dejaría de responder.
 ================================================================================
 */
 (function () {
@@ -182,6 +188,74 @@ Cómo se usa (en index.html):
     };
 
     document.addEventListener('DOMContentLoaded', inicializarModal);
+})();
+
+
+/*
+================================================================================
+ACCIONES DECLARATIVAS: data-accion
+================================================================================
+Propósito:
+  El servidor manda una política de scripts (Content-Security-Policy) sin
+  'unsafe-inline': TODO manejador inline —un onclick="..." escrito en el HTML o
+  armado con innerHTML— queda bloqueado por el navegador y simplemente no
+  corre. Los botones que antes lo usaban declaran QUÉ hacen con un atributo, y
+  un único listener en `document` los atiende.
+
+  Es delegado a propósito: sirve también para los elementos que se agregan
+  después de cargar la página (las filas de crearFilaMovimiento) sin tener que
+  volver a engancharlos. Atiende el click cuando burbujea hasta `document`: un
+  stopPropagation() en algún ancestro del botón lo dejaría sin respuesta (hoy
+  ningún JS del proyecto lo usa; si algún día hace falta, que sea en un
+  elemento que no contenga botones con data-accion).
+
+Acciones (para sumar una: agregarla a ACCIONES; el test
+tests/test_csp_templates.py exige que todo data-accion usado exista acá):
+  data-accion="borrar"    Abre el modal de confirmación de borrado para el
+                          <form> que contiene al botón (mostrarModalBorrado).
+  data-accion="navegar"   Va a la URL de data-url, pero solo si es del MISMO
+                          origen. Se resuelve con `new URL`, que cubre también
+                          "//otro.sitio", "/\otro.sitio" (el navegador toma la
+                          barra invertida como barra) y "javascript:...": un
+                          chequeo de texto como "empieza con /" los dejaría
+                          pasar o se olvidaría de alguno.
+
+Cómo se usa:
+  <button type="button" data-accion="borrar">✕</button>
+  <button type="button" data-accion="navegar" data-url="/gastos">Cancelar</button>
+================================================================================
+*/
+(function () {
+    var ACCIONES = {
+        borrar: function (origen) {
+            var form = origen.closest('form');
+            if (form) window.mostrarModalBorrado(form);
+        },
+        navegar: function (origen) {
+            var url = origen.getAttribute('data-url');
+            if (!url) return;
+            try {
+                var destino = new URL(url, window.location.href);
+                if (destino.origin === window.location.origin) {
+                    window.location.href = destino.href;
+                }
+            } catch (e) {
+                // URL inválida: no se navega a ningún lado.
+            }
+        }
+    };
+
+    document.addEventListener('click', function (ev) {
+        var origen = ev.target && ev.target.closest
+            ? ev.target.closest('[data-accion]') : null;
+        if (!origen) return;
+        var nombre = origen.getAttribute('data-accion');
+        // hasOwnProperty: sin él, data-accion="constructor" o "__proto__" cae
+        // en la herencia de Object y se intentaría "ejecutar" cualquier cosa.
+        if (Object.prototype.hasOwnProperty.call(ACCIONES, nombre)) {
+            ACCIONES[nombre](origen);
+        }
+    });
 })();
 
 
@@ -2189,7 +2263,7 @@ function crearFilaMovimiento(mov) {
         '<td class="col-acciones">' +
             '<button type="button" class="btn btn-editar btn-editar-fila" title="Editar">✎</button>' +
             '<form action="/eliminar/' + escHtml(mov.id) + '" method="POST" class="form-inline">' +
-                '<button type="button" class="btn btn-borrar" title="Eliminar" onclick="mostrarModalBorrado(this.closest(\'form\'))">✕</button>' +
+                '<button type="button" class="btn btn-borrar" title="Eliminar" data-accion="borrar">✕</button>' +
             '</form>' +
         '</td>';
 

@@ -190,7 +190,7 @@
                 method="POST"
                 class="form-inline">
             <button type="button" class="btn btn-borrar" title="Eliminar"
-                    onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
+                    data-accion="borrar">✕</button>
           </form>
         </td>
       </tr>
@@ -216,7 +216,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
   var GASTOS_FIJOS = {{ gastos_fijos_json | tojson }};
 </script>
 {% endblock %}
