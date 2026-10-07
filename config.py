@@ -103,8 +103,9 @@ DEFAULTS = {
     "google_client_secret": "",
     "secret_key": "",
     # ── Bypass de login SOLO para DEV ───────────────────────────────────────
-    # Si True, se saltea el login de Google, pero ÚNICAMENTE bajo triple cerrojo
-    # (ver auth.py → require_login): auth_disabled + localhost + ngrok apagado.
+    # Si True, se saltea el login de Google, pero ÚNICAMENTE bajo cuádruple
+    # cerrojo (ver auth.py → require_login): auth_disabled + pedido desde la
+    # propia PC + nombre de sitio local (localhost/127.0.0.1/[::1]) + ngrok apagado.
     # En PROD: dejar SIEMPRE en False. Default seguro = False.
     "auth_disabled": False,
     # Con el bypass de arriba la sesión es un usuario falso (`dev@local`), que

@@ -341,8 +341,13 @@ class TestRutasDeGoogle(BaseAuth):
 
     def test_contracara_con_credenciales_el_callback_crea_la_sesion(self):
         falso = unittest.mock.MagicMock()
+        # `email_verified` es lo que Google manda siempre para estas cuentas, y
+        # desde el endurecimiento de auth.py el callback lo EXIGE (ver
+        # tests/test_auth_endurecido.py): una respuesta sin el dato no es un
+        # login valido.
         falso.google.authorize_access_token.return_value = {
-            'userinfo': {'email': EMAIL_OK, 'name': 'Elias', 'picture': ''}}
+            'userinfo': {'email': EMAIL_OK, 'email_verified': True,
+                         'name': 'Elias', 'picture': ''}}
         with self.con_config(**CON_LOGIN), \
                 unittest.mock.patch.object(auth, 'oauth', falso):
             r = self.client.get('/auth/callback?code=abc&state=xyz')
