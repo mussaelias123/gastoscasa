@@ -8,8 +8,8 @@
 0. PREPARAR     → Worktree limpio + main fresco antes de abrir rama (ver §5).
 1. CLARIFICAR  → AskUserQuestion si la tarea no es trivial.
 2. LEER         → Solo el contexto necesario (ver tabla en CLAUDE.md §3). Para ubicar código: grafo primero (§3c).
-3. EJECUTAR     → Cambio mínimo y reversible.
-4. ACTUALIZAR   → CONTEXT_*.md del dominio tocado (ver §1 abajo).
+3. EJECUTAR     → Cambio mínimo y reversible. Comentarios telegráficos (§2b).
+4. ACTUALIZAR   → CONTEXT_*.md del dominio tocado (ver §1 abajo), telegráfico (§2b).
 5. VERIFICAR    → Sub-agente verifier en ngrok.
 6. REPORTAR     → Resumen corto al usuario.
 7. ORDENAR      → Dejar el worktree en buen estado (ver §5).
@@ -42,6 +42,30 @@
 - Detalles de implementación que cambian seguido.
 
 El contexto debe ser **un mapa**, no una copia del código.
+
+## §2b Cómo se escribe: telegráfico agente→agente (regla 2026-10-06)
+
+Todo texto que lee OTRO AGENTE va telegráfico **desde la primera versión**: `CLAUDE.md`, `CONTEXT_*.md`, este archivo, perfiles de `.claude/agents/`, **comentarios y docstrings del código**, notas entre agentes.
+Texto para humano (PRs, commits, textos de la UI, logs, informes): prosa clara. Respuestas al usuario: su propio estilo, `CLAUDE.md` §4 punto 4.
+
+- **Quitar:** artículos, introducciones, cierres, cortesía, relleno, transiciones, ejemplos repetidos.
+- **Sin duplicar:** cada dato UNA vez. Si ya está en otro lado, apuntar (`ver §3c`, `ver CONTEXT_DB.md`), no copiar.
+- **Usar:** frases cortas o nominales, listas, `→` `=` `:` `/`.
+- **Conservar SIEMPRE, textual:**
+  - identificadores, rutas, comandos, claves de config, URLs, valores entre comillas;
+  - números CON unidad (`90 días`, `~8k tokens`): número sin unidad = dato roto;
+  - negaciones y cuantificadores: no / NO / nunca / ni / sin / solo / siempre / todo / ninguno. Negación perdida = regla invertida;
+  - cada ⚠ y su **porqué**, corto. Sin porqué, otro agente "arregla" lo que está bien;
+  - estructura: títulos, numeración (§), tablas, bloques de código.
+- **Comentarios en código:** mismo estilo. Porqué + ⚠; nunca narrar lo que la línea ya dice (§2).
+
+Ejemplo:
+- Antes: "El cerrojo (3) garantiza que no hay proxy ⇒ `remote_addr` es confiable; por eso **NO** se usa `X-Forwarded-For` en este chequeo."
+- Después: "Cerrojo 3 (ngrok apagado) → sin proxy → `remote_addr` confiable. **NO** usar `X-Forwarded-For` acá."
+
+
+**Texto viejo:** no reescribir en masa (caro; ahorro medido ~14%). Párrafo que se toca → queda en este estilo.
+**Al reescribir, chequear:** mismas negaciones, `identificadores`, números+unidad y ⚠ que antes.
 
 ## §3 Auditoría rápida
 - Cada `CONTEXT_*.md` debe seguir bajo 150 líneas. Si crece, partir.
