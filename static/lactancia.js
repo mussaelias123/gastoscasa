@@ -37,6 +37,8 @@
 
     // Nombre del bebé: lo carga cada mamá en Ajustes. Si todavía no lo puso,
     // la app dice "el bebé" — nunca un nombre de ejemplo.
+    // ⚠ Es TEXTO LIBRE y sale crudo: donde se arme HTML con él (innerHTML o un
+    // title="..."), va dentro de esc(). En textContent no hace falta.
     function nombreBebe() {
         return (DATOS.bebe && DATOS.bebe.nombre) || 'el bebé';
     }
@@ -493,15 +495,15 @@
             kpiCard('gota_corazon', fmtVol(t.producido_ml), T('Producción total'),
                     T('todo lo que produjiste'), 'lac-kpi--amor') +
             kpiCard('mamadera', fmtVol(t.consumida_ml || 0),
-                    T('Consumida por {bebe}', { bebe: nombreBebe() }), dondeTomo) +
+                    T('Consumida por {bebe}', { bebe: esc(nombreBebe()) }), dondeTomo) +
             kpiCard('copo_gota', fmtVol(t.descongelada_ml || 0), T('Descongelada')) +
             kpiCard('gota_tachada', fmtVol(t.desperdicio_ml || 0), T('Desperdicio'), null,
                     (t.desperdicio_ml ? 'is-alerta' : '')) +
             kpiCard('almanaque', dias, T('Alcanza para'),
-                    (t.dias_stock == null ? T('cuando {bebe} tome de las bolsitas', { bebe: nombreBebe() })
+                    (t.dias_stock == null ? T('cuando {bebe} tome de las bolsitas', { bebe: esc(nombreBebe()) })
                                           : T('al ritmo actual · freezer + heladera'))) +
             kpiCard('bolsita', bolsa, T('Bolsita sugerida'),
-                    (t.bolsa_sugerida_ml == null ? T('según el consumo de {bebe}', { bebe: nombreBebe() })
+                    (t.bolsa_sugerida_ml == null ? T('según el consumo de {bebe}', { bebe: esc(nombreBebe()) })
                                                  : T('promedio real'))) +
         '</div>';
 
@@ -517,7 +519,7 @@
     // Mari 2026-07-14; sin hora cargada queda solo la fecha)
     function extraidaTxt(p) {
         return T('Extraída') + ' ' + fmtFechaCorta(p.fecha_extraccion) +
-            (p.hora_extraccion ? ' · ' + p.hora_extraccion + ' h' : '');
+            (p.hora_extraccion ? ' · ' + esc(p.hora_extraccion) + ' h' : '');
     }
 
     // Momento real de extracción (fecha + hora si la hay). Espeja
@@ -567,7 +569,7 @@
             '</div>' +
             '<div class="lac-item-actions">' +
                 '<button type="button" class="lac-btn-bajar" data-lac-bajar="' + p.id + '" title="' + T('Bajar a la heladera para descongelar') + '">⬇ ' + T('Bajar') + '</button>' +
-                '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="' + T('Se le dio a {bebe} (fecha de hoy)', { bebe: nombreBebe() }) + '">✓ ' + T('Usada') + '</button>' +
+                '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="' + T('Se le dio a {bebe} (fecha de hoy)', { bebe: esc(nombreBebe()) }) + '">✓ ' + T('Usada') + '</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-tirar="' + p.id + '" title="' + T('Descartar (fecha de hoy)') + '">🗑</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-mas="' + p.id + '" title="' + T('Más opciones') + '">⋯</button>' +
             '</div>' +
@@ -625,7 +627,7 @@
                 '</div>' + notasHtml(p) +
             '</div>' +
             '<div class="lac-item-actions">' +
-                '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="' + T('Se le dio a {bebe} (fecha de hoy)', { bebe: nombreBebe() }) + '">✓ ' + T('Usada') + '</button>' +
+                '<button type="button" class="lac-btn-usar" data-lac-usar="' + p.id + '" title="' + T('Se le dio a {bebe} (fecha de hoy)', { bebe: esc(nombreBebe()) }) + '">✓ ' + T('Usada') + '</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-tirar="' + p.id + '" title="' + T('Descartar (fecha de hoy)') + '">🗑</button>' +
                 '<button type="button" class="lac-btn-icono" data-lac-mas="' + p.id + '" title="' + T('Más opciones') + '">⋯</button>' +
                 checkHeladera(p) +

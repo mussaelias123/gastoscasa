@@ -49,7 +49,14 @@ window.LAC_GRAFICO = (function () {
     // ── Ayudantes prestados por lactancia.js (init los reemplaza) ────────────
     var T = function (s) { return s; };
     var fmtMl = function (n) { return (Number(n) || 0) + ' ml'; };
-    var esc = function (s) { return String(s); };
+    // Este `esc` por defecto ESCAPA de verdad: es el que queda si algo dibuja
+    // antes de que init() preste el de lactancia.js. Un default que no
+    // escapara dejaría pasar HTML justo cuando falla el orden de carga.
+    var esc = function (s) {
+        return String(s === null || s === undefined ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
     var fmtFechaCorta = function (s) { return String(s); };
     var fmtVol = function (n) { return (Number(n) || 0) + ' ml'; };
 

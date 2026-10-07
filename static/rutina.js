@@ -247,7 +247,11 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
             var clave = lib.resolver(valor) || lib.resolver(fallback);
             if (clave) return lib.html(clave);
         }
-        return valor || fallback || '';
+        // Sin dibujo propio cae al texto suelto (un emoji). Se ESCAPA: esta
+        // función devuelve HTML, y `dibujo` / `emoji` son texto libre que el
+        // servidor guarda tal cual. Sin esto, un dibujo guardado como
+        // <img src=x onerror=...> se ejecutaba al dibujar la rutina.
+        return escapeHtml(valor || fallback || '');
     }
 
     // El emoji de un ítem de la línea de tiempo: dibujo propio si lo hay.
@@ -2342,7 +2346,7 @@ toISOString(), que corre a UTC y cambia de día después de las 21:00 ART.
 
         var pausas = (f.pausas || []).map(function (p) {
             return '<li class="rut-fa-pausa">' +
-                '<span>' + fechaCorta(p.desde) + ' al ' + fechaCorta(p.hasta) +
+                '<span>' + escapeHtml(fechaCorta(p.desde)) + ' al ' + escapeHtml(fechaCorta(p.hasta)) +
                     (p.anual ? ' · cada año' : '') +
                     (p.motivo ? ' · ' + escapeHtml(p.motivo) : '') + '</span>' +
                 '<button type="button" class="rut-btn-icono" data-fa-pausa-borrar="' + p.id + '" ' +

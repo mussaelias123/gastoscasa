@@ -318,7 +318,7 @@ sigue funcionando (el backend redirige a /calendario).
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
   window.CAL_DATOS = {{ datos|tojson }};
   window.CAL_AREAS = {{ cal_areas|tojson }};
   window.CAL_RESPONSABLES = {{ cal_responsables|tojson }};

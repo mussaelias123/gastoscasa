@@ -471,7 +471,7 @@ su vencimiento se muestra relativo ("Vence en 5 h").
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
   window.LAC_DATOS = {{ datos|tojson }};
 </script>
 <script src="{{ url_for('static', filename='lactancia.js') }}?v={{ static_version }}"></script>

@@ -41,7 +41,18 @@ flask>=3.1.3
 pyngrok>=7.5.1
 python-dotenv>=1.2.2
 psutil>=7.2.2
-authlib>=1.6.9
+# Pisos de SEGURIDAD (2026-10, auditoría de seguridad): versiones que corrigen
+# fallas publicadas. authlib 1.6.9 tenía 3 (CVE-2026-41425/41479/44681).
+# urllib3 e idna no los usa la app directamente: los arrastra `requests`
+# (cotización, envío de push, login de Google). Van explícitos para que un
+# `pip install -r` no deje la versión vieja que ya estaba instalada:
+#   urllib3 < 2.8.0 → 5 fallas (DoS por descompresión, mezcla de TLS en proxy)
+#   idna    < 3.15  → CVE-2026-45409 (DoS con nombres armados a propósito)
+# ⚠ DEV y PROD comparten el MISMO Python (no hay entorno virtual): instalar
+# estas versiones afecta a los dos. Ver docs/CONTEXT_DEPLOY.md.
+authlib>=1.6.12
+urllib3>=2.8.0
+idna>=3.15
 requests>=2.33.1
 flask-compress>=1.25
 # Notificaciones push (Web Push + VAPID). Arrastra 11 paquetes: aiohttp y su

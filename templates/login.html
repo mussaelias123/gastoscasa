@@ -170,12 +170,14 @@ COMPORTAMIENTO:
     </div>
     {% elif error == 'no_configurado' %}
     <div class="login-error">
-      <strong>OAuth no configurado</strong>
-      Falta configurar las credenciales de Google OAuth en Settings.
+      <strong>Inicio de sesión no disponible</strong>
+      El servidor no tiene las credenciales de Google en su config.json, o no
+      puede leerlo. Quien administra la app tiene que revisarlo y reiniciar el
+      servicio.
     </div>
     {% endif %}
 
-    <a href="#" class="google-btn" id="google-login-btn" onclick="loginWithGoogle(event)">
+    <a href="#" class="google-btn" id="google-login-btn">
       <!-- Google "G" logo SVG -->
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -199,12 +201,17 @@ COMPORTAMIENTO:
 
   </div>
 
-  <script>
+  {# Este script inline lleva el nonce de la política de scripts (CSP) y el
+     botón se engancha acá con addEventListener: un onclick="..." en el HTML
+     lo bloquearía el navegador. Esta página es standalone (no extiende
+     base.html), pero recibe `csp_nonce` igual que las demás. #}
+  <script nonce="{{ csp_nonce }}">
     function loginWithGoogle(e) {
       e.preventDefault();
       var remember = document.getElementById('remember-me').checked ? '1' : '0';
       window.location.href = '/auth/google?remember=' + remember;
     }
+    document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
   </script>
 
 </body>

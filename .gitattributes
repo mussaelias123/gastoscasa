@@ -1,0 +1,13 @@
+# =============================================================================
+# ARCHIVO: .gitattributes
+# =============================================================================
+#
+# static/vendor/ guarda copias EXACTAS de librerías de terceros (flatpickr,
+# Chart.js), bajadas con versión fija y verificadas por huella SHA-256 contra
+# el paquete oficial de npm. Ver docs/CONTEXT_SEGURIDAD.md.
+#
+# `-text` = git no les toca los fines de línea. Con `core.autocrlf=true`
+# (el default de Git para Windows) un checkout las reescribiría con CRLF, la
+# huella dejaría de coincidir con la oficial y tests/test_vendor_integridad.py
+# fallaría sin que nadie haya cambiado nada. Se guardan byte por byte.
+static/vendor/** -text

@@ -27,7 +27,7 @@
 | GET/POST | `/editar/<id>`          | `editar`              | Edición completa de movimiento. **Guarda de privacidad en las dos ramas** (`_es_ajeno`): un movimiento personal de la otra persona no se muestra ni se edita — los ids son una secuencia compartida con el fondo y bastaba escribir la URL. El POST lee `ambito_presente` (ver regla 7) y puede mover el movimiento de bolsillo; si queda personal vuelve a `/personal`. Un `ValueError` de validación re-renderiza el formulario con el mensaje (400), no tira 500. |
 | GET    | `/resumen`                | `resumen`             | Dashboard con métricas mensuales.                |
 | GET    | `/personal`               | `personal`            | Módulo Personal: la cuenta propia de quien está logueado (`_persona_actual`). **Misma estructura que `/gastos`** (`.layout-desktop`, mismos partials, form arriba y tarjeta de saldos abajo), con el resumen colgando debajo — por eso esta página sí scrollea. La tarjeta de saldos muestra **Personal / Núcleo**: se le arma a `_calcular_gauges` un dict con la MISMA forma que el del fondo (lo personal donde va `elias`, lo del núcleo donde va `mari`), así los partials y el helper se reusan sin una rama nueva y lo único propio son las etiquetas. ⚠ **"Núcleo" es la parte de ESA persona en el fondo** (`fondo[f'{persona}_ars']`), **no el fondo entero**: la tarjeta responde "cuánta plata tengo yo, y de esa cuánta es mía y cuánta la tengo pero es del núcleo". Sumar la del otro rompía las tres filas (bug 2026-09-19, fijado en `tests/test_personal.py`). Query `mes` (`YYYY-MM`) y `vista` (`mes` \| `ultimos100` \| `todos`). **No hay parámetro de persona**: la identidad sale de la sesión y cada uno ve solo lo suyo. El resumen de abajo es el mismo dashboard que `/resumen` (partial + `static/resumen.js`) y va con el historial COMPLETO (`movimientos_json`), no con el mes: su navegador de mes es del cliente y dibuja "últimos 6 meses". `gastos_fijos_json=[]` + `dash_fijos=False` esconden esa sección. |
-| POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD.               |
+| POST   | `/api/cotizacion/refresh` | `api_cotizacion_refresh` | Forzar refresh cotización USD. `ok=False` + `mensaje` también cuando el valor nuevo se RECHAZA (0, inválido, salto de más de ±50%): el valor anterior queda. Ver `CONTEXT_COTIZACION.md` § "Blindaje del dato". |
 | GET    | `/api/metrics`            | `metrics`             | JSON con métricas (CPU, RAM, etc.).              |
 | GET    | `/api/notificaciones`     | `api_notificaciones`  | JSON `{ok, total, items}`. Agrega todos los `NOTIF_PROVIDERS`. Ver `docs/CONTEXT_NOTIFICATIONS.md`. |
 | GET    | `/api/saldos`             | `api_saldos`          | JSON `{saldos, gauges, historico, fecha}`. `?hasta=YYYY-MM-DD` = saldos a esa fecha; sin `hasta` = toda la DB. |
@@ -89,9 +89,10 @@
 > **Nota**: las viejas rutas `/git/*` (commit/log/restore como "backup") fueron eliminadas. Restauraban **código**, no datos. El backup/restore ahora es a nivel base de datos.
 
 ## Helpers internos clave
-- `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`.
+- `_calcular_monto_usd(monto, moneda, cfg)` → `(monto_usd, cotizacion_aplicada)`. Usa `cfg['cotizacion_valor']`. Si `moneda == 'usd'`, retorna `(monto, None)`. **Cotización ausente, 0, negativa o no finita → `ValueError`** (desde 2026-10; antes usaba 1.0 en silencio y guardaba un USD falso para siempre). Llamarla DENTRO del `try/except ValueError` y ANTES de escribir: en un cambio, las dos conversiones van antes de los dos INSERT.
+- `_leer_movimiento_form(form, tipos_validos)` → dict normalizado. **Validación de entrada de `/agregar` y `/editar`** (desde 2026-10), con helpers `_form_texto`, `_form_opcion`, `_form_numero`, `_form_fecha`, `_form_cuotas`. Reglas: fecha `YYYY-MM-DD` real (2000–2100); descripción obligatoria ≤200, sin caracteres de control; persona ∈ `elias|mari`; moneda ∈ `ars|usd`; tipo ∈ `_MOV_TIPOS_ALTA` (con `cambio`) o `_MOV_TIPOS_EDICION`; montos finitos, ≥0 (hay gastos fijos en 0) y ≤1e12; cuotas 1..120; categoría ≤40 sin `< > "` ni control (**sin lista blanca**: hay categorías viejas, como `Laser`). Lanza `ValueError` → 400 y **no escribe nada**. No escapa: la descripción es texto libre y el escape es de la salida. Congelado en `tests/test_validacion_movimientos.py`.
 - `_calcular_gauges(saldos, cotizacion_valor, historico=False)` → dict de los 3 gauges (ARS, USD, Total). Compartido por `index`, `gastos` y `api_saldos`. Con `historico=True` el gauge Total usa `ars_total_usd`/`usd_total_usd` (monto_usd congelado) en vez de valuar a la cotización vigente.
-- `_gastos_fijos_json()` → JSON (string) con los gastos fijos activos (`descripcion`, `es_cuota`, `cuota_actual`, `total_cuotas`) para `window.GASTOS_FIJOS` del form rápido. Compartido por `gastos` e `index`.
+- `_gastos_fijos_json()` → **LISTA** (no un string) con los gastos fijos activos (`descripcion`, `es_cuota`, `cuota_actual`, `total_cuotas`) para `window.GASTOS_FIJOS` del form rápido. Compartido por `gastos` e `index`, que la imprimen con `{{ gastos_fijos_json | tojson }}`. ⚠ **Nunca `json.dumps(...)` + `| safe` dentro de un `<script>`**: no escapa `</script>`, y un gasto fijo llamado `</script><script>…` ejecutaba código (comprobado, 2026-10). `| tojson` escapa `< > & '`.
 - `_persona_actual(cfg=None)` → `'elias' | 'mari'`. Quién está mirando la app: sale del email de Google vía `auth.persona_de_email`. Con el bypass DEV (`dev@local`, sin mapear) decide la clave `persona_dev` de config; fallback `'elias'`. Es la ÚNICA fuente de identidad del módulo Personal — ahí la persona no se elige en un desplegable.
 - `_es_ajeno(mov)` → `bool`. True si el movimiento es PERSONAL y de la otra persona. La guarda de `/editar` y `/eliminar`, que trabajan por id y sin ámbito. Acepta `None`. El fondo nunca entra (ahí `personal` es 0), así que no lo toca en nada.
 - `_leer_personal_form(form, tipo, categoria)` → `bool`. Lee el checkbox "Personal" y valida la combinación; lanza `ValueError` con el texto que ve el usuario. Red de seguridad del servidor: el front ya deshabilita estas opciones, pero un POST sin JS tiene que fallar igual.
@@ -108,7 +109,7 @@
 - `_push_ciclo()` → lista de claves nuevas. Una vuelta: avisos vigentes → siembra si no hay estado → **guarda** → recién ahí anuncia el flanco con `log("SECO: flanco push ...")`. Guarda las claves **vigentes** (no la unión: así el flanco descendente rearma) más las **arrastradas** de los providers que fallaron. ⚠ Guardar ANTES de anunciar no es un detalle de orden: al revés, un guardado que falla re-anuncia el mismo flanco cada 10 min para siempre, y un push no se puede desavisar. Marca como avisadas aunque esté en seco.
 - `_SW_LAPIDA_EMERGENCIA`: la lápida escrita a mano en `app.py`. Se sirve si `templates/sw.js` no se puede leer o perdió los marcadores — **incluso con `sw_enabled=True`**: se falla del lado seguro, porque un SW apagado es un problema reversible y uno que sirve código viejo en el celular, no.
 - `inject_config()`: context_processor, expone `cfg` a todos los templates — **RECORTADO** con `config.sin_secretos()` (se van `secret_key`, `google_client_secret`, `ngrok_authtoken`, `push_vapid_secreta`). ⚠ **REGLA: ninguna ruta pasa `cfg=` a `render_template`.** Un `cfg=` en la llamada PISA el recortado con el dict entero y vuelve a dejar los secretos a un `{{ cfg }}` de distancia. `/gastos` y `/settings` lo hacían y se les sacó. Hay un test que lo vigila (`tests/test_cfg_secretos.py`, vía la señal `template_rendered`), pero el que agrega una ruta nueva lee ESTE doc, no ese test. Detalle en `CONTEXT_CONFIG.md`.
-- Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`.
+- Filtros Jinja: `fmt_ars`, `fmt_usd`, `fmt_fecha`, `fmt_fecha_hora`, `dias_desde_fecha`. `fmt_ars`/`fmt_usd` devuelven `$ —` / `USD —` ante un valor no finito: una sola fila con infinito (p.ej. de un backup viejo restaurado) dejaba el Inicio y `/gastos` en 500.
 - `PALETA_META`: lista `(key, nombre, uso)` con las 23 variables de paleta (incluye `texto-invertido` y `persona-leon`). Se pasa al template de Settings y se usa para validar `/api/paleta`. Orden coincide con la tabla de `CONTEXT_FRONTEND.md`.
 - `_HEX_RE`: regex `^#[0-9a-fA-F]{6}$` para validar hex de la paleta.
 
@@ -209,7 +210,8 @@ tareas/ocultos = permanente (todos los días).
 
 ## Helpers de backup
 - `_DB_PATH = database.DB_PATH` (fuente única; ya no hay join hardcodeado a `gastos.db` en `app.py`).
-- `_get_backup_dir()`: lee `backup_dir` de config en caliente (sin reiniciar). Si es ruta relativa, la resuelve contra la carpeta del proyecto. Si es vacía, usa `backups/`.
+- `_get_backup_dir()`: lee `backup_dir` de config en caliente (sin reiniciar). Si es ruta relativa, la resuelve contra la carpeta del proyecto. Si es vacía, usa `backups/`. **Pasa por `_validar_backup_dir`**: un valor inválido en config.json (editado a mano) NO se usa — cae a `backups` con un `AVISO:` por valor.
+- `_validar_backup_dir(valor)` → ruta normalizada o `ValueError` (desde 2026-10). **Solo disco local**: rechaza todo lo que empieza con dos barras (UNC `\\srv\x`, `//srv/x`, `\\?\UNC\...`, `\\.\...`), unidades de red (`_unidad_es_remota` → `GetDriveTypeW == 4`), rutas relativas a una unidad (`C:carpeta`), `:` fuera de la letra, caracteres de control y `<>"|?*`, y más de 260 caracteres. Por qué: con una ruta de red el backup diario (la base entera) se escribía en una máquina ajena y, con el servicio corriendo como LocalSystem, Windows además le entregaba su credencial de red (NTLM). Lo usan Settings (al guardar: `flash` con el motivo y no guarda) y `_get_backup_dir` (al leer). Congelado en `tests/test_backup_dir.py`.
 - `hacer_backup_db(motivo, descripcion=None)`: copia `fondo.db` → `fondo_<fecha>[_descripcion].db` y registra hash en `ultimo_backup.json`. Devuelve el nombre del archivo o `None` si falló.
 - `_hash_datos_db(ruta)` / `_leer_estado_backup()` / `_guardar_estado_backup()`: detección de cambios (SHA-256 del dump lógico + json de estado).
 - `_listar_backups()`: lista los `.db` de la carpeta (más nuevo primero) con `archivo`, `etiqueta` (incluye descripción si la hay), `size_mb`.
@@ -234,6 +236,51 @@ salida. **No hay nada que llamar por ruta** — anda solo.
   ETag (`"...:zstd"`), así la revalidación 304 sigue funcionando por algoritmo.
 - Medido en dev: `/resumen` 155 KB → 21 KB, `style.css` 328 KB → 78 KB.
 
+## Cabeceras de seguridad y CSP (2026-10)
+Bloque "CABECERAS DE SEGURIDAD + POLÍTICA DE SCRIPTS" de `app.py`, justo después
+de `init_auth`: un `after_request` global (`agregar_cabeceras_seguridad`) y un
+context processor (`inject_csp_nonce`). **Nada que llamar por ruta** — anda
+solo. El porqué de seguridad (amenaza por amenaza) vive en
+`docs/CONTEXT_SEGURIDAD.md`; acá, lo que hay que saber para tocar `app.py` o un
+template sin romperla. Tests: `tests/test_cabeceras_seguridad.py`.
+
+- **En toda respuesta** (con `setdefault`: si una ruta pone la suya, se la queda):
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: same-origin`, `Cross-Origin-Opener-Policy: same-origin` y
+  `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
+  (notificaciones y push **no** se bloquean: la app usa Web Push).
+- **`Strict-Transport-Security: max-age=31536000`** solo si el pedido llegó por
+  https: `X-Forwarded-Proto: https` del túnel (el primero de la lista si hay
+  varios proxies) o TLS directo. Nunca en DEV (`http://localhost`).
+- **`Content-Security-Policy`** solo en respuestas `text/html` (en JSON, estáticos,
+  `/sw.js` y `/manifest.json` no significa nada; esos reciben las generales y
+  conservan su Content-Type y su `Cache-Control`). Exactamente:
+  `default-src 'self'; script-src 'self' 'nonce-<N>'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'`.
+  `data:` en `img-src` por el favicon (SVG en un data-URI); `googleusercontent`
+  por la foto de perfil de Google. Los tests comparan la cadena carácter por
+  carácter: un cambio en `_csp_politica()` obliga a tocar el test a propósito.
+- **`'unsafe-inline'` SOLO en estilos**: hay cientos de `style=""` y un `<style>`
+  con la paleta. Lo que se bloquea es código; un estilo no ejecuta. Nunca
+  agregarlo (ni `'unsafe-eval'`) a `script-src` para "arreglar" un bloqueo: se
+  arregla el template.
+- **Contrato del nonce con los templates**: `csp_nonce` (str) llega a TODOS los
+  templates —también a `login.html`, que renderiza el blueprint `auth` y no
+  extiende `base.html`— por `inject_csp_nonce`. Es un valor por pedido
+  (`secrets.token_urlsafe(16)`, perezoso, guardado en `flask.g`): el template y
+  la cabecera de ESE pedido leen el mismo. **Todo `<script>` inline lleva
+  `nonce="{{ csp_nonce }}"`. Prohibidos: handlers inline (`onclick=`...), URLs
+  `javascript:`, `eval()`, `new Function()` y `setTimeout('texto')`.** Si un
+  template los trae el navegador los bloquea en silencio (el servidor ve un 200):
+  se ve como un botón muerto y, en la consola, `Refused to execute inline
+  script/event handler ... Content Security Policy`.
+- **Tope por pedido: 1 MB** (`app.config['MAX_CONTENT_LENGTH']`). Un cuerpo más
+  grande → `413` sin leerlo ni escribir temporales en disco (si viene por chunks,
+  sin tamaño declarado, se corta al llegar al tope). Existe por `/logout`:
+  es pública y lee `request.form`, y un multipart gigante sin tope se volcaba al
+  disco sin login. Ninguna ruta recibe archivos y lo más grande que viaja es el
+  form de la paleta (~2 KB). Si una ruta necesita más, se sube **solo para ella**
+  (`request.max_content_length = ...`), no el tope global.
+
 ## Modo servicio (Windows)
 `app.py` no tiene comandos de servicio propios. En producción NSSM envuelve
 `python app.py` (mismo entry point que dev). Ver `docs/CONTEXT_DEPLOY.md`.
@@ -244,7 +291,8 @@ salida. **No hay nada que llamar por ruta** — anda solo.
 3. **Sueldo + factor**: si `tipo='ingreso'` y `categoria='sueldo'`, guardar `factor_aplicado = cfg['factor_sueldo']` (default 0.7). El cálculo de saldos lo aplica.
 4. **Cuotas**: si `cuotas_checkbox` y `total_cuotas`, se crea fila en `gastos_fijos` con `es_cuota=1`. Categoría `Fijo` con `gasto_fijo` existente avanza la cuota.
 5. **Cambio**: tipo `cambio` genera 2 inserts. Movimiento 1 = gasto en moneda origen. Movimiento 2 = ingreso en moneda destino. Categoría = `Cambio`.
-6. **backup_dir**: clave de config editable desde Settings. Default `"backups"` (relativo). `_get_backup_dir()` lo resuelve en caliente; un cambio aplica sin reiniciar.
+6. **backup_dir**: clave de config editable desde Settings. Default `"backups"` (relativo). `_get_backup_dir()` lo resuelve en caliente; un cambio aplica sin reiniciar. **Solo carpetas de disco local** (`_validar_backup_dir`).
+8. **Entrada validada, salida escapada** (2026-10): toda ruta que guarda datos del usuario valida en el servidor (enumerados por lista blanca, números finitos, fechas reales, largos máximos) con `ValueError` → 400 ANTES de escribir. Los datos que viajan a un `<script>` van con `| tojson`, nunca `| safe`. Ver `docs/CONTEXT_SEGURIDAD.md`.
 7. **Checkbox "Personal"**: leerlo SIEMPRE con `_leer_personal_form`, nunca `request.form.get('personal')` a mano — ahí vive la validación. Con `es_personal` en `True`: no se guarda `factor_aplicado`, no se crean ni se avanzan cuotas, y el JSON de respuesta lleva `personal` en la raíz para que el front sepa que esa fila NO va a la tabla del fondo. En `/editar` el form manda además `ambito_presente=1`: sin esa marca se pasa `personal=None` y la columna queda como estaba.
 
 ## Al modificar este dominio, actualizar:

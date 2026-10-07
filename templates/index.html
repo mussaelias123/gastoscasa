@@ -263,8 +263,8 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-  var GASTOS_FIJOS = {{ gastos_fijos_json | safe }};
+<script nonce="{{ csp_nonce }}">
+  var GASTOS_FIJOS = {{ gastos_fijos_json | tojson }};
   window.LAC_HOME = {{ lac_home | tojson }};
   window.RUT_DATOS = {{ rut_home | tojson }};
 </script>

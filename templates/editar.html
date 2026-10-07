@@ -108,8 +108,13 @@
 
   <div class="campo campo-botones">
     <button type="submit" class="btn btn-primario">💾 Guardar Cambios</button>
+    {# Botón y no <a>: así queda idéntico al de al lado (una etiqueta <a> hereda
+       otro line-height y otra alineación vertical). `data-accion="navegar"` lo
+       atiende el listener delegado de app.js; un onclick="..." inline lo
+       bloquearía la política de scripts (CSP). #}
     <button type="button"
-            onclick="window.location.href='{{ url_for('gastos') }}'"
+            data-accion="navegar"
+            data-url="{{ url_for('gastos') }}"
             class="btn btn-secundario">
       ✖ Cancelar
     </button>

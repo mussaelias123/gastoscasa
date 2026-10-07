@@ -6,12 +6,12 @@
 
 {% block contenido %}
 
-{% with mensajes = get_flashed_messages() %}
-  {% if mensajes %}
-    <div class="banner-exito" role="alert">
-      {% for msg in mensajes %}{{ msg }}{% endfor %}
-    </div>
-  {% endif %}
+{# Cada aviso con su color: 'error' (algo que NO se aplicó, p.ej. una carpeta
+   de backups de red) va en rojo; el resto, en el verde de siempre. #}
+{% with mensajes = get_flashed_messages(with_categories=true) %}
+  {% for categoria, msg in mensajes %}
+    <div class="{{ 'banner-error' if categoria == 'error' else 'banner-exito' }}" role="alert">{{ msg }}</div>
+  {% endfor %}
 {% endwith %}
 
 <div class="settings-layout">
@@ -154,8 +154,7 @@
       <div class="backup-crear">
         <input type="text" id="backup-desc" maxlength="40"
                placeholder="Descripción (opcional)" class="backup-input">
-        <button type="button" class="btn btn-acento" id="btn-crear-backup"
-                onclick="crearBackup()">+ Crear backup</button>
+        <button type="button" class="btn btn-acento" id="btn-crear-backup">+ Crear backup</button>
       </div>
       <div id="backup-resultado" class="git-resultado" style="display:none;"></div>
 
@@ -164,7 +163,7 @@
           <option value="">Cargando backups...</option>
         </select>
         <button type="button" class="btn btn-peligro btn-sm" id="btn-restaurar-backup"
-                onclick="confirmarRestore()" disabled>↺ Restaurar</button>
+                disabled>↺ Restaurar</button>
       </div>
       <div id="restore-resultado" class="git-resultado" style="display:none;"></div>
     </div>
@@ -203,7 +202,7 @@
             <input type="hidden" name="accion" value="eliminar_fijo">
             <input type="hidden" name="fijo_id" value="{{ fijo['id'] }}">
             <button type="button" class="fijo-chip-btn fijo-chip-btn-del" title="Eliminar"
-                    onclick="mostrarModalBorrado(this.closest('form'))">✕</button>
+                    data-accion="borrar">✕</button>
           </form>
         </li>
         {% endfor %}
@@ -395,7 +394,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 
 // ── Backup de la base de datos ───────────────────────────────────────────────
 
@@ -415,9 +414,17 @@ function _renderBackups(backups) {
     return;
   }
 
-  select.innerHTML = backups.map(b =>
-    `<option value="${b.archivo}">${b.etiqueta} — ${b.size_mb} MB</option>`
-  ).join('');
+  // Con createElement + textContent, nunca innerHTML: el nombre del archivo y
+  // su etiqueta salen del disco (una descripción de backup es texto libre).
+  // Hoy el nombre se sanea a [\w-], pero la regla de la casa es escapar en la
+  // SALIDA aunque la entrada ya venga limpia (ver CONTEXT_SEGURIDAD.md).
+  select.textContent = '';
+  backups.forEach(b => {
+    const opcion = document.createElement('option');
+    opcion.value = b.archivo;
+    opcion.textContent = `${b.etiqueta} — ${b.size_mb} MB`;
+    select.appendChild(opcion);
+  });
   btnRestore.disabled = false;
 }
 
@@ -507,6 +514,12 @@ async function hacerRestore(archivo) {
     btn.textContent = '↺ Restaurar';
   }
 }
+
+// Los dos botones se enganchan acá y NO con onclick="..." en el HTML: la política
+// de scripts del servidor (CSP) bloquea todo manejador inline. (Los ✕ de borrar
+// de esta página los atiende el listener delegado de app.js, vía data-accion.)
+document.getElementById('btn-crear-backup').addEventListener('click', crearBackup);
+document.getElementById('btn-restaurar-backup').addEventListener('click', confirmarRestore);
 
 // Cargar la lista de backups al abrir la página
 cargarBackups();

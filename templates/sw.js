@@ -336,10 +336,11 @@ self.addEventListener('fetch', function (evento) {
         return;
     }
 
-    // (b) SOLO NUESTRO ORIGEN. Mata de una el problema del CDN (flatpickr y
-    //     chart.js vienen de jsdelivr, sin versión fija en la URL y con
-    //     respuestas opacas que no se puede saber si salieron bien) y el
-    //     avatar de Google del header.
+    // (b) SOLO NUESTRO ORIGEN. Deja afuera el avatar de Google del header y
+    //     cualquier recurso de otro dominio (respuestas opacas: no se puede
+    //     saber si salieron bien). flatpickr y Chart.js ya no vienen de un
+    //     CDN: viven en /static/vendor/ con versión fija y caen en la guarda
+    //     de abajo como cualquier estático (docs/CONTEXT_SEGURIDAD.md).
     if (url.origin !== self.location.origin) return;
 
     // (c) SOLO /static/. Punto. Acá es donde quedan afuera las 13 páginas con

@@ -6,10 +6,20 @@
 # Lee y escribe config.json, que es la única fuente de verdad para
 # todas las opciones del entorno (puerto, ngrok, primer inicio, etc.)
 #
+# ⚠ config.json guarda secretos que no se recuperan (credenciales de Google,
+# secret_key, claves VAPID, token de ngrok), así que NO se lee ni se escribe
+# "a pelo": candado, escritura atómica y lectura estricta al guardar. El porqué
+# está en la sección "LECTURA Y ESCRITURA SEGURAS", más abajo.
+#
 # =============================================================================
 
 import json
 import os
+import tempfile
+import threading
+import time
+
+from logutil import log  # logutil no importa nada del proyecto: sin riesgo de import circular
 
 _DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
 
@@ -93,8 +103,9 @@ DEFAULTS = {
     "google_client_secret": "",
     "secret_key": "",
     # ── Bypass de login SOLO para DEV ───────────────────────────────────────
-    # Si True, se saltea el login de Google, pero ÚNICAMENTE bajo triple cerrojo
-    # (ver auth.py → require_login): auth_disabled + localhost + ngrok apagado.
+    # Si True, se saltea el login de Google, pero ÚNICAMENTE bajo cuádruple
+    # cerrojo (ver auth.py → require_login): auth_disabled + pedido desde la
+    # propia PC + nombre de sitio local (localhost/127.0.0.1/[::1]) + ngrok apagado.
     # En PROD: dejar SIEMPRE en False. Default seguro = False.
     "auth_disabled": False,
     # Con el bypass de arriba la sesión es un usuario falso (`dev@local`), que
@@ -308,36 +319,296 @@ LIMITES_LACTANCIA = {
 }
 
 
-def cargar_config(ruta=None):
-    """Lee el archivo de config y retorna un dict. Usa defaults para claves faltantes."""
-    if ruta is None:
-        ruta = _DEFAULT_CONFIG_PATH
+# =============================================================================
+# LECTURA Y ESCRITURA SEGURAS — por qué config.json no se toca "a pelo"
+# =============================================================================
+#
+# config.json guarda lo que NO se recupera: las credenciales de Google, la
+# secret_key de las sesiones, las claves VAPID y el token de ngrok. Y se
+# escribe SEGUIDO: la cotización al arrancar y a las 08:00 y 17:00, y cada
+# guardado de ajustes (Lactancia, Rutina, Paleta, Settings).
+#
+# QUÉ PASABA (comprobado con una prueba aislada, no es teoría):
+#
+#   1. Un lector veía el archivo A MEDIAS. El guardado viejo abría con 'w', que
+#      TRUNCA en el acto, y recién después escribía. Un request que leía en esa
+#      ventana veía el archivo vacío o cortado; `cargar_config` se tragaba el
+#      error y devolvía DEFAULTS, o sea SIN credenciales de Google. Con
+#      escrituras seguidas, ~18% de las lecturas caían ahí. Y como auth.py,
+#      ante "sin credenciales", dejaba pasar a cualquiera, la app quedaba
+#      abierta: por el túnel de ngrok, a todo internet.
+#
+#   2. Un guardado podía BORRAR LOS SECRETOS PARA SIEMPRE. `guardar_config`
+#      leía con `cargar_config`, cambiaba una clave y escribía todo. Si lo que
+#      leyó era un archivo a medias, escribía DEFAULTS + su cambio: credenciales,
+#      secret_key, VAPID y ngrok, perdidos. Bastaba con dos escritores a la vez
+#      (la cotización de las 08:00 justo cuando alguien guarda una paleta).
+#
+# QUÉ HAY AHORA, una defensa por falla:
+#
+#   · UN CANDADO (`_LOCK`, un RLock) alrededor de todo el leer-modificar-escribir
+#     y de cada lectura. Dos escritores se turnan en vez de pisarse, y un lector
+#     del mismo proceso nunca tiene el archivo abierto mientras se lo
+#     reemplazan (en Windows `os.replace` falla con PermissionError si el
+#     destino está abierto). Es un candado de PROCESO: un editor o el antivirus
+#     no lo respetan, y de esos se ocupan los reintentos.
+#   · ESCRITURA ATÓMICA: se escribe un temporal en la MISMA carpeta y se lo
+#     mete encima con `os.replace`. El archivo real pasa del contenido viejo al
+#     nuevo de un golpe; no hay un instante en que esté vacío o cortado.
+#   · LECTURA ESTRICTA AL GUARDAR: si el archivo existe pero no se puede leer,
+#     `guardar_config` lanza `ConfigIlegible` y NO escribe nada. Perder un
+#     guardado se arregla repitiéndolo; perder las credenciales, no.
+#   · `cargar_config` REINTENTA unas veces (cubre a un humano guardando con un
+#     editor, que trunca y escribe en dos pasos) y, si sigue ilegible, AVISA en
+#     el log y devuelve DEFAULTS. Eso ya no abre nada: auth.py deja el login
+#     CERRADO cuando faltan las credenciales.
+
+# Candado de PROCESO, uno solo para todas las rutas (se escribe poco y es
+# chico). RLock y no Lock porque `guardar_config` lo tiene tomado y la lectura
+# estricta que hace adentro lo vuelve a pedir.
+_LOCK = threading.RLock()
+
+
+class ConfigIlegible(Exception):
+    """
+    config.json EXISTE pero no se pudo leer como un objeto JSON: no se puede
+    abrir, no es JSON válido o la raíz no es un `{...}`.
+
+    La lanza `guardar_config` y NO escribe nada: pisar un archivo ilegible con
+    DEFAULTS + el cambio borraría para siempre las credenciales, la secret_key,
+    las claves VAPID y el token de ngrok. Se arregla a mano (el log dice en qué
+    línea y columna está el error).
+
+    Es una `Exception` común a propósito, no un `ValueError`: las rutas de
+    app.py atrapan `ValueError` ANTES que `Exception` y contestan 400 ("error
+    tuyo"), y esto es un problema del servidor, que tiene que salir como 500.
+    """
+
+
+# Reintentos de lectura. Cubren a un humano guardando config.json con un
+# editor (trunca y escribe en dos pasos) o a un antivirus que lo tiene tomado un
+# instante. Las escrituras de la app no los necesitan: son atómicas. Peor caso:
+# 3 esperas × 50 ms = 150 ms, y se paga SOLO cuando el archivo está roto de
+# verdad. Sin caché a propósito: los kill switches (`sw_enabled`, `push_enabled`,
+# `auth_disabled`) dependen de que cada lectura vaya al disco.
+_LECTURA_INTENTOS = 4
+_LECTURA_ESPERA = 0.05  # segundos entre un intento y el siguiente
+
+# En Windows `os.replace` tira PermissionError si OTRO proceso (un editor, el
+# antivirus, el indexador) tiene abierto el destino en ese instante. Se
+# reintenta con una espera corta, hasta ~1 s en total, antes de rendirse.
+_REEMPLAZO_ESPERA_TOTAL = 1.0  # segundos, entre todos los reintentos
+_REEMPLAZO_PASO = 0.05         # segundos entre un reintento y el siguiente
+
+# `cargar_config` se llama en CADA request: con el archivo roto, un AVISO por
+# llamada llenaría el log. Como mucho uno por minuto y por archivo.
+_AVISO_ILEGIBLE_CADA = 60.0   # segundos
+_ultimo_aviso_ilegible = {}   # ruta absoluta → time.monotonic() del último AVISO
+_LOCK_AVISO = threading.Lock()
+
+
+def _con_defaults(datos):
+    """
+    DEFAULTS + lo que traiga el archivo (`datos`; None si el archivo no existe).
+    Es el merge de siempre, factorizado para que `cargar_config` y
+    `guardar_config` armen EXACTAMENTE el mismo dict.
+    """
     cfg = dict(DEFAULTS)
-    if os.path.exists(ruta):
-        try:
-            with open(ruta, 'r', encoding='utf-8') as f:
-                datos = json.load(f)
-            cfg.update(datos)
-            # Paletas: merge por clave. Si config.json trae una paleta guardada
-            # vieja (menos claves que DEFAULTS), las claves nuevas de DEFAULTS
-            # sobreviven (ej. texto-invertido agregado en 2026-07).
-            for paleta in ('paleta_light', 'paleta_dark'):
-                base = dict(DEFAULTS.get(paleta, {}))
-                base.update(datos.get(paleta) or {})
-                cfg[paleta] = base
-        except (json.JSONDecodeError, OSError):
-            pass
+    if datos is None:
+        return cfg
+    cfg.update(datos)
+    # Paletas: merge por clave. Si config.json trae una paleta guardada
+    # vieja (menos claves que DEFAULTS), las claves nuevas de DEFAULTS
+    # sobreviven (ej. texto-invertido agregado en 2026-07).
+    for paleta in ('paleta_light', 'paleta_dark'):
+        base = dict(DEFAULTS.get(paleta, {}))
+        propia = datos.get(paleta)
+        # Una paleta que no es un objeto (alguien la rompió editando a mano) se
+        # ignora: `cargar_config` no puede lanzar, se llama en cada request.
+        base.update(propia if isinstance(propia, dict) else {})
+        cfg[paleta] = base
     return cfg
 
 
-def guardar_config(data, ruta=None):
-    """Escribe el dict `data` en el archivo de config."""
-    cfg = cargar_config(ruta)
-    cfg.update(data)
+def _leer_una_vez(ruta):
+    """
+    UN intento de lectura. Devuelve el dict del archivo, o None si el archivo
+    NO EXISTE. Lanza `ConfigIlegible` si existe pero no sirve.
+
+    `utf-8-sig` y no `utf-8`: acepta el archivo con y sin BOM. Varios editores
+    de Windows (el Bloc de notas viejo, PowerShell 5.1 con `-Encoding UTF8`)
+    guardan CON BOM, y `utf-8` a secas lo rechaza ("Unexpected UTF-8 BOM").
+    Como arreglar config.json a mano es justamente la forma de configurar la
+    app, un byte invisible no puede dejarla con el login cerrado.
+
+    `ValueError` cubre JSONDecodeError y también UnicodeDecodeError (un archivo
+    guardado en cp1252 con una ñ), que el código viejo ni atrapaba.
+    """
+    nombre = os.path.basename(ruta)
+    try:
+        with open(ruta, 'r', encoding='utf-8-sig') as f:
+            datos = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        raise ConfigIlegible(f"{nombre} ilegible: {type(e).__name__}: {e}") from e
+    if not isinstance(datos, dict):
+        raise ConfigIlegible(
+            f"{nombre} ilegible: la raíz es {type(datos).__name__} y tiene que ser "
+            f"un objeto JSON ({{...}})")
+    return datos
+
+
+def _leer_con_reintentos(ruta):
+    """
+    Lectura estricta con reintentos. Devuelve el dict, o None si el archivo no
+    existe; si sigue ilegible después de los reintentos, lanza `ConfigIlegible`.
+
+    El candado se toma SOLO alrededor de cada lectura y se suelta para dormir:
+    un lector que espera a que termine un editor no frena a los demás. Cuando
+    el que llama ya lo tiene (`guardar_config`), el RLock sigue tomado y la
+    espera pasa con el candado puesto — que es lo que tiene que pasar ahí: el
+    leer-modificar-escribir no se parte.
+    """
+    ultimo = None
+    for intento in range(_LECTURA_INTENTOS):
+        if intento:
+            time.sleep(_LECTURA_ESPERA)
+        with _LOCK:
+            try:
+                return _leer_una_vez(ruta)
+            except ConfigIlegible as e:
+                ultimo = e
+    raise ultimo
+
+
+def _avisar_ilegible(ruta, error):
+    """AVISO de "config.json ilegible", como mucho una vez por minuto y por archivo."""
+    clave = os.path.abspath(ruta)
+    ahora = time.monotonic()
+    with _LOCK_AVISO:
+        ultimo = _ultimo_aviso_ilegible.get(clave)
+        if ultimo is not None and ahora - ultimo < _AVISO_ILEGIBLE_CADA:
+            return
+        _ultimo_aviso_ilegible[clave] = ahora
+    # El mensaje del error trae el tipo y la posición (línea/columna) del JSON
+    # roto, nunca el contenido del archivo: no se loguea ningún secreto.
+    log(f"AVISO: {error}. Se usan los valores por defecto, que NO traen las "
+        f"credenciales de Google: el login queda CERRADO hasta arreglar el "
+        f"archivo ({clave}).")
+
+
+def _borrar_temporal(tmp):
+    """
+    Borra el temporal de una escritura que falló. Tiene una copia COMPLETA de
+    la config, secretos incluidos, así que no puede quedar suelto: se reintenta
+    unas veces (en Windows el antivirus lo puede tener tomado un instante) y,
+    si no hay forma, se AVISA con el nombre para que alguien lo borre a mano.
+    """
+    for _ in range(3):
+        try:
+            os.remove(tmp)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            time.sleep(_REEMPLAZO_PASO)
+    log(f"AVISO: no se pudo borrar el temporal {tmp}: tiene una copia de "
+        f"config.json con secretos. Borrarlo a mano.")
+
+
+def _reemplazar(origen, destino):
+    """
+    `os.replace` con reintentos ante PermissionError (ver `_REEMPLAZO_*`). Pasado
+    el tiempo, relanza: el que llama limpia el temporal.
+    """
+    limite = time.monotonic() + _REEMPLAZO_ESPERA_TOTAL
+    while True:
+        try:
+            os.replace(origen, destino)
+            return
+        except PermissionError:
+            if time.monotonic() >= limite:
+                raise
+            time.sleep(_REEMPLAZO_PASO)
+
+
+def _escribir_atomico(ruta, cfg):
+    """
+    Escribe `cfg` en `ruta` de un golpe: temporal en la MISMA carpeta (un
+    `os.replace` entre discos no es atómico) + `os.replace`.
+
+    El temporal se llama `<archivo>.<azar>.tmp` y el patrón está en .gitignore:
+    si un corte de luz deja uno, trae una copia completa de la config y no puede
+    colarse en un `git add -A`. Cualquier camino de error lo borra.
+
+    El texto se arma ANTES de crear nada: un valor que json no sabe serializar
+    falla acá, sin tocar el disco.
+    """
+    texto = json.dumps(cfg, indent=2, ensure_ascii=False)
+    carpeta = os.path.dirname(os.path.abspath(ruta))
+    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(ruta) + '.', suffix='.tmp',
+                               dir=carpeta)
+    os.close(fd)
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(texto)
+            f.flush()
+            os.fsync(f.fileno())  # que esté en el disco ANTES de que reemplace al bueno
+        _reemplazar(tmp, ruta)
+    except BaseException:
+        _borrar_temporal(tmp)
+        raise
+
+
+def cargar_config(ruta=None):
+    """
+    Lee el archivo de config y retorna un dict. Usa defaults para claves faltantes.
+
+    Archivo inexistente → DEFAULTS. Archivo ilegible (ya con reintentos) →
+    también DEFAULTS, pero con un AVISO en el log. No lanza: se llama en cada
+    request y en los hilos de fondo. Que DEFAULTS no traiga credenciales de
+    Google es justo lo que hace que auth.py deje el login CERRADO.
+    """
     if ruta is None:
         ruta = _DEFAULT_CONFIG_PATH
-    with open(ruta, 'w', encoding='utf-8') as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+    try:
+        datos = _leer_con_reintentos(ruta)
+    except ConfigIlegible as e:
+        _avisar_ilegible(ruta, e)
+        return dict(DEFAULTS)
+    return _con_defaults(datos)
+
+
+def guardar_config(data, ruta=None):
+    """
+    Mergea el dict `data` sobre lo que ya hay en el archivo de config y lo guarda.
+
+    Todo el leer-modificar-escribir va bajo `_LOCK`, y la lectura es ESTRICTA:
+    si el archivo existe pero no se puede leer, lanza `ConfigIlegible` y NO
+    escribe nada (ver la sección de arriba). Si no existe, parte de DEFAULTS y
+    lo crea. La escritura es atómica.
+
+    Quién la llama y qué hace con `ConfigIlegible`: las rutas de ajustes de
+    app.py la dejan caer en su `except Exception` (500 o redirect), los
+    schedulers en el suyo (AVISO en el log) e `init_auth` la convierte en un
+    error de arranque claro.
+    """
+    if ruta is None:
+        ruta = _DEFAULT_CONFIG_PATH
+    try:
+        with _LOCK:
+            actual = _leer_con_reintentos(ruta)
+            cfg = _con_defaults(actual)
+            cfg.update(data)
+            _escribir_atomico(ruta, cfg)
+    except ConfigIlegible as e:
+        # Se loguea SIEMPRE y fuera del candado: las rutas de app.py atrapan la
+        # excepción y la devuelven como JSON, así que sin esta línea el detalle
+        # (qué línea del JSON está rota) no quedaría en ningún lado.
+        log(f"AVISO: guardar_config NO escribió nada: {e}. config.json quedó "
+            f"como estaba; arreglarlo a mano.")
+        raise
 
 
 def es_primer_inicio():

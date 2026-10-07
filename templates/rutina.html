@@ -278,7 +278,7 @@ cada 30 s (reloj vivo + sync) y tras cada mutación AJAX.
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
   window.RUT_DATOS = {{ datos|tojson }};
 </script>
 <script src="{{ url_for('static', filename='rutina-actividades.js') }}?v={{ static_version }}"></script>

@@ -30,7 +30,9 @@
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
+import math
 import os
+import secrets
 import threading
 import time
 from datetime import datetime, timedelta, date
@@ -45,6 +47,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 import re as _re
 from flask import (Flask, render_template, request, redirect, url_for, jsonify,
                    flash, Response)
+# `g` va con alias, igual que `flask_session` más abajo: con una letra sola, el
+# primer `for g in gauges:` de cualquier función la taparía sin avisar.
+from flask import g as flask_g
 from flask_compress import Compress
 import database
 import config
@@ -1168,14 +1173,42 @@ def _notificaciones():
 # La cotización se toma de config.json ('cotizacion_valor'), que se refresca
 # 1 vez por día desde dolarapi.com vía el módulo cotizacion.py.
 #
+# SIN COTIZACIÓN VÁLIDA NO SE CALCULA NADA: ausente, 0, negativa, no numérica o
+# no finita (NaN, infinito) lanza ValueError y el movimiento NO se guarda.
+# Antes se usaba 1.0 en silencio ("guardia defensiva"), y eso escribía para
+# siempre un monto_usd FALSO (AR$ 1.500.000 quedaban como USD 1.500.000) sin que
+# nada avisara: el monto_usd alimenta el Resumen y el gauge Total, y una vez
+# guardado no se distingue de uno bueno. Un 400 que se ve es mejor que un dato
+# malo que no. Ojo con NaN: `nan <= 0` es False, así que el `<= 0` solo no lo
+# atrapa y hace falta el `isfinite`. Este es el ÚLTIMO resguardo; el origen de
+# la cotización se blinda en cotizacion.py.
+#
+# Quien lo llame tiene que estar adentro de un try/except ValueError y llamarlo
+# ANTES de escribir en la base (`agregar` y `editar` lo hacen así; en un cambio,
+# las dos conversiones van antes de los dos INSERT para no dejar medio cambio).
+#
+_MSG_SIN_COTIZACION = ('No hay una cotización del dólar válida para convertir el '
+                       'monto. Actualizala desde Settings y probá de nuevo.')
+
+
 def _calcular_monto_usd(monto, moneda, cfg):
-    """Retorna (monto_usd, cotizacion_usd_aplicada) para un movimiento nuevo/editado."""
+    """Retorna (monto_usd, cotizacion_usd_aplicada) para un movimiento nuevo/editado.
+
+    Lanza ValueError (mensaje para el usuario) si hace falta convertir y no hay
+    una cotización utilizable."""
     if moneda == 'usd':
         return float(monto), None
-    cot = float(cfg.get('cotizacion_valor') or 1.0)
-    if cot <= 0:
-        cot = 1.0  # Guardia defensiva: evita división por cero si algo salió mal.
-    return float(monto) / cot, cot
+    try:
+        cot = float(cfg.get('cotizacion_valor'))
+    except (TypeError, ValueError):
+        cot = None  # ausente (None) o basura ('abc'): se trata igual que un 0
+    if cot is None or not math.isfinite(cot) or cot <= 0:
+        raise ValueError(_MSG_SIN_COTIZACION)
+    monto_usd = float(monto) / cot
+    if not math.isfinite(monto_usd):
+        # Una cotización diminuta (1e-320) desborda el cociente a infinito.
+        raise ValueError(_MSG_SIN_COTIZACION)
+    return monto_usd, cot
 
 
 # =============================================================================
@@ -1271,10 +1304,220 @@ def _leer_personal_form(form, tipo, categoria):
     return True
 
 
+# =============================================================================
+# VALIDACIÓN DE MOVIMIENTOS — lo que aceptan /agregar y /editar
+# =============================================================================
+#
+# POR QUÉ EXISTE: las dos rutas guardaban cualquier cosa tal como llegaba.
+# Comprobado a mano: `monto=1e999` es un infinito válido para float() y se
+# guardaba; después `fmt_ars` tiraba OverflowError y el Inicio y /gastos
+# quedaban en 500 hasta borrar esa fila a mano desde la base. También entraban
+# personas, monedas y tipos inventados, montos negativos, una fecha con comillas
+# y HTML y una categoría con etiquetas. Lo que se guarda se vuelve a leer en
+# cada pantalla, así que el filtro va en la ENTRADA.
+#
+# QUÉ NO HACE: no escapa. La descripción es texto libre y puede llevar comillas
+# o `<` (un "Cuota <Zara>" es legítimo); escapar es trabajo de la SALIDA (Jinja
+# y `esc()` en el JS). Acá solo se cierra lo que no tiene ningún uso legítimo.
+# La categoría es casi un enumerado, pero NO se compara contra la lista del
+# desplegable: hay categorías viejas en la base ('Laser') que ya no están en la
+# lista actual y se tienen que poder seguir editando. Se le prohíben `<`, `>` y
+# `"` y listo.
+#
+# Cada helper lanza ValueError con el texto que ve el usuario (el front lo
+# muestra tal cual; ver la convención en CONTEXT_BACKEND.md). El rechazo es
+# TOTAL: ante un campo inválido no se escribe nada en la base.
+
+_MOV_PERSONAS      = ('elias', 'mari')
+_MOV_MONEDAS       = ('ars', 'usd')
+_MOV_TIPOS_ALTA    = ('ingreso', 'gasto', 'cambio')
+_MOV_TIPOS_EDICION = ('ingreso', 'gasto')   # el form de edición no ofrece 'cambio'
+
+_MOV_FECHA_RE      = _re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}')   # [0-9], no \d: \d acepta dígitos de otros alfabetos
+_MOV_ANIOS         = (2000, 2100)
+_MOV_DESC_MAX      = 200    # el form ya trae maxlength=200
+_MOV_CATEGORIA_MAX = 40
+_MOV_MONTO_MAX     = 1e12   # el campo del form tiene 16 caracteres: nada legítimo se acerca
+_MOV_CUOTAS_MAX    = 120
+
+# Caracteres de control: C0 (\x00-\x1f), DEL y C1 (\x7f-\x9f), más los
+# separadores de línea y de párrafo de Unicode (U+2028 y U+2029), que cortan un
+# literal de JavaScript en los navegadores viejos. No se prohíbe el resto de la
+# categoría "format": el ZWJ (U+200D) arma los emojis compuestos.
+_MOV_CONTROL_RE = _re.compile(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]')
+_MOV_CATEGORIA_PROHIBIDOS_RE = _re.compile(r'[\x00-\x1f\x7f-\x9f\u2028\u2029<>"]')
+
+
+def _form_texto(form, campo, etiqueta, maximo, obligatorio=True,
+                prohibidos=_MOV_CONTROL_RE):
+    """
+    Texto libre de una línea. Devuelve el valor SIN espacios en los bordes, o
+    None si es opcional y vino vacío. `etiqueta` lleva el artículo ('la
+    descripción') para armar las frases.
+
+    Los caracteres prohibidos se buscan en el valor CRUDO, antes del strip(): un
+    salto de línea al final no es un espacio sobrante sino un request armado a
+    mano — ningún <input type="text"> lo manda.
+    """
+    crudo = form.get(campo) or ''
+    if prohibidos.search(crudo):
+        raise ValueError(f'{etiqueta.capitalize()} tiene caracteres no permitidos.')
+    texto = crudo.strip()
+    if not texto:
+        if obligatorio:
+            raise ValueError(f'Falta {etiqueta}.')
+        return None
+    if len(texto) > maximo:
+        raise ValueError(
+            f'{etiqueta.capitalize()} no puede tener más de {maximo} caracteres.')
+    return texto
+
+
+def _form_opcion(form, campo, validos, mensaje):
+    """
+    Valor de un desplegable: tiene que ser EXACTAMENTE uno de `validos` (sin
+    strip ni lower: son enumerados, no texto libre). Ausente e inválido dan el
+    mismo `mensaje`.
+    """
+    valor = form.get(campo)
+    if valor not in validos:
+        raise ValueError(mensaje)
+    return valor
+
+
+def _form_numero(form, campo, etiqueta, obligatorio=True):
+    """
+    Importe: número FINITO entre 0 y _MOV_MONTO_MAX. Devuelve float, o None si
+    es opcional y vino vacío. Cero vale (hay gastos fijos de monto 0).
+
+    `float()` solo no alcanza: acepta 'nan', 'inf' y '1e999' (que da infinito),
+    y los tres pasaban derechos hasta la base.
+    """
+    valor = (form.get(campo) or '').strip()
+    if not valor:
+        if obligatorio:
+            raise ValueError(f'Falta {etiqueta}.')
+        return None
+    try:
+        numero = float(valor)
+    except ValueError:
+        numero = math.nan   # 'abc', '12,5': se rechaza igual que un NaN
+    if not math.isfinite(numero):
+        raise ValueError(f'{etiqueta.capitalize()} no es un número válido.')
+    if numero < 0:
+        raise ValueError(f'{etiqueta.capitalize()} no puede ser negativo.')
+    if numero > _MOV_MONTO_MAX:
+        raise ValueError(f'{etiqueta.capitalize()} es demasiado grande.')
+    return numero + 0.0   # un '-0' queda como 0.0 y no como -0.0
+
+
+def _form_fecha(form):
+    """
+    Fecha del movimiento: `YYYY-MM-DD` de un día que existe, año 2000-2100.
+    Devuelve el texto tal cual llegó (ya es canónico).
+
+    Se mira el formato ANTES de strptime porque strptime es más permisivo de lo
+    que la base tolera: acepta '2026-9-5', y una fecha sin ceros no ordena ni
+    entra en los filtros por mes (`LIKE '2026-09%'`) que usa database.py.
+    """
+    fecha = form.get('fecha') or ''
+    if not fecha:
+        raise ValueError('Falta la fecha.')
+    if not _MOV_FECHA_RE.fullmatch(fecha):     # fullmatch: `$` dejaría pasar un '\n' final
+        raise ValueError('La fecha no es válida.')
+    try:
+        dia = datetime.strptime(fecha, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError('La fecha no es válida (ese día no existe).') from None
+    if not _MOV_ANIOS[0] <= dia.year <= _MOV_ANIOS[1]:
+        raise ValueError(
+            f'La fecha tiene que estar entre los años {_MOV_ANIOS[0]} y {_MOV_ANIOS[1]}.')
+    return fecha
+
+
+def _form_cuotas(form):
+    """Cantidad de cuotas: opcional; si viene, un entero entre 1 y _MOV_CUOTAS_MAX."""
+    valor = (form.get('total_cuotas') or '').strip()
+    if not valor:
+        return None
+    if not _re.fullmatch(r'[0-9]{1,3}', valor) or not 1 <= int(valor) <= _MOV_CUOTAS_MAX:
+        raise ValueError(
+            f'La cantidad de cuotas tiene que ser un entero entre 1 y {_MOV_CUOTAS_MAX}.')
+    return int(valor)
+
+
+def _leer_movimiento_form(form, tipos_validos):
+    """
+    Lee y valida el formulario de un movimiento. Lo comparten /agregar y
+    /editar, así las dos aceptan exactamente lo mismo. Lanza ValueError con el
+    texto que ve el usuario.
+
+    Devuelve un dict normalizado y COMPLETO (las claves que no aplican valen
+    None): fecha, descripcion, persona, moneda, tipo, monto, categoria,
+    costo_envio, total_cuotas, persona_final, moneda_final, monto_final.
+
+    `tipos_validos` decide si 'cambio' entra (el alta sí, la edición no).
+
+    En un cambio se validan los campos `_final` y NO categoría, envío ni cuotas:
+    la categoría de un cambio la fija el server ('Cambio') y lo demás no se usa,
+    así que lo que mande el form ahí ni se guarda ni se devuelve.
+    """
+    datos = {
+        'fecha':       _form_fecha(form),
+        'descripcion': _form_texto(form, 'descripcion', 'la descripción',
+                                   _MOV_DESC_MAX),
+        'persona':     _form_opcion(form, 'persona', _MOV_PERSONAS,
+                                    'Elegí una persona válida.'),
+        'moneda':      _form_opcion(form, 'moneda', _MOV_MONEDAS,
+                                    'Elegí una moneda válida.'),
+        'tipo':        _form_opcion(form, 'tipo', tipos_validos,
+                                    'Elegí un tipo válido.'),
+        'monto':       _form_numero(form, 'monto', 'el monto'),
+        'categoria': None, 'costo_envio': None, 'total_cuotas': None,
+        'persona_final': None, 'moneda_final': None, 'monto_final': None,
+    }
+
+    if datos['tipo'] == 'cambio':
+        datos['persona_final'] = _form_opcion(
+            form, 'persona_final', _MOV_PERSONAS, 'Elegí una persona final válida.')
+        datos['moneda_final'] = _form_opcion(
+            form, 'moneda_final', _MOV_MONEDAS, 'Elegí una moneda final válida.')
+        # Sin monto final (misma moneda: el form esconde el campo) vale el monto.
+        monto_final = _form_numero(form, 'monto_final', 'el monto final',
+                                   obligatorio=False)
+        datos['monto_final'] = datos['monto'] if monto_final is None else monto_final
+    else:
+        datos['categoria'] = _form_texto(
+            form, 'categoria', 'la categoría', _MOV_CATEGORIA_MAX,
+            obligatorio=False, prohibidos=_MOV_CATEGORIA_PROHIBIDOS_RE)
+        datos['costo_envio'] = _form_numero(
+            form, 'costo_envio', 'el costo de envío', obligatorio=False)
+        datos['total_cuotas'] = _form_cuotas(form)
+
+    return datos
+
+
 app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
             static_folder=os.path.join(BASE_DIR, 'static'))
 app.config['TEMPLATES_AUTO_RELOAD'] = True  # Recargar templates sin reiniciar
+
+# ── Tope de tamaño por pedido: 1 MB ──────────────────────────────────────────
+# Un pedido con el cuerpo más grande que esto se corta con 413. Si declara su
+# tamaño (`Content-Length`, el caso de todo navegador) ni se lee: no se escribe
+# NADA en disco. Si viene sin tamaño, por chunks, se corta al llegar al tope.
+#
+# POR QUÉ HACE FALTA: sin tope, Flask lee el cuerpo entero de cualquier pedido
+# que toque `request.form`. Con un multipart, las partes "archivo" se vuelcan a
+# un temporal del disco apenas pasan los 500 KB. `/logout` es PÚBLICA (está en
+# `rutas_publicas` de auth.py) y lee `request.form`, así que cualquiera, sin
+# login, podía llenar los temporales del servidor con un solo POST gigante.
+#
+# POR QUÉ 1 MB ALCANZA: ninguna ruta de esta app recibe archivos, y lo más
+# grande que viaja es el form de la paleta (~2 KB). Si alguna vez una ruta
+# necesita más (un import, una foto), se sube el tope PARA ESA RUTA con
+# `request.max_content_length = ...` (Flask ≥ 3.1) y no acá, que es el de todas.
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
 
 # ── Compresión de respuestas ─────────────────────────────────────────────────
 # Comprime el HTML, el CSS, el JS y los JSON antes de mandarlos por la red.
@@ -1303,6 +1546,148 @@ Compress(app)
 # middleware before_request que protege TODAS las rutas.
 from auth import init_auth
 init_auth(app, CONFIG_FILE)
+
+
+# =============================================================================
+# CABECERAS DE SEGURIDAD + POLÍTICA DE SCRIPTS (CSP CON NONCE)
+# =============================================================================
+#
+# QUÉ ES: lo que la app le pide al NAVEGADOR que haga —y que no haga— con cada
+# respuesta. Hasta 2026-10 no mandaba ninguna cabecera de seguridad.
+#
+# LA QUE IMPORTA ES `Content-Security-Policy`: dice de dónde puede salir el
+# CÓDIGO de una página. La política de abajo deja correr los scripts de este
+# mismo origen y los <script> inline que lleven el nonce de ESE pedido, y nada
+# más. Un <script> colado en un dato (la descripción de un gasto, el nombre de
+# una actividad), un `onclick=` inyectado o un `javascript:` quedan MUERTOS
+# aunque algún día se olvide un escape. Es la segunda llave: la primera es que
+# los datos entren validados y salgan escapados (ver CONTEXT_SEGURIDAD.md).
+#
+# CONTRATO CON LOS TEMPLATES (si se rompe, el navegador bloquea EN SILENCIO y
+# lo único que se ve es un error en la consola, no en la pantalla):
+#   * Todo <script> inline lleva `nonce="{{ csp_nonce }}"`. La variable llega a
+#     TODOS los templates —también a login.html, que no extiende base.html—
+#     por `inject_csp_nonce`.
+#   * Prohibidos: handlers inline (`onclick=`, `onsubmit=`...), URLs
+#     `javascript:`, `eval()`, `new Function()` y `setTimeout('texto')`. La
+#     lógica va en archivos de static/ y los eventos se enganchan con
+#     `addEventListener`.
+#
+# POR QUÉ `'unsafe-inline'` SOLO EN ESTILOS: la app tiene cientos de `style=""`
+# y un <style> con la paleta que arma base.html. Lo que hay que bloquear es
+# código, y un estilo no ejecuta código; con `img-src` y `font-src` cerrados a
+# este origen, un estilo inyectado tampoco tiene a dónde mandar un dato.
+#
+# EL RESTO DE LA POLÍTICA, directiva por directiva (cada una está por algo):
+#   img-src  `data:`  → el favicon es un SVG dentro de un data-URI.
+#            `*.googleusercontent.com` → la foto de perfil de Google.
+#   frame-src / frame-ancestors / object-src 'none' → ni la app se embebe en el
+#            sitio de otro (clickjacking) ni embebe nada ella.
+#   base-uri / form-action 'self' → un <base> o un <form> inyectado no puede
+#            redirigir los links ni mandar los datos a otro lado.
+#   worker-src / manifest-src 'self' → el service worker y el manifest de la PWA.
+#
+# `setdefault` EN TODAS: una ruta que ponga su propia cabecera se la queda.
+# `/sw.js` y `/manifest.json` reciben las generales pero NO la CSP —no son
+# HTML— y siguen siendo lo que eran: su Content-Type y el `Cache-Control:
+# no-cache` del service worker no cambian.
+# =============================================================================
+
+# Cámara, micrófono, ubicación, pagos y USB: la app no usa ninguno. Las
+# notificaciones y el push quedan AFUERA a propósito: sí los usa (Web Push), y
+# bloquearlos mataría los avisos del teléfono.
+_PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
+
+# Un año. Sin `includeSubDomains` ni `preload`: el dominio de ngrok no es
+# nuestro, y comprometer a sus subdominios no es cosa de esta app.
+_HSTS = 'max-age=31536000'
+
+
+def _csp_politica(nonce):
+    """
+    El valor de `Content-Security-Policy` para un pedido, con su nonce. Un solo
+    lugar para la política: los tests la comparan carácter por carácter contra
+    una copia escrita a mano, así que un cambio acá sin querer salta.
+    """
+    return '; '.join((
+        "default-src 'self'",
+        f"script-src 'self' 'nonce-{nonce}'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: https://*.googleusercontent.com",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "manifest-src 'self'",
+        "worker-src 'self'",
+        "frame-src 'none'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+    ))
+
+
+def _csp_nonce():
+    """
+    El nonce de ESTE pedido. Aleatorio, uno por pedido, y perezoso: nace la
+    primera vez que alguien lo pide (el template o la cabecera) y queda en
+    `flask.g`, así que ambos leen el MISMO valor. Un nonce que la cabecera y el
+    template no comparten bloquea todos los scripts de la página.
+
+    `g` vive lo que dura el pedido, por eso el valor no se repite entre pedidos:
+    un nonce reutilizable es una contraseña que el atacante ya conoce.
+    """
+    nonce = flask_g.get('csp_nonce')
+    if not nonce:
+        nonce = secrets.token_urlsafe(16)
+        flask_g.csp_nonce = nonce
+    return nonce
+
+
+def _llego_por_https():
+    """
+    True si el navegador pidió esto por https.
+
+    Detrás del túnel de ngrok el pedido llega a Flask en http plano; lo que
+    dice cómo lo mandó el navegador es `X-Forwarded-Proto` (ngrok lo pone). En
+    DEV (http://localhost) no hay proxy ni cabecera, y da False. Si hay varios
+    proxies la cabecera trae una lista ("https, http"): manda el primero, que
+    es el del navegador. `request.is_secure` cubre el día que Flask sirva TLS
+    directo.
+    """
+    proto = (request.headers.get('X-Forwarded-Proto') or '').split(',')[0]
+    return proto.strip().lower() == 'https' or request.is_secure
+
+
+@app.context_processor
+def inject_csp_nonce():
+    """Expone `csp_nonce` a TODOS los templates (ver el contrato arriba)."""
+    return {'csp_nonce': _csp_nonce()}
+
+
+@app.after_request
+def agregar_cabeceras_seguridad(resp):
+    """
+    Cabeceras de seguridad en TODAS las respuestas, y la CSP solo en las HTML
+    (una política es del documento: en un JSON o en un .css no significa nada).
+    """
+    h = resp.headers
+    # El navegador respeta el Content-Type que dijimos, no el que adivine. Sin
+    # esto, un archivo servido como texto podría ejecutarse como script.
+    h.setdefault('X-Content-Type-Options', 'nosniff')
+    # Mismo efecto que `frame-ancestors 'none'`, para los navegadores viejos que
+    # no leen la CSP.
+    h.setdefault('X-Frame-Options', 'DENY')
+    # Los links a otro sitio no se llevan la URL de la app. `same-origin`
+    # (y no `no-referrer`) deja el referer entre páginas propias.
+    h.setdefault('Referrer-Policy', 'same-origin')
+    h.setdefault('Permissions-Policy', _PERMISSIONS_POLICY)
+    # Una ventana de otro origen no puede quedar con una referencia a esta.
+    h.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+    if _llego_por_https():
+        h.setdefault('Strict-Transport-Security', _HSTS)
+    if resp.mimetype == 'text/html':
+        h.setdefault('Content-Security-Policy', _csp_politica(_csp_nonce()))
+    return resp
 
 
 # =============================================================================
@@ -1462,7 +1847,14 @@ def fmt_ars(valor):
     Formatea un número como pesos argentinos.
     Ejemplo: 1250000.0  →  $ 1.250.000
              -50000.0   →  $ -50.000
+
+    Un valor no finito (infinito o NaN) sale como `$ —`. La entrada ya los
+    rechaza (`_leer_movimiento_form`), pero un backup viejo restaurado puede
+    traer una fila así, y `round(inf)` tira OverflowError: sin esta guarda, UNA
+    fila rota dejaba el Inicio y /gastos en 500 para todos.
     """
+    if not math.isfinite(valor):
+        return '$ —'
     signo = '-' if valor < 0 else ''
     # {:,} en Python usa coma como separador de miles: 1,250,000
     # .replace(',', '.') lo convierte al estilo argentino: 1.250.000
@@ -1489,7 +1881,11 @@ def fmt_usd(valor):
     Formatea un número como dólares con 2 decimales, estilo argentino.
     Ejemplo: 1250.50   →  USD 1.250,50
              -300.0    →  USD -300,00
+
+    No finito → `USD —` (mismo motivo que en `fmt_ars`).
     """
+    if not math.isfinite(valor):
+        return 'USD —'
     signo = '-' if valor < 0 else ''
     # {:,.2f} → "1,250.50" (estilo anglosajón)
     # Luego intercambiamos punto y coma al estilo argentino:
@@ -1596,12 +1992,18 @@ def _calcular_gauges(saldos, cotizacion_valor, historico=False):
 # =============================================================================
 
 def _gastos_fijos_json():
-    """JSON con los gastos fijos activos (descripcion + datos de cuota) que
-    el frontend usa para poblar el select de descripciones cuando la
-    categoría es 'Fijo' (variable global GASTOS_FIJOS en app.js)."""
-    import json
+    """LISTA (no un string JSON) con los gastos fijos activos (descripcion +
+    datos de cuota) que el frontend usa para poblar el select de descripciones
+    cuando la categoría es 'Fijo' (variable global GASTOS_FIJOS en app.js).
+
+    Devuelve la lista y NO `json.dumps(...)` a propósito: el template la
+    imprime con `{{ gastos_fijos_json | tojson }}`, que escapa `<`, `>`, `&` y
+    `'`. Un string de `json.dumps` entra al <script> con `| safe` y no escapa
+    nada: un gasto fijo llamado `</script><script>alert(1)</script>` cerraba el
+    <script> y ejecutaba código en /gastos y en el Inicio. (Comprobado.) El
+    nombre del helper quedó por compatibilidad."""
     fijos_activos = database.obtener_gastos_fijos(solo_activos=True)
-    return json.dumps([
+    return [
         {
             'descripcion': f['descripcion'],
             'es_cuota':    f['es_cuota'] or 0,
@@ -1609,7 +2011,7 @@ def _gastos_fijos_json():
             'total_cuotas': f['total_cuotas'],
         }
         for f in fijos_activos
-    ])
+    ]
 
 
 # =============================================================================
@@ -3377,12 +3779,16 @@ def api_saldos():
 @app.route('/agregar', methods=['POST'])
 def agregar():
     try:
-        fecha       = request.form['fecha']
-        descripcion = request.form['descripcion']
-        persona     = request.form['persona']   # 'elias' o 'mari'
-        moneda      = request.form['moneda']    # 'ars' o 'usd'
-        tipo        = request.form['tipo']      # 'ingreso', 'gasto' o 'cambio'
-        monto       = float(request.form['monto'])
+        # Todo lo que llega del form se lee y se valida ACÁ, de una vez (ver
+        # _leer_movimiento_form): de acá para abajo no queda nada crudo, y un
+        # campo ausente o inválido es un ValueError (400), no un KeyError (500).
+        datos       = _leer_movimiento_form(request.form, _MOV_TIPOS_ALTA)
+        fecha       = datos['fecha']
+        descripcion = datos['descripcion']
+        persona     = datos['persona']   # 'elias' o 'mari'
+        moneda      = datos['moneda']    # 'ars' o 'usd'
+        tipo        = datos['tipo']      # 'ingreso', 'gasto' o 'cambio'
+        monto       = datos['monto']
 
         # ── Checkbox "Personal" ──────────────────────────────────────────
         # Tildado → el movimiento va a la cuenta personal de `persona` y no
@@ -3391,7 +3797,7 @@ def agregar():
         # para validar se mira la del form solo cuando no es cambio.
         es_personal = _leer_personal_form(
             request.form, tipo,
-            None if tipo == 'cambio' else request.form.get('categoria'))
+            None if tipo == 'cambio' else datos['categoria'])
 
         # Cotización vigente para calcular monto_usd. Se carga una sola vez por
         # request, pero cada movimiento usa la suya según su propia moneda.
@@ -3399,12 +3805,13 @@ def agregar():
 
         # ── Tipo "cambio": genera 2 movimientos (salida + entrada) ──
         if tipo == 'cambio':
-            persona_final = request.form['persona_final']
-            moneda_final  = request.form['moneda_final']
-            monto_final_str = request.form.get('monto_final', '').strip()
-            monto_final = float(monto_final_str) if monto_final_str else monto
+            persona_final = datos['persona_final']
+            moneda_final  = datos['moneda_final']
+            monto_final   = datos['monto_final']   # sin monto final = el mismo monto
 
-            # Cada movimiento del cambio se calcula con SU propia moneda.
+            # Cada movimiento del cambio se calcula con SU propia moneda. Las
+            # DOS conversiones van antes de los dos INSERT: si la segunda falla
+            # (ValueError por falta de cotización) no queda medio cambio escrito.
             monto_usd_1, cot_1 = _calcular_monto_usd(monto, moneda, cfg_actual)
             monto_usd_2, cot_2 = _calcular_monto_usd(monto_final, moneda_final, cfg_actual)
 
@@ -3455,9 +3862,8 @@ def agregar():
             return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
         # ── Tipo "gasto" o "ingreso": flujo existente ──
-        categoria   = request.form.get('categoria') or None
-        costo_envio_str = request.form.get('costo_envio', '').strip()
-        costo_envio = float(costo_envio_str) if costo_envio_str else None
+        categoria   = datos['categoria']
+        costo_envio = datos['costo_envio']
 
         # Factor de sueldo: solo en el fondo. Un sueldo personal no existe
         # (_leer_personal_form lo rechaza), así que acá nunca se da el caso;
@@ -3470,8 +3876,7 @@ def agregar():
         # Lógica de cuotas — solo en el fondo: `gastos_fijos` no tiene persona
         # ni ámbito, así que una cuota personal ensuciaría el checklist familiar.
         cuotas_checkbox = (not es_personal) and request.form.get('cuotas_checkbox') == '1'
-        total_cuotas_str = request.form.get('total_cuotas', '').strip()
-        total_cuotas = int(total_cuotas_str) if total_cuotas_str else None
+        total_cuotas = datos['total_cuotas']
 
         cuota_numero = None
         cuota_total = None
@@ -3529,9 +3934,12 @@ def agregar():
         return redirect(url_for('gastos', mes=mes) if mes else url_for('gastos'))
 
     except ValueError as e:
-        # Validación (ej. un sueldo marcado como personal): el mensaje es para
-        # el usuario y va con 400, no con 500 — misma convención que el resto
-        # de los módulos. El front lo muestra tal cual.
+        # Validación (un campo inválido o ausente, un sueldo marcado como
+        # personal, la falta de una cotización válida): el mensaje es para el
+        # usuario y va con 400, no con 500 — misma convención que el resto de
+        # los módulos. El front lo muestra tal cual. Sin AJAX se redirige. Las
+        # validaciones y la conversión a USD corren ANTES del primer INSERT,
+        # así que un rechazo no deja nada escrito.
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'ok': False, 'error': str(e)}), 400
         mes = request.form.get('mes', '')
@@ -3585,15 +3993,18 @@ def editar(id):
 
     if request.method == 'POST':
         try:
-            fecha       = request.form['fecha']
-            descripcion = request.form['descripcion']
-            persona     = request.form['persona']
-            moneda      = request.form['moneda']
-            tipo        = request.form['tipo']
-            monto       = float(request.form['monto'])
-            categoria   = request.form.get('categoria') or None
-            costo_envio_str = request.form.get('costo_envio', '').strip()
-            costo_envio = float(costo_envio_str) if costo_envio_str else None
+            # Mismas reglas que /agregar (ver _leer_movimiento_form), salvo que
+            # la edición no admite 'cambio'. Un campo ausente es un ValueError
+            # con mensaje, no el 400 pelado de Werkzeug.
+            datos       = _leer_movimiento_form(request.form, _MOV_TIPOS_EDICION)
+            fecha       = datos['fecha']
+            descripcion = datos['descripcion']
+            persona     = datos['persona']
+            moneda      = datos['moneda']
+            tipo        = datos['tipo']
+            monto       = datos['monto']
+            categoria   = datos['categoria']
+            costo_envio = datos['costo_envio']
 
             # Ámbito: el form de edición manda `ambito_presente=1` para
             # distinguir "el usuario dejó el checkbox destildado" de "este
@@ -3602,18 +4013,22 @@ def editar(id):
             es_personal = None
             if request.form.get('ambito_presente') == '1':
                 es_personal = _leer_personal_form(request.form, tipo, categoria)
+
+            # Recalculamos monto_usd con la cotización actual cada vez que se
+            # edita. Va ADENTRO del try: sin cotización válida lanza ValueError
+            # y el movimiento queda como estaba (antes esta línea estaba afuera
+            # y un ValueError terminaba en 500).
+            cfg_actual = config.cargar_config(CONFIG_FILE)
+            monto_usd, cotizacion_aplicada = _calcular_monto_usd(monto, moneda, cfg_actual)
         except ValueError as e:
-            # Validación (un sueldo marcado como personal, un monto que no es
-            # número). Se vuelve al formulario con el motivo en vez de tirar un
-            # 500: el doc promete que este mensaje lo lee el usuario.
+            # Validación (un campo inválido, un sueldo marcado como personal,
+            # la falta de una cotización válida). Se vuelve al formulario con
+            # el motivo en vez de tirar un 500: el doc promete que este mensaje
+            # lo lee el usuario.
             mov = database.obtener_movimiento(id)
             if mov is None:
                 return redirect(url_for('gastos'))
             return render_template('editar.html', mov=mov, error=str(e)), 400
-
-        # Recalculamos monto_usd con la cotización actual cada vez que se edita.
-        cfg_actual = config.cargar_config(CONFIG_FILE)
-        monto_usd, cotizacion_aplicada = _calcular_monto_usd(monto, moneda, cfg_actual)
 
         database.editar_movimiento(id, fecha, descripcion, persona, moneda, tipo, monto, categoria, costo_envio, monto_usd, cotizacion_aplicada, personal=es_personal)
 
@@ -5817,10 +6232,15 @@ def settings():
             return redirect(url_for('settings') + '#gastos-fijos')
 
         if accion == 'guardar_backup_dir':
-            config.guardar_config(
-                {'backup_dir': request.form.get('backup_dir', '').strip()},
-                CONFIG_FILE,
-            )
+            # Solo disco local: ver _validar_backup_dir. Si no pasa, NO se
+            # guarda nada y se dice por qué (el motivo es texto fijo, nunca
+            # el valor que mandaron).
+            try:
+                carpeta = _validar_backup_dir(request.form.get('backup_dir', ''))
+            except ValueError as e:
+                flash(f'No se guardó la carpeta de backups. {e}', 'error')
+                return redirect(url_for('settings') + '#backup-db')
+            config.guardar_config({'backup_dir': carpeta}, CONFIG_FILE)
             flash('Carpeta de backups guardada.')
             return redirect(url_for('settings') + '#backup-db')
 
@@ -6023,10 +6443,118 @@ _DB_PATH         = database.DB_PATH
 _MAX_BACKUPS     = 10
 
 
+# ── Carpeta de backups: SOLO DISCO LOCAL ─────────────────────────────────────
+#
+# POR QUÉ: `backup_dir` sale de un formulario (Settings → `guardar_backup_dir`)
+# y de config.json, y se usaba tal cual. Con una ruta de red
+# (`\\servidor\carpeta`) el backup diario —la base ENTERA, con todos los
+# movimientos de la casa— se escribía en un servidor ajeno, sin que se note: el
+# listado de backups sigue andando porque lee la misma carpeta. Y como el
+# servicio de PROD corre como LocalSystem, Windows además le entrega al
+# servidor su credencial de red (NTLM) al abrir esa ruta.
+#
+# QUÉ SE ADMITE: una ruta relativa (`backups`, `backupsdev`: se resuelve contra
+# la carpeta del proyecto) o una absoluta con letra de unidad LOCAL. PROD usa
+# `C:\Users\elias\OneDrive\BackupsFondo`: es disco local que OneDrive
+# sincroniza aparte, y tiene que seguir andando.
+#
+# QUÉ SE RECHAZA: lo que empieza con dos barras (UNC `\\srv\x`, `//srv/x` y, de
+# yapa, `\\?\UNC\...` y `\\.\...`: rutas de dispositivo); una unidad de red
+# (`Z:\` mapeada); una ruta relativa a una unidad (`C:carpeta`, que
+# os.path.join resuelve contra el directorio actual de OTRA unidad y pisa la
+# base del proyecto); los dos puntos fuera de la letra de unidad; los caracteres
+# de control y los que Windows no admite en una ruta (`<>"|?*`, típicamente una
+# ruta pegada con las comillas de "Copiar como ruta"); y más de 260 caracteres.
+#
+# SE APLICA EN DOS PUNTOS: al GUARDAR (Settings: se avisa el motivo y no se
+# guarda) y al LEER (`_get_backup_dir`: config.json se puede editar a mano y
+# esa ruta no pasó por Settings).
+
+_BACKUP_DIR_DEFAULT = 'backups'
+_BACKUP_DIR_MAX     = 260   # MAX_PATH de Windows
+_BACKUP_DIR_PROHIBIDOS_RE = _re.compile(r'[\x00-\x1f\x7f-\x9f\u2028\u2029<>"|?*]')
+_backup_dir_avisados = set()   # valores inválidos de config.json ya avisados (anti-spam)
+
+
+def _unidad_es_remota(raiz):
+    """True si `raiz` ('C:\\') es una unidad de red (DRIVE_REMOTE = 4).
+
+    Solo Windows: en otro sistema no hay letras de unidad y devuelve False.
+    GetDriveTypeW consulta la tabla de unidades del sistema; no hace entrada y
+    salida contra la unidad, así que no se cuelga con una de red desconectada."""
+    if os.name != 'nt':
+        return False
+    import ctypes
+    return ctypes.windll.kernel32.GetDriveTypeW(raiz) == 4
+
+
+def _validar_backup_dir(valor):
+    """Valida y normaliza la carpeta de backups (ver el bloque de arriba).
+
+    Devuelve el texto sin espacios en los bordes; vacío → 'backups' (el default).
+    Lanza ValueError con el motivo, listo para mostrárselo al usuario. Los
+    mensajes son texto fijo: no repiten la ruta que mandaron."""
+    if valor is None:
+        valor = ''
+    if not isinstance(valor, str):
+        raise ValueError('La carpeta de backups tiene que ser un texto.')
+    ruta = valor.strip()
+    if not ruta:
+        return _BACKUP_DIR_DEFAULT
+
+    # Dos separadores seguidos al principio, en cualquier combinación: Windows
+    # trata `/` y `\` igual, así que `//srv`, `\\srv`, `\/srv` y `/\srv` son
+    # todos UNC. Cubre también `\\?\UNC\...` y `\\.\...`. Va PRIMERO, antes del
+    # largo y de los caracteres: `\\?\UNC\...` también tiene un `?`, y tiene que
+    # rechazarse por lo que es (una ruta de red), con el mensaje que lo explica.
+    if len(ruta) >= 2 and ruta[0] in '\\/' and ruta[1] in '\\/':
+        raise ValueError(
+            'Solo se admiten carpetas de este equipo: una ruta de red o de '
+            'dispositivo mandaría los backups a otra máquina.')
+
+    if len(ruta) > _BACKUP_DIR_MAX:
+        raise ValueError(
+            f'La ruta es demasiado larga (máximo {_BACKUP_DIR_MAX} caracteres).')
+    if _BACKUP_DIR_PROHIBIDOS_RE.search(ruta):
+        raise ValueError('La ruta tiene caracteres que no se admiten en una carpeta.')
+
+    resto = ruta
+    if _re.match(r'[A-Za-z]:', ruta):
+        if len(ruta) < 3 or ruta[2] not in '\\/':
+            raise ValueError(
+                'La ruta no puede ser relativa a una unidad (C:carpeta): '
+                'usá la ruta completa, con la barra (C:\\carpeta).')
+        # La raíz se arma normalizada ('Z:\'), sea cual sea la barra y la
+        # capitalización que escribieron: la API pide la barra invertida final.
+        if _unidad_es_remota(ruta[0].upper() + ':\\'):
+            raise ValueError(
+                f'La unidad {ruta[0].upper()}: es de red. Solo se admiten '
+                'carpetas de un disco local.')
+        resto = ruta[2:]
+    if ':' in resto:
+        raise ValueError(
+            'La ruta tiene ":" donde no corresponde (solo va en la letra de unidad).')
+    return ruta
+
+
 def _get_backup_dir():
-    """Resuelve la carpeta de backups leyendo config en caliente."""
+    """Resuelve la carpeta de backups leyendo config en caliente.
+
+    Un `backup_dir` inválido (config.json editado a mano: ruta de red, etc.) NO
+    se usa: cae al default y se loguea un AVISO, una sola vez por valor
+    (esta función se llama desde los schedulers y desde casi cada ruta de
+    backups; un AVISO por llamada taparía el log)."""
     cfg = config.cargar_config(CONFIG_FILE)
-    raw = cfg.get('backup_dir', 'backups') or 'backups'
+    raw = cfg.get('backup_dir', _BACKUP_DIR_DEFAULT) or _BACKUP_DIR_DEFAULT
+    try:
+        raw = _validar_backup_dir(raw)
+    except ValueError as e:
+        clave = str(raw)
+        if clave not in _backup_dir_avisados:
+            _backup_dir_avisados.add(clave)
+            log(f"AVISO: backup_dir inválido en config.json ({e}) {clave!r}; "
+                f"se usa '{_BACKUP_DIR_DEFAULT}'.")
+        raw = _BACKUP_DIR_DEFAULT
     if os.path.isabs(raw):
         return raw
     return os.path.join(_BASE_DIR_BACKUP, raw)
