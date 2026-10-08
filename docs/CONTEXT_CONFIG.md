@@ -15,8 +15,8 @@
 | Clave                        | Default      | Uso                                          |
 |------------------------------|--------------|----------------------------------------------|
 | `port`                       | `5000`       | Puerto Flask                                 |
-| `first_run`                  | `True`       | Ya no hace falta el "primer arranque" por la web: poner `false` (ver "Puesta en marcha"). Con `true` `run_flask` solo escucha en localhost, NO levanta ngrok y `gastos.html` muestra un banner. No abre nada |
-| `ngrok_enabled`              | `False`      | Si arranca túnel ngrok. Junto con `first_run: false` y un `app_name` sin `DEV`, también decide que la cookie de sesión sea `Secure` (solo viaja por https; ver `CONTEXT_AUTH.md`) |
+| `first_run`                  | `True`       | Ya no hace falta primer arranque web: poner `false` (ver "Puesta en marcha"). Con `true`: `run_flask` solo escucha en localhost, NO levanta ngrok, `gastos.html` muestra banner. No abre nada |
+| `ngrok_enabled`              | `False`      | Arranca túnel ngrok. Con `first_run: false` + `app_name` sin `DEV` → también cookie de sesión `Secure` (solo viaja por https; ver `CONTEXT_AUTH.md`) |
 | `ngrok_authtoken`            | `""`         | Token ngrok                                  |
 | `ngrok_domain`               | `""`         | Dominio fijo (ej: miller-...)                |
 | `app_name`                   | `Gastos Casa`| Título. Si contiene `DEV` muestra banner     |
@@ -31,7 +31,7 @@
 | `lactancia_combinar_min_horas`   | `3`      | Horas mínimas en heladera que necesita cada extracción para poder juntarse con otra en la misma bolsita (tienen que estar a la misma temperatura). `0` = no verificar. Con una sola partida no aplica |
 | `lactancia_bolsa_capacidad_activa` | `False`| Si está en `True`, no se deja cargar ni combinar más ml que la capacidad de bolsita declarada |
 | `lactancia_bolsa_capacidad_ml`   | `150`    | La capacidad, en ml (solo se usa con el anterior en `True`) |
-| `lactancia_pedir_confirmacion`   | `True`   | Pedir confirmación antes de cada acción que cierra una partida. Vivía en el `localStorage` del navegador (clave `lac-confirmar`), o sea que cada dispositivo tenía la suya; ahora es del servidor y vale para todos |
+| `lactancia_pedir_confirmacion`   | `True`   | Confirmar antes de cada acción que cierra partida. Antes en `localStorage` del navegador (clave `lac-confirmar`): cada dispositivo tenía la suya; ahora del servidor, vale para todos |
 | `lactancia_recordatorio_activo`  | `False`  | Interruptor del recordatorio nocturno de "bajar bolsitas" (modo jardín: off hasta que el bebé arranque) |
 | `lactancia_recordatorio_hora`    | `"21:00"`| `HH:MM` local a partir de la cual avisa el recordatorio. Aviso in-app (campana + banner), nunca bloquea |
 | `bebe_nombre`                    | `"León"` | Nombre del bebé; se usa en los textos de la app (KPIs, confirmaciones). Vacío → la UI dice "el bebé" |
@@ -46,15 +46,15 @@
 | `google_client_id`           | `""`         | OAuth. **Obligatoria**: sin las dos credenciales el login queda CERRADO (`CONTEXT_AUTH.md`). Se registran en Authlib al arrancar: cambiarlas exige reiniciar el servicio |
 | `google_client_secret`       | `""`         | OAuth. Ídem. Es secreta: nunca al log ni al HTML |
 | `secret_key`                 | `""`         | Flask session signing. Se genera sola en el primer arranque si falta (`init_auth`) |
-| `auth_disabled`              | `False`      | Bypass login SOLO dev (cuádruple cerrojo: además pedido desde la propia PC, nombre de sitio local y ngrok apagado; ver `auth.py` y `CONTEXT_AUTH.md`) |
+| `auth_disabled`              | `False`      | Bypass login SOLO dev (cuádruple cerrojo: + pedido desde la propia PC, nombre de sitio local y ngrok apagado; ver `auth.py`, `CONTEXT_AUTH.md`) |
 | `persona_dev`                | `"elias"`    | `elias` \| `mari`. Quién es el usuario con el bypass DEV activo: la sesión falsa es `dev@local`, que no está en el mapa email→persona de `auth.py`, y el módulo Personal necesita saber de quién es la cuenta. Cambiarla permite probar la vista de Mari sin OAuth. **En PROD no se lee nunca** (ahí la persona sale del email de Google) |
-| `sw_enabled`                 | `False`      | Interruptor del **service worker** (PWA). `False` → la ruta `/sw.js` sirve la LÁPIDA (un SW que borra todas las cachés, se desregistra y suelta el control) y `base.html` no registra nada: además barre lo que haya quedado. `True` → sirve el SW real y la página lo registra. Desde la etapa 3 ese SW **hace cosas**: precachea el esqueleto (~460 KiB: `style.css` y `app.js` con `?v=`, más las 4 fuentes) y atiende una **lista blanca de `/static/`** con cache-first — las páginas, que vienen con los saldos adentro, y las rutas `/api/*` no entran nunca. Detalle en `CONTEXT_FRONTEND.md`. Se lee EN CALIENTE (`cargar_config()` va al disco en cada llamada): apagarlo es editar `config.json`, sin deploy ni reiniciar el servicio. ⚠ **En un dispositivo que YA lo instaló, volver el flag a `False` no alcanza con recargar**: el SW activo no usa `skipWaiting()`, así que la lápida entra recién cuando se cierran TODAS las pestañas del sitio — o al toque, con el botón "Reparar app" de Settings. **Se escribe como booleano JSON sin comillas**: un `"false"` entre comillas es un string no vacío y PRENDERÍA el service worker (por eso el código lo lee con `is True`, igual que `auth_disabled`). **No tiene UI a propósito**: es un kill switch, no una preferencia |
-| `push_enabled`               | `False`      | Interruptor de los **avisos push automáticos**. Separado de `sw_enabled` a propósito: son dos modos de falla distintos (código viejo cacheado vs. avisos repetidos) y hay que poder apagar uno sin el otro. Lo lee `_push_encendido()` —y SOLO él, hay un test que lo cuenta— **en caliente**, en cada vuelta del scheduler: apagarlo es editar `config.json`, sin deploy ni reiniciar el servicio. `False` (hoy) → el motor decide igual y escribe `SECO: flanco push ...` en el log, pero no manda nada ni lee la tabla de suscripciones. `True` → manda de verdad, con sus frenos (horas de silencio y topes, ver `CONTEXT_PUSH_MOTOR.md` §2). ⚠ **NO lo mira el botón de prueba de Settings**, a propósito: ese es el diagnóstico del canal. Se escribe como booleano JSON sin comillas (se lee con `is True`, igual que `sw_enabled`) |
+| `sw_enabled`                 | `False`      | Interruptor **service worker** (PWA). `False` → `/sw.js` sirve LÁPIDA (SW que borra cachés, se desregistra, suelta control); `base.html` no registra nada y barre lo que quedó. `True` → SW real + página lo registra. Desde etapa 3 el SW **hace cosas**: precachea esqueleto (~460 KiB: `style.css` y `app.js` con `?v=`, +4 fuentes) y atiende **lista blanca de `/static/`** cache-first; páginas (traen saldos) y `/api/*` no entran nunca. Detalle `CONTEXT_FRONTEND.md`. EN CALIENTE (`cargar_config()` va al disco en cada llamada): apagar = editar `config.json`, sin deploy ni reiniciar servicio. ⚠ **Dispositivo que YA lo instaló: volver a `False` no alcanza con recargar**: SW activo no usa `skipWaiting()`; lápida entra recién al cerrar TODAS las pestañas del sitio — o al toque, botón "Reparar app" de Settings. ⚠ **Booleano JSON sin comillas**: `"false"` es string no vacío y PRENDERÍA el SW (código lo lee con `is True`, igual que `auth_disabled`). No tiene UI a propósito: kill switch, no preferencia |
+| `push_enabled`               | `False`      | Interruptor **avisos push automáticos**. Separado de `sw_enabled` a propósito: dos modos de falla distintos (código viejo cacheado vs. avisos repetidos), apagar uno sin el otro. Lo lee SOLO `_push_encendido()` (un test lo cuenta), **en caliente** en cada vuelta del scheduler: apagar = editar `config.json`, sin deploy ni reiniciar servicio. `False` (hoy) → motor decide igual, escribe `SECO: flanco push ...` en log, pero no manda nada ni lee tabla suscripciones. `True` → manda de verdad, con frenos (horas de silencio y topes, `CONTEXT_PUSH_MOTOR.md` §2). ⚠ **NO lo mira el botón de prueba de Settings**, a propósito: es el diagnóstico del canal. Booleano JSON sin comillas (`is True`, igual que `sw_enabled`) |
 | `push_vapid_publica`         | `""`         | Clave **pública** VAPID: base64url del punto sin comprimir (65 bytes → 87 caracteres). Es la que el navegador necesita para suscribirse (`applicationServerKey`), así que **viaja al HTML a propósito**: `base.html` la pone en `<body data-push-vapid="...">` y está en todas las páginas. Es pública por definición y sola no sirve para mandar nada. Vacía (el caso de hoy) → `dataset.pushVapid === ''`, o sea "push no configurado" |
 | `push_vapid_secreta`         | `""`         | Clave **privada** VAPID: base64url del escalar de 32 bytes (43 caracteres), el formato que come `pywebpush` tal cual. Nombrada "secreta" y no "privada" para que no se confunda de un vistazo con la pública — y porque así cae sola bajo `MARCADORES_SECRETOS` y **no llega nunca a un template** |
 | `push_contacto_mailto`       | `""`         | El `sub` del JWT VAPID: `mailto:alguien@dominio.com`, **con el prefijo**. Es a quién le reclama el servicio de push si la app se manda una macana. Apple lo valida de verdad y es más estricto que FCM |
-| `push_silencio_desde`        | `"22:30"`   | Arranque de las **horas de silencio** del motor de push (`HH:MM`). ⚠ **La ventana CRUZA LA MEDIANOCHE**: 22:30–07:00 se evalúa como `hora >= desde` **O** `hora < hasta`, nunca como un `<=` entre dos números (así escrito no silenciaría nunca). Una hora corrupta cae al DEFAULT, igual que `lactancia_recordatorio_hora`. **Sin UI a propósito**: se edita acá, como `sw_enabled` — menos superficie |
-| `push_silencio_hasta`        | `"07:00"`   | Fin de las horas de silencio (`HH:MM`). **Las dos horas iguales = ventana vacía**, o sea NUNCA hay silencio: es la decisión explícita para el caso ambiguo, porque el otro significado ("callado las 24 h") apagaría los avisos enteros con un typo y sin que nadie se entere — para no recibir nada está `push_enabled`, que se ve. ⚠ Un aviso que cae en la ventana **no se difiere en una cola: no se marca**, y a la hora de salida el motor vuelve a leer el nivel real (`CONTEXT_PUSH_MOTOR.md` §2). ⚠ **La hora se normaliza al leerla**: `"7:00"` pasa el `strptime` y, comparada como string contra `"22:30"`, invertía la ventana y dejaba la madrugada entera sin silencio |
+| `push_silencio_desde`        | `"22:30"`   | Inicio **horas de silencio** del motor push (`HH:MM`). ⚠ **Ventana CRUZA MEDIANOCHE**: 22:30–07:00 = `hora >= desde` **O** `hora < hasta`, nunca `<=` entre dos números (así no silenciaría nunca). Hora corrupta → DEFAULT, igual que `lactancia_recordatorio_hora`. **Sin UI a propósito**: se edita acá, como `sw_enabled` — menos superficie |
+| `push_silencio_hasta`        | `"07:00"`   | Fin horas de silencio (`HH:MM`). **Dos horas iguales = ventana vacía**: NUNCA hay silencio. Decisión explícita para el caso ambiguo: el otro significado ("callado las 24 h") apagaría avisos enteros con un typo, sin que nadie se entere. Para no recibir nada está `push_enabled`, que se ve. ⚠ Aviso en la ventana **no se difiere en una cola: no se marca**; a la salida el motor vuelve a leer el nivel real (`CONTEXT_PUSH_MOTOR.md` §2). ⚠ **Hora se normaliza al leerla**: `"7:00"` pasa el `strptime` y, comparada como string contra `"22:30"`, invertía la ventana y dejaba la madrugada entera sin silencio |
 
 | `backup_dir`                 | `"backups"`  | Carpeta de backups (relativa o absoluta)     |
 | `paleta_light`               | dict 23 vars | Colores base en modo claro (editables). Incluye `texto-invertido` (`#ffffff`, del módulo Calendario) y `persona-leon` (turquesa pastel, del módulo Rutina). |
@@ -62,90 +62,47 @@
 
 ### El par VAPID se genera UNA sola vez
 
-Las tres claves de arriba se cargan a mano, corriendo
-`python TempScripts/generar_vapid.py` (one-shot; imprime las dos claves en el
-formato exacto y hace una firma de prueba en la misma corrida para confirmar
-que el par sirve antes de pegarlo). **Se tratan igual que `secret_key`: se
-generan una vez y no se tocan nunca más.**
+Las tres claves se cargan a mano con `python TempScripts/generar_vapid.py` (one-shot; imprime las dos claves y hace firma de prueba para confirmar que el par sirve antes de pegarlo). **Igual que `secret_key`: se generan una vez y no se tocan nunca más.**
 
-Regenerarlas **invalida TODAS las suscripciones existentes** — cada navegador
-guardó la clave pública vieja al suscribirse y el servicio de push rechaza lo
-firmado con la nueva. Es el mismo trato que `secret_key` (cambiarla desloguea a
-todos), con un agravante: **el fallo es silencioso**. La app no se rompe, no
-hay error en pantalla; los avisos simplemente dejan de llegar y hay que
-re-suscribir cada dispositivo a mano. Por eso el script **aborta** si
-`config.json` ya tiene `push_vapid_publica` cargada (se saltea con `--forzar`).
+Regenerarlas **invalida TODAS las suscripciones** — cada navegador guardó la clave pública vieja y el servicio de push rechaza lo firmado con la nueva. Mismo trato que `secret_key` (cambiarla desloguea a todos), con agravante: **el fallo es silencioso**. La app no se rompe, no hay error en pantalla; los avisos dejan de llegar y hay que re-suscribir cada dispositivo a mano. Por eso el script **aborta** si `config.json` ya tiene `push_vapid_publica` cargada (se saltea con `--forzar`).
 
 ## API
-- `cargar_config(ruta=None)` → dict con DEFAULTS + overrides del archivo. **Paletas: merge por clave** — si `config.json` trae una paleta guardada con menos claves que DEFAULTS (ej. anterior a `texto-invertido`), las claves nuevas de DEFAULTS sobreviven y los overrides guardados se respetan. **Nunca lanza**: archivo inexistente → DEFAULTS; ilegible (tras reintentos) → DEFAULTS + `AVISO:`.
-- `guardar_config(data, ruta=None)` → merge `data` sobre lo existente y persiste, bajo candado y de forma atómica. Lanza `ConfigIlegible` SIN escribir nada si el archivo existe y no se puede leer.
+- `cargar_config(ruta=None)` → dict DEFAULTS + overrides del archivo. **Paletas: merge por clave** — si `config.json` trae paleta con menos claves que DEFAULTS (ej. anterior a `texto-invertido`), las claves nuevas sobreviven y los overrides guardados se respetan. **Nunca lanza**: archivo inexistente → DEFAULTS; ilegible (tras reintentos) → DEFAULTS + `AVISO:`.
+- `guardar_config(data, ruta=None)` → merge `data` sobre lo existente y persiste, bajo candado y atómico. Lanza `ConfigIlegible` SIN escribir nada si el archivo existe y no se puede leer.
 - `ConfigIlegible` → `Exception` (no `ValueError`, a propósito: las rutas atrapan `ValueError` antes y contestarían 400).
 - `es_primer_inicio()` → True si `first_run==True`.
-- `LIMITES_LACTANCIA` → dict `{clave_corta: (min, max)}` con los rangos válidos de los parámetros numéricos del módulo. Lo valida el servidor en `POST /api/lactancia/config`, además del `min`/`max` del HTML.
+- `LIMITES_LACTANCIA` → dict `{clave_corta: (min, max)}`, rangos válidos de los numéricos del módulo. Lo valida el servidor en `POST /api/lactancia/config`, además del `min`/`max` del HTML.
 - `MARCADORES_SECRETOS` → tupla de fragmentos de nombre: `('secret', 'token', 'password', 'clave_privada')`.
 - `es_clave_secreta(clave)` → True si el NOMBRE contiene alguno de esos fragmentos.
-- `sin_secretos(cfg)` → copia PLANA de `cfg` sin esas claves. Es lo que
-  `app.py → inject_config()` le pasa a los templates bajo `cfg`.
+- `sin_secretos(cfg)` → copia PLANA de `cfg` sin esas claves. Es lo que `app.py → inject_config()` pasa a los templates bajo `cfg`.
 
 ## Lectura y escritura seguras (desde 2026-10-02)
-`config.json` guarda lo que no se recupera (credenciales de Google, `secret_key`, VAPID, ngrok) y se escribe seguido
-(cotización al arrancar / 08:00 / 17:00 y cada guardado de ajustes). Antes `open('w')` truncaba primero: un lector veía el
-archivo a medias (~18% de las lecturas, medido), `cargar_config` se tragaba el error y devolvía DEFAULTS —sin credenciales— y
-la app quedaba abierta; y un `guardar_config` que leía a medias escribía DEFAULTS + su cambio y **borraba los secretos para
-siempre** (bastaban dos escritores a la vez). El porqué largo está en `config.py` ("LECTURA Y ESCRITURA SEGURAS").
+`config.json` guarda lo que no se recupera (credenciales Google, `secret_key`, VAPID, ngrok) y se escribe seguido (cotización al arrancar / 08:00 / 17:00 y cada guardado de ajustes). Antes `open('w')` truncaba primero: un lector veía el archivo a medias (~18% de lecturas, medido), `cargar_config` se tragaba el error y devolvía DEFAULTS —sin credenciales— y la app quedaba abierta; y un `guardar_config` que leía a medias escribía DEFAULTS + su cambio y **borraba los secretos para siempre** (bastaban dos escritores a la vez). Porqué largo en `config.py` ("LECTURA Y ESCRITURA SEGURAS").
 
 - **Candado** `_LOCK` (RLock, de proceso) sobre todo el leer-modificar-escribir y sobre cada lectura.
-- **Escritura atómica**: temporal `config.json.<azar>.tmp` en la MISMA carpeta (`indent=2`, `ensure_ascii=False`, `fsync`) +
-  `os.replace`. En Windows falla con `PermissionError` si otro proceso (editor, antivirus) tiene abierto el destino: reintenta
-  ~1 s. El temporal se borra en TODO camino de error (si ni así, `AVISO:` con el nombre). `.gitignore` cubre `config.json.*.tmp`.
-- **`guardar_config` es estricto**: JSON roto o vacío, raíz que no es objeto o UTF-8 inválido → `ConfigIlegible` y no escribe
-  nada (ni un temporal). Si el archivo no existe, parte de DEFAULTS y lo crea.
-- **`cargar_config` reintenta** (4 × 50 ms: cubre a un humano guardando con un editor) y lee UTF-8 con o sin BOM (lo
-  guardan varios editores de Windows y PowerShell 5.1). Un `AVISO:` por minuto como mucho (se llama en cada request); nunca loguea el contenido.
-- **Si `config.json` se rompe con la app andando**: login CERRADO para todos (`CONTEXT_AUTH.md`), `AVISO: config.json
-  ilegible: ...` con tipo y línea/columna del error, y los guardados de ajustes fallan SIN tocar el archivo (las rutas de
-  `app.py` lo devuelven por su `except Exception`; los schedulers lo loguean; `/settings` no tiene `try` y da 500). Se arregla
-  el JSON a mano, sin reiniciar. **Arrancar** con el archivo ilegible: `init_auth` corta con `ConfigIlegible`.
-- Límite: el candado es de PROCESO. Dos procesos escribiendo el mismo archivo no se frenan entre sí (`os.replace` solo protege a
-  los lectores).
+- **Escritura atómica**: temporal `config.json.<azar>.tmp` en la MISMA carpeta (`indent=2`, `ensure_ascii=False`, `fsync`) + `os.replace`. Windows falla con `PermissionError` si otro proceso (editor, antivirus) tiene abierto el destino: reintenta ~1 s. El temporal se borra en TODO camino de error (si ni así, `AVISO:` con el nombre). `.gitignore` cubre `config.json.*.tmp`.
+- **`guardar_config` es estricto**: JSON roto o vacío, raíz que no es objeto o UTF-8 inválido → `ConfigIlegible` y no escribe nada (ni un temporal). Si el archivo no existe, parte de DEFAULTS y lo crea.
+- **`cargar_config` reintenta** (4 × 50 ms: cubre a un humano guardando con editor) y lee UTF-8 con o sin BOM (lo guardan varios editores de Windows y PowerShell 5.1). Un `AVISO:` por minuto como mucho (se llama en cada request); nunca loguea el contenido.
+- **Si `config.json` se rompe con la app andando**: login CERRADO para todos (`CONTEXT_AUTH.md`), `AVISO: config.json ilegible: ...` con tipo y línea/columna, y los guardados de ajustes fallan SIN tocar el archivo (rutas de `app.py` lo devuelven por su `except Exception`; schedulers lo loguean; `/settings` no tiene `try` y da 500). Se arregla el JSON a mano, sin reiniciar. **Arrancar** con el archivo ilegible: `init_auth` corta con `ConfigIlegible`.
+- Límite: el candado es de PROCESO. Dos procesos escribiendo el mismo archivo no se frenan entre sí (`os.replace` solo protege a los lectores).
 
 ## Puesta en marcha: 100% por `config.json` (no hay primer arranque web)
-Decisión del usuario: la configuración inicial se edita en `config.json`, no en la web. Sin credenciales de Google la app no
-deja entrar a nadie (`CONTEXT_AUTH.md`), así que tampoco hay "modo configuración" por la web.
+Decisión del usuario: configuración inicial en `config.json`, no en la web. Sin credenciales Google la app no deja entrar a nadie (`CONTEXT_AUTH.md`), así que tampoco hay "modo configuración" por la web.
 1. Crear `config.json` (copiar `config.example.json`). Sin archivo, la app lo crea con DEFAULTS + `secret_key`, pero queda cerrada.
-2. Agregar `google_client_id` y `google_client_secret` (Google Cloud Console → Credenciales → ID de cliente OAuth; URI de
-   redirección autorizada: `https://<dominio>/auth/callback`). `config.example.json` no trae esas dos claves: se escriben a mano.
-3. `"first_run": false` (con el DEFAULT `true`, `run_flask` no levanta ngrok).
+2. Agregar `google_client_id` y `google_client_secret` (Google Cloud Console → Credenciales → ID de cliente OAuth; URI de redirección: `https://<dominio>/auth/callback`). `config.example.json` no trae esas dos claves: se escriben a mano.
+3. `"first_run": false` (con DEFAULT `true`, `run_flask` no levanta ngrok).
 4. PROD: `ngrok_enabled`, `ngrok_authtoken`, `ngrok_domain`, `port`. DEV sin OAuth: `auth_disabled: true` con ngrok apagado.
-5. Arrancar: `secret_key` se genera y guarda sola. Cambiar credenciales después → reiniciar el servicio.
+5. Arrancar: `secret_key` se genera y guarda sola. Cambiar credenciales después → reiniciar servicio.
 
 ## Qué de la config llega a los templates (y qué no)
 
-`inject_config()` (app.py) es un `@app.context_processor`: manda `cfg` a
-**todos** los templates, en **todos** los renders. Mandaba el dict entero —con
-`secret_key`, `google_client_secret` y `ngrok_authtoken` adentro—; ningún
-template los imprimía, así que no se filtraba nada, pero estaban a un
-`{{ cfg }}` de salir al HTML. Desde 2026-09-22 va recortado con `sin_secretos()`.
+`inject_config()` (app.py) es `@app.context_processor`: manda `cfg` a **todos** los templates, en **todos** los renders. Antes mandaba el dict entero (con `secret_key`, `google_client_secret` y `ngrok_authtoken` adentro); ningún template los imprimía, así que no se filtraba nada, pero estaban a un `{{ cfg }}` de salir al HTML. Desde 2026-09-22 va recortado con `sin_secretos()`.
 
-- **El criterio es el NOMBRE de la clave, no una lista.** Una lista hay que
-  acordarse de actualizarla y el olvido no falla: filtra. El criterio cubre
-  sola a la clave secreta que se agregue mañana. Hoy se lleva `secret_key`,
-  `google_client_secret`, `ngrok_authtoken` y `push_vapid_secreta`.
-- **Regla al agregar una clave secreta**: el nombre tiene que contener uno de
-  los fragmentos de `MARCADORES_SECRETOS`. Está congelado en
-  `tests/test_cfg_secretos.py` (si aparece o desaparece una clave secreta, ese
-  test se pone rojo y obliga a mirarlo).
-- **El precio**: una clave que NO sea secreta pero se llame con uno de esos
-  fragmentos tampoco llega al template. En Jinja eso no explota, renderiza
-  vacío. Es el lado correcto del que fallar.
-- **Las rutas NO pasan `cfg=` a mano.** Un `render_template('x.html', cfg=cfg)`
-  pisa el del context processor con el dict completo y saltea el recorte sin
-  que nada avise. `/gastos` y `/settings` lo hacían; se les sacó. `cfg` entra a
-  los templates por un solo lugar.
-- **Costo**: una comprensión de dict sobre ~45 claves por render, pegada a un
-  `cargar_config()` que en ese mismo render abre y parsea `config.json`. Al
-  lado del disco no se mide; cachearlo agregaría un invalidador nuevo (y los
-  kill switches dependen justo de que NO haya caché) a cambio de nada.
+- **Criterio = NOMBRE de la clave, no lista.** Una lista hay que acordarse de actualizarla y el olvido no falla: filtra. El criterio cubre sola a la clave secreta que se agregue mañana. Hoy se lleva `secret_key`, `google_client_secret`, `ngrok_authtoken` y `push_vapid_secreta`.
+- **Regla al agregar clave secreta**: el nombre tiene que contener uno de los fragmentos de `MARCADORES_SECRETOS`. Congelado en `tests/test_cfg_secretos.py` (si aparece o desaparece una clave secreta, ese test se pone rojo y obliga a mirarlo).
+- **El precio**: una clave que NO sea secreta pero se llame con uno de esos fragmentos tampoco llega al template. En Jinja no explota, renderiza vacío. Es el lado correcto del que fallar.
+- **Rutas NO pasan `cfg=` a mano.** `render_template('x.html', cfg=cfg)` pisa el del context processor con el dict completo y saltea el recorte sin que nada avise. `/gastos` y `/settings` lo hacían; se les sacó. `cfg` entra a los templates por un solo lugar.
+- **Costo**: comprensión de dict sobre ~45 claves por render, pegada a un `cargar_config()` que en ese render abre y parsea `config.json`. Al lado del disco no se mide; cachearlo agregaría un invalidador nuevo (y los kill switches dependen justo de que NO haya caché) a cambio de nada.
 
 ## Dónde se edita cada cosa
 - **Settings (`POST /settings`)**: `app_name`, `factor_sueldo`, cotización, paletas, backups, gastos fijos.
@@ -153,22 +110,14 @@ template los imprimía, así que no se filtraba nada, pero estaban a un
   - `POST /api/lactancia/config` — los tiempos, avisos, mínimo para combinar, bolsitas y confirmaciones. Guarda solo los campos que lleguen, así cada grupo de la pantalla se guarda por su cuenta.
   - `POST /api/lactancia/bebe` — nombre y fecha de nacimiento.
   - `POST /api/lactancia/recordatorio` — interruptor y hora del recordatorio nocturno.
-- **A mano en `config.json`**: ngrok, OAuth, puerto, `auth_disabled`, `sw_enabled`, `push_enabled`, las dos `push_silencio_*` y las tres `push_vapid_*` / `push_contacto_mailto` (no tienen UI). Los dos flags son kill switches: se cambian en caliente y aplican en la siguiente carga de página. Lo que SÍ tiene UI es el rescate del lado del cliente: el botón **"Reparar app"** de Settings (`window.SW.barrer()`), que desregistra el service worker y borra las cachés de ESE dispositivo.
+- **A mano en `config.json`**: ngrok, OAuth, puerto, `auth_disabled`, `sw_enabled`, `push_enabled`, las dos `push_silencio_*` y las tres `push_vapid_*` / `push_contacto_mailto` (no tienen UI). Los dos flags son kill switches: en caliente, aplican en la siguiente carga de página. Lo que SÍ tiene UI es el rescate del cliente: botón **"Reparar app"** de Settings (`window.SW.barrer()`), desregistra el SW y borra cachés de ESE dispositivo.
 
 ## Reglas
 1. Para agregar clave: definir en `DEFAULTS` (con valor seguro), luego usar en código.
 2. Validar tipos en `app.py`. Para los `lactancia_*` numéricos, agregar además el rango en `LIMITES_LACTANCIA`.
 3. **Nunca commitear `config.json`** real (tiene secrets).
-4. Si la clave nueva **es un secreto**: el nombre tiene que contener uno de los
-   fragmentos de `MARCADORES_SECRETOS` (así el recorte a los templates la cubre
-   sola) y el valor va SOLO en `config.json`, **nunca** en
-   `config.example.json`.
-   El criterio para poner un placeholder vacío ahí: solo si la clave es parte
-   del **setup inicial guiado**. `config.example.json` tiene 6 claves y una es
-   `ngrok_authtoken` (placeholder vacío, heredado de cuando se configura el
-   túnel), pero NO están `secret_key` ni `google_client_secret`. Las
-   `push_vapid_*` tampoco van: no se escriben a mano en el arranque, se generan
-   con `TempScripts/generar_vapid.py` y se pegan después.
+4. Clave nueva **secreta**: nombre con uno de los fragmentos de `MARCADORES_SECRETOS` (el recorte a templates la cubre sola) y valor SOLO en `config.json`, **nunca** en `config.example.json`.
+   Placeholder vacío en el example: solo si la clave es parte del **setup inicial guiado**. `config.example.json` tiene 6 claves; una es `ngrok_authtoken` (placeholder vacío, heredado del túnel), pero NO están `secret_key` ni `google_client_secret`. Las `push_vapid_*` tampoco van: no se escriben a mano en el arranque, se generan con `TempScripts/generar_vapid.py` y se pegan después.
 5. **No hay CLI flag `--config`.** `app.py` no parsea `sys.argv`: cada clon
    (`E:\FondoDev` y `E:\Fondo`) usa el `config.json` de su propia carpeta, y
    eso es lo que mantiene DEV y PROD separados. Los tests no tocan el archivo:

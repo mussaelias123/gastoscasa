@@ -1,6 +1,6 @@
 # Metodología de trabajo con IA
 
-> Documento corto. Todo el equipo de IAs (padre + sub-agentes) lo respeta.
+> Todo el equipo de IAs (padre + sub-agentes) lo respeta.
 
 ## Ciclo de cualquier cambio
 
@@ -34,22 +34,22 @@
 | Archivo nuevo en raíz / carpeta nueva        | `CLAUDE.md` → tabla §2 "Mapa de archivos por dominio"   |
 | Nueva regla de proyecto acordada             | `CLAUDE.md` → §4 "Reglas globales"                      |
 
-**Si no aplica nada de la tabla, no se necesita actualizar contexto.**
+**Si no aplica nada de la tabla, NO hace falta actualizar contexto.**
 
 ## §2 Qué NO documentar
 - Nombres de variables internas pequeñas.
 - Lógica que se lee en 30 segundos del código.
 - Detalles de implementación que cambian seguido.
 
-El contexto debe ser **un mapa**, no una copia del código.
+El contexto = **mapa**, NO copia del código.
 
 ## §2b Cómo se escribe: telegráfico agente→agente (regla 2026-10-06)
 
-Todo texto que lee OTRO AGENTE va telegráfico **desde la primera versión**: `CLAUDE.md`, `CONTEXT_*.md`, este archivo, perfiles de `.claude/agents/`, **comentarios y docstrings del código**, notas entre agentes.
-Texto para humano (PRs, commits, textos de la UI, logs, informes): prosa clara. Respuestas al usuario: su propio estilo, `CLAUDE.md` §4 punto 4.
+Texto que lee OTRO AGENTE → telegráfico **desde la primera versión**: `CLAUDE.md`, `CONTEXT_*.md`, este archivo, perfiles de `.claude/agents/`, **comentarios y docstrings**, notas entre agentes.
+Texto para humano (PRs, commits, UI, logs, informes): prosa clara. Respuestas al usuario: su estilo, `CLAUDE.md` §4 punto 4.
 
 - **Quitar:** artículos, introducciones, cierres, cortesía, relleno, transiciones, ejemplos repetidos.
-- **Sin duplicar:** cada dato UNA vez. Si ya está en otro lado, apuntar (`ver §3c`, `ver CONTEXT_DB.md`), no copiar.
+- **Sin duplicar:** cada dato UNA vez. Si está en otro lado, apuntar (`ver §3c`, `ver CONTEXT_DB.md`), NO copiar.
 - **Usar:** frases cortas o nominales, listas, `→` `=` `:` `/`.
 - **Conservar SIEMPRE, textual:**
   - identificadores, rutas, comandos, claves de config, URLs, valores entre comillas;
@@ -57,7 +57,7 @@ Texto para humano (PRs, commits, textos de la UI, logs, informes): prosa clara. 
   - negaciones y cuantificadores: no / NO / nunca / ni / sin / solo / siempre / todo / ninguno. Negación perdida = regla invertida;
   - cada ⚠ y su **porqué**, corto. Sin porqué, otro agente "arregla" lo que está bien;
   - estructura: títulos, numeración (§), tablas, bloques de código.
-- **Comentarios en código:** mismo estilo. Porqué + ⚠; nunca narrar lo que la línea ya dice (§2).
+- **Comentarios en código:** mismo estilo. Porqué + ⚠; NUNCA narrar lo que la línea ya dice (§2).
 
 Ejemplo:
 - Antes: "El cerrojo (3) garantiza que no hay proxy ⇒ `remote_addr` es confiable; por eso **NO** se usa `X-Forwarded-For` en este chequeo."
@@ -69,23 +69,23 @@ Ejemplo:
 
 ## §3 Auditoría rápida
 - Cada `CONTEXT_*.md` debe seguir bajo 150 líneas. Si crece, partir.
-- Antes de empezar, escanear: `ls docs/CONTEXT_*.md` y leer solo el del dominio.
+- Antes de empezar: escanear `ls docs/CONTEXT_*.md` y leer SOLO el del dominio.
 
 ## §3b Memoria de Claude vs docs del repo (regla 2026-07-19)
 
 El conocimiento del proyecto vive en el **REPO** (`CLAUDE.md` + `docs/CONTEXT_*.md` + este archivo), NUNCA en la memoria local de Claude (`~/.claude/projects/.../memory/`). Razones:
-- La memoria local NO viaja con el repo: los agentes de Mari no la ven, y otro entorno/máquina tampoco.
-- No tiene backup: se pierde con la instalación de Claude o con la máquina.
+- La memoria local NO viaja con el repo: los agentes de Mari NO la ven, y otro entorno/máquina tampoco.
+- NO tiene backup: se pierde con la instalación de Claude o con la máquina.
 
 Reglas:
-1. **Información del proyecto y cómo trabajar en él** → mantener actualizados los `CONTEXT_*.md` (tabla del §1). Si un agente aprende algo útil del proyecto, va al doc del dominio, no a la memoria.
+1. **Información del proyecto y cómo trabajar en él** → mantener actualizados los `CONTEXT_*.md` (tabla del §1). Si un agente aprende algo útil del proyecto, va al doc del dominio, NO a la memoria.
 2. **Decisiones históricas** ("qué se hizo y cuándo") NO se guardan en ningún lado nuevo: la bitácora son los PRs y el git log.
 3. La memoria local de Claude queda solo para lo estrictamente de esta máquina/instalación (si es que hay algo); ante la duda, va al repo.
 
 ## §3c Mapa del proyecto en grafo — `codebase-memory-mcp` (regla 2026-09-24)
 
 Índice del código (funciones, clases, rutas Flask, llamadas, tests) consultable
-por MCP. Sirve para **tener el pantallazo de todo el proyecto y ubicar cosas sin
+por MCP. Sirve para **pantallazo de todo el proyecto y ubicar cosas sin
 leer archivos**: una consulta devuelve decenas de líneas donde `Grep` + `Read`
 traen miles de tokens. Proyecto indexado: **`E-FondoDev`** (al 2026-09-24: 1848
 nodos, 78 rutas, 26 `.py` / 11 `.js` / 18 `.html`). Vale igual para sub-agentes.
@@ -108,25 +108,25 @@ afirma, contestado sin abrir `app.py` (miles de líneas).
 
 **Cuándo NO sirve:**
 - Contenido de `.md`, CSS, HTML/Jinja: el grafo los ve como archivos y secciones. Leerlos normal.
-- Antes de EDITAR un archivo: `Read` igual. El grafo es un mapa, no la fuente.
-- "Nadie llama a X" **no prueba nada**: resuelve solo parte de las llamadas (Flask, JS dinámico; medición 2026-07: 1355 de 3852). Confirmar con `Grep` antes de borrar código.
+- Antes de EDITAR un archivo: `Read` igual. El grafo es un mapa, NO la fuente.
+- "Nadie llama a X" **NO prueba nada**: resuelve solo parte de las llamadas (Flask, JS dinámico; medición 2026-07: 1355 de 3852). Confirmar con `Grep` antes de borrar código.
 - Las rutas salen con método `ANY`.
 
-**Frescura (lo que más muerde):** no hay watcher y `auto_index` **no refresca**
+**Frescura (lo que más muerde):** NO hay watcher y `auto_index` **NO refresca**
 lo ya indexado. Un índice viejo responde igual, sin avisar.
 
-**Reindexar lo hace EL AGENTE que va a consultar el grafo, por su cuenta.** Nunca
+**Reindexar lo hace EL AGENTE que va a consultar el grafo, por su cuenta.** NUNCA
 se le pide ni se le avisa al usuario: no es una decisión, es un comando de ~0,5 s
 (incremental). Antes de la primera consulta de la tarea, llamar
 `index_repository` con `repo_path="E:/FondoDev"` y nada más.
 - **NO pasar `persistence=true`**: escribe `.codebase-memory/graph.db.zst` DENTRO
-  del repo y ensucia el worktree. El default (`false`) no toca nada del repo.
+  del repo y ensucia el worktree. El default (`false`) NO toca nada del repo.
 - Si falla o no responde: seguir con `Grep`/`Glob` y decirlo en el reporte.
-  No frenar la tarea ni pedirle al usuario que lo arregle.
+  NO frenar la tarea ni pedirle al usuario que lo arregle.
 - Comando CLI equivalente y detalle en `CONTEXT_DEPLOY.md`.
 
-**Si esas tools no existen en tu sesión**: es una herramienta local por máquina,
-no viaja con el repo. Seguir con `Grep`/`Glob`. No instalarla ni actualizarla
+**Si esas tools NO existen en tu sesión**: es una herramienta local por máquina,
+NO viaja con el repo. Seguir con `Grep`/`Glob`. NO instalarla ni actualizarla
 por cuenta propia (la versión está fijada, ver `CONTEXT_DEPLOY.md`): es decisión
 del usuario. Visor gráfico: `http://localhost:9749`.
 
@@ -138,24 +138,24 @@ Reportar siempre:
 
 ## §4b Enjambre de sub-agentes (idea, 2026-09-22)
 
-No es obligación — cada orquestador decide según lo que tenga que desarrollar.
+NO es obligación — cada orquestador decide según lo que tenga que desarrollar.
 Lo que funcionó en la etapa 1 del service worker: **1 implementador y después N
 revisores adversariales en paralelo**, con una lente distinta cada uno
 (correctitud / regresión / reglas del proyecto). Los revisores arrancan recién
 cuando el implementador terminó; lanzados junto a él leen código a medio
-escribir. Encontraron 3 bugs reales que el implementador no vio, todos en el
+escribir. Encontraron 3 bugs reales que el implementador NO vio, todos en el
 camino de error.
 
-- **Lentes distintas, no repetidas.** Que dos coincidan por separado es la señal fuerte.
+- **Lentes distintas, NO repetidas.** Que dos coincidan por separado es la señal fuerte.
 - **Quien orquesta valida por su cuenta** (tests + navegador). Un hallazgo de un
-  agente es una hipótesis, no un hecho; y puede faltar el que importa.
+  agente es una hipótesis, NO un hecho; y puede faltar el que importa.
 - **Etapas que tocan el mismo archivo van en serie.** En paralelo se pisan, y
   resolver el conflicto cuesta más que lo que ahorró el paralelismo.
 
 ## §5 Higiene de git y worktree (reduce conflictos)
 
 **Antes de empezar (quien orquesta la sesión):**
-1. `git status` limpio. Restos de otra sesión → resolverlos ANTES (commitear, descartar o preguntar al usuario). Nunca arrancar una tarea encima de cambios ajenos sin entender qué son.
+1. `git status` limpio. Restos de otra sesión → resolverlos ANTES (commitear, descartar o preguntar al usuario). NUNCA arrancar una tarea encima de cambios ajenos sin entender qué son.
 2. `git fetch` + main actualizado (`git checkout main && git pull`) **SIEMPRE antes de abrir una rama**. Lección 2026-07-12: una rama cortada de un main local viejo terminó en conflicto al mergear su PR (#33 chocó con los PRs #30-32 que ya estaban en `origin/main`).
 3. Rama nueva desde ese main fresco (`feat/...`, `fix/...`, `docs/...`).
 
@@ -172,7 +172,7 @@ camino de error.
 
 **Borrar la rama mergeada — local Y remota (regla 2026-07-26):**
 
-No alcanza con borrar la local. Lección: se acumularon 8 ramas mergeadas en
+NO alcanza con borrar la local. Lección: se acumularon 8 ramas mergeadas en
 `origin` porque los agentes borraban solo la copia local (o ni eso), y la
 redacción vieja de este punto decía "borrar la rama" sin aclarar cuál.
 
@@ -199,9 +199,9 @@ git branch -r --merged origin/main | grep -v 'origin/main$'
 ```
 
 Nada se pierde: el historial queda en `main` y en el PR. Si `git branch -d` se
-niega, la rama tiene commits propios — no forzar con `-D`, avisar al usuario.
+niega, la rama tiene commits propios — NO forzar con `-D`, avisar al usuario.
 
-**Excepción: no borrar una rama que sea base de un PR abierto (regla 2026-08-16).**
+**Excepción: NO borrar una rama que sea base de un PR abierto (regla 2026-08-16).**
 
 Estar mergeada a main NO alcanza como criterio. Antes de borrar, chequear que
 nada cuelgue de ella:
@@ -211,7 +211,7 @@ gh pr list --state open --json number,baseRefName,headRefName
 ```
 
 **Qué pasa si se borra igual** (lección de los PRs #66 → #67): GitHub **CIERRA**
-el PR hijo en vez de reapuntarlo a main, y después queda trabado — no se puede
+el PR hijo en vez de reapuntarlo a main, y después queda trabado — NO se puede
 reabrir (le falta su rama base) ni cambiarle la base (está cerrado). Destrabarlo
 obliga a recrear la rama base en el remoto:
 
