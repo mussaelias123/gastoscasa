@@ -64,8 +64,8 @@ Ejemplo:
 - Después: "Cerrojo 3 (ngrok apagado) → sin proxy → `remote_addr` confiable. **NO** usar `X-Forwarded-For` acá."
 
 
-**Texto viejo:** no reescribir en masa (caro; ahorro medido ~14%). Párrafo que se toca → queda en este estilo.
-**Al reescribir, chequear:** mismas negaciones, `identificadores`, números+unidad y ⚠ que antes.
+**Texto viejo:** sub-agente `compactador` (Haiku, 1 archivo por llamada, valida y restaura si pierde algo). Prueba 2026-10-06: 5 docs en 3,7 min, −20% tokens, agentes lectores con mismos aciertos. Sin pedido del usuario: solo el párrafo que se toca.
+**Al reescribir, chequear:** mismas negaciones, `identificadores`, números+unidad y ⚠ que antes → `python TempScripts/validar_telegrafico.py validar ORIGINAL NUEVO`.
 
 ## §3 Auditoría rápida
 - Cada `CONTEXT_*.md` debe seguir bajo 150 líneas. Si crece, partir.

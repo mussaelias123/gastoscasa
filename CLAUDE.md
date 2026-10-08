@@ -125,7 +125,7 @@ Ver `agents/`. Cada agente tiene:
 - Misión específica.
 - Instrucción de actualizar el `CONTEXT_*.md` que le corresponde al terminar.
 
-Lista actual: `frontend-dev`, `backend-dev`, `db-engineer`, `cotizacion-maintainer`, `auth-maintainer`, `verifier`.
+Lista actual: `frontend-dev`, `backend-dev`, `db-engineer`, `cotizacion-maintainer`, `auth-maintainer`, `verifier`, `compactador` (texto viejo → telegráfico, `docs/METODOLOGIA.md` §2b).
 
 ---
 
