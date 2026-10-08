@@ -16,6 +16,7 @@ Los sub-agentes son IAs más pequeñas, con contexto cerrado, que ejecutan tarea
 | `cotizacion-maintainer` | Cambios en `cotizacion.py` o scheduler de cotización.        |
 | `auth-maintainer`       | Cambios en `auth.py`, login, whitelist, OAuth.               |
 | `verifier`              | Verifica en ngrok que la app no se rompió tras un cambio.    |
+| `compactador`           | Pasa 1 archivo a telegráfico (METODOLOGIA §2b): doc, perfil, comentarios o bitácora. Haiku + validador. |
 
 ## Cómo invocarlos
 
