@@ -39,8 +39,6 @@
 | Deploy/serv   | NSSM (`E:\Fondo\nssm.exe`, fuera de git), ngrok, `logs/`, `logutil.py` | `docs/CONTEXT_DEPLOY.md` |
 | **Seguridad** (transversal) | `auth.py` (falla cerrado, origen de los POST, DEV solo local), `config.py` (escritura atómica, `ConfigIlegible`), `app.py` (cabeceras + CSP con nonce `csp_nonce`, tope 1 MB, `_leer_movimiento_form`, `_validar_backup_dir`), `cotizacion.py` (rechazos), `static/vendor/` (flatpickr y Chart.js locales, con huella) + `.gitattributes`, tests `test_auth_cerrado.py`, `test_auth_endurecido.py`, `test_config_seguro.py`, `test_validacion_movimientos.py`, `test_backup_dir.py`, `test_cabeceras_seguridad.py`, `test_csp_templates.py`, `test_vendor_integridad.py` | `docs/CONTEXT_SEGURIDAD.md` (**las reglas, el mapa defensa→test y los pendientes fuera del código**) |
 | Scripts ad-hoc| `TempScripts/`                                         | (one-shot, no producción)        |
-| Rules por ruta | `.claude/rules/` (`paleta`, `inicio`, `service-worker`, `seguridad-front`, `vendor`, `docs-contexto`) | `docs/METODOLOGIA.md` §2c |
-
 > **Dev / Prod**: `E:\Fondo` = producción (servicio Windows `GastosCasa` vía NSSM,
 > arranca solo). `E:\FondoDev` = desarrollo, se corre a mano con `python app.py`.
 > El proyecto **no se compila**: NSSM solo envuelve `python app.py`.
@@ -78,17 +76,17 @@
 
 ## 4. Reglas globales (NO negociables)
 
-1. **Paleta de colores**: todo color → `var(--color-...)`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres de color). Arquitectura y excepciones documentadas: rule `.claude/rules/paleta.md` (se carga sola al tocar `static/` o `templates/`).
+1. **Paleta de colores**: todo color → `var(--color-...)`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres de color).
 2. **Verificación**: tras cualquier cambio en dev, ingresar a `http://localhost:5050/` y confirmar que la app no se rompe. El dominio ngrok (`https://miller-unventured-courtly.ngrok-free.dev/`) es SOLO producción — no probar cambios de dev ahí. Cambios de rutas requieren reiniciar `python app.py`. Detalle en `docs/CONTEXT_DEPLOY.md`.
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.
 5. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. **Tras mergear, borrar la rama local Y la remota** (regla 2026-07-26) — lo más simple es `gh pr merge <N> --merge --delete-branch`, que hace las dos. **Cualquier rama (local o remota) ya mergeada a main que se encuentre suelta se borra directo, sin preguntar** (regla 2026-08-07: el pruning ya está pre-autorizado por esta misma regla) — **salvo que sea la base de un PR abierto** (regla 2026-08-16): estar mergeada NO alcanza como criterio, hay que mirar antes si algún PR cuelga de ella. Detalle y trampa de los PRs encadenados en `docs/METODOLOGIA.md` §5.
 6. **Merge a main SOLO con permiso del usuario** (regla 2026-07-13): los agentes pueden crear ramas, commitear y abrir PRs, pero **NUNCA mergear un PR a main** sin que el usuario lo autorice explícitamente. Flujo: implementar → verificar en DEV → abrir PR → **avisar al usuario y esperar su OK** → recién ahí mergear. La verificación en DEV no reemplaza la aprobación del usuario.
-7. **El Inicio no se toca sin pedido explícito** (regla 2026-09-21): ningún agente agrega, mueve ni amplía nada del Inicio (`/`) por iniciativa propia; lo nuevo va **en su módulo**. Detalle y porqué: rule `.claude/rules/inicio.md`.
+7. **El Inicio no se toca sin pedido explícito** (regla 2026-09-21): ningún agente agrega, mueve ni amplía nada del Inicio (`/`) por iniciativa propia; lo nuevo va **en su módulo**.
 
 8. **Todo aviso va por el estándar de notificaciones** (regla 2026-09-23): cuando un módulo —cualquiera, nuevo o existente— tenga que avisar algo (un vencimiento, un pendiente, algo que hay que mirar), se hace con un **provider** registrado en `NOTIF_PROVIDERS`, siguiendo `docs/CONTEXT_NOTIFICATIONS.md` §3. **Ningún módulo escribe su propia campana, su propio badge, su propio contador en el nav ni su propio banner de aviso.** Las notificaciones son de **Núcleo**: que hoy los únicos providers sean los de Lactancia es circunstancial, no la arquitectura. Nació del `lac_badge` viejo, que obligaba a tocar el header cada vez que un módulo quería avisar algo. Si un aviso además tiene que sonar en el teléfono, es una decisión aparte y explícita (`PUSH_AVISOS`, ver `docs/CONTEXT_PUSH_MOTOR.md`).
 
-9. **Seguridad** (regla 2026-10-02, auditoría integral): **no hay app web sin login** (sin credenciales o con `config.json` ilegible, falla CERRADA); `config.json` se escribe solo con `config.guardar_config`; toda entrada se valida en el servidor y toda salida se escapa; backups solo en disco local. Parte HTML/JS (`tojson`, `escHtml`, `nonce`, sin `on*=` inline, sin CDN): rule `.claude/rules/seguridad-front.md`. Detalle, mapa de tests y pendientes fuera del código: `docs/CONTEXT_SEGURIDAD.md`.
+9. **Seguridad** (regla 2026-10-02, auditoría integral): **no hay app web sin login** (sin credenciales o con `config.json` ilegible, falla CERRADA); `config.json` se escribe solo con `config.guardar_config`; toda entrada se valida en el servidor y toda salida se escapa; scripts inline con `nonce`, ningún `on*=` inline, librerías sin CDN; backups solo en disco local. Detalle, mapa de tests y pendientes fuera del código: `docs/CONTEXT_SEGURIDAD.md`.
 
 ---
 
@@ -103,15 +101,10 @@ Checklist obligatorio post-cambio:
 
 - ¿Modifiqué una **ruta o endpoint** en `app.py`? → actualizar `docs/CONTEXT_BACKEND.md` (sección rutas).
 - ¿Modifiqué el **esquema** o agregué una columna en `database.py`? → actualizar `docs/CONTEXT_DB.md` (sección esquema).
-- ¿Cambié la **paleta** o agregué variable de color? → actualizar `docs/CONTEXT_FRONTEND.md` (sección paleta) y página Settings.
 - ¿Agregué un **archivo nuevo** o moví uno? → actualizar tabla del punto 2 de este `CLAUDE.md`.
 - ¿Agregué una **regla nueva** acordada con el usuario? → punto 4 de este `CLAUDE.md` o el `CONTEXT_*.md` del dominio.
 - ¿Agregué un **flujo o ruta del frontend**? → actualizar `docs/CONTEXT_FRONTEND.md` (sección templates).
 - ¿Agregué dependencia? → actualizar `requirements.txt` y `docs/CONTEXT_DEPLOY.md`.
-
-**Cómo escribir/actualizar** (estilo, tope de líneas, auditoría): rule `.claude/rules/docs-contexto.md`, se carga sola al tocar `docs/`, `CLAUDE.md` o `.claude/`.
-
-**Rules por ruta** (`.claude/rules/*.md` con `paths:`): reglas que solo valen para ciertos archivos. Se cargan solas al leer/escribir/editar un archivo que coincide; **NO** con Grep/Glob. Cuándo usar una y cuándo no: `docs/METODOLOGIA.md` §2c.
 
 ---
 
