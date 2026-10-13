@@ -67,6 +67,27 @@ Ejemplo:
 **Texto viejo:** sub-agente `compactador` (Haiku, 1 archivo por llamada, valida y restaura si pierde algo). Prueba 2026-10-06: 5 docs en 3,7 min, −20% tokens, agentes lectores con mismos aciertos. Sin pedido del usuario: solo el párrafo que se toca.
 **Al reescribir, chequear:** mismas negaciones, `identificadores`, números+unidad y ⚠ que antes → `python TempScripts/validar_telegrafico.py validar ORIGINAL NUEVO`.
 
+## §2c Capas de instrucciones: dónde va cada regla (regla 2026-10-12)
+
+| Capa | Se carga | Para |
+|---|---|---|
+| `CLAUDE.md` raíz | siempre, al iniciar | reglas de TODA la sesión + índice |
+| `.claude/rules/*.md` **sin** `paths:` | siempre, al iniciar | (no usar: para eso está `CLAUDE.md`) |
+| `.claude/rules/*.md` **con** `paths:` | al Read / Write / Edit (o `cat`/`head`) de un archivo que coincide | detalle que solo importa al tocar esos archivos |
+| `CLAUDE.md` en subcarpeta | al tocar un archivo de esa subcarpeta | (no usar: `paths:` hace lo mismo y además apunta a archivos de la raíz) |
+| `docs/CONTEXT_*.md` | solo si el agente lo lee | mapa del dominio, largo |
+
+Probado 2026-10-12 (subagentes + `claude -p`):
+- `paths:` matchea archivos de la raíz (`logutil.py`), carpetas con `**`, llaves `{css,js}`.
+- ⚠ **Grep / Glob NO disparan** la rule; Read, Edit, Write y `cat` sí.
+- ⚠ **Write de archivo NUEVO: la rule llega DESPUÉS de escribir** → por eso cada regla movida deja 1 línea resumen en `CLAUDE.md` §4.
+- Rule creada a mitad de sesión: las con `paths:` se cargan igual; las sin `paths:` recién en sesión nueva.
+- Subagentes las reciben igual que la sesión principal. ⚠ `Explore` (y `Plan`) arrancan SIN `CLAUDE.md`, pero las rules con `paths:` SÍ les llegan → única vía de que un Explore vea una regla del proyecto.
+- `paths:` se resuelve desde la raíz del proyecto, aunque el cwd del agente sea otro.
+- Fuerza = la de `CLAUDE.md` (contexto, no obligación). Lo que DEBE cumplirse → hook (`PreToolUse`) o test.
+
+Reglas: rule = detalle de UNA zona; cada dato UNA vez (rule o `CONTEXT_*.md`, apuntar al otro). Rules actuales: `CLAUDE.md` §2 (fila "Rules por ruta").
+
 ## §3 Auditoría rápida
 - Cada `CONTEXT_*.md` debe seguir bajo 150 líneas. Si crece, partir.
 - Antes de empezar: escanear `ls docs/CONTEXT_*.md` y leer SOLO el del dominio.
