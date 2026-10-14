@@ -39,7 +39,6 @@
 | Deploy/serv   | NSSM (`E:\Fondo\nssm.exe`, fuera de git), ngrok, `logs/`, `logutil.py` | `docs/CONTEXT_DEPLOY.md` |
 | **Seguridad** (transversal) | `auth.py` (falla cerrado, origen de los POST, DEV solo local), `config.py` (escritura atómica, `ConfigIlegible`), `app.py` (cabeceras + CSP con nonce `csp_nonce`, tope 1 MB, `_leer_movimiento_form`, `_validar_backup_dir`), `cotizacion.py` (rechazos), `static/vendor/` (flatpickr y Chart.js locales, con huella) + `.gitattributes`, tests `test_auth_cerrado.py`, `test_auth_endurecido.py`, `test_config_seguro.py`, `test_validacion_movimientos.py`, `test_backup_dir.py`, `test_cabeceras_seguridad.py`, `test_csp_templates.py`, `test_vendor_integridad.py` | `docs/CONTEXT_SEGURIDAD.md` (**las reglas, el mapa defensa→test y los pendientes fuera del código**) |
 | Scripts ad-hoc| `TempScripts/`                                         | (one-shot, no producción)        |
-
 > **Dev / Prod**: `E:\Fondo` = producción (servicio Windows `GastosCasa` vía NSSM,
 > arranca solo). `E:\FondoDev` = desarrollo, se corre a mano con `python app.py`.
 > El proyecto **no se compila**: NSSM solo envuelve `python app.py`.
@@ -77,21 +76,17 @@
 
 ## 4. Reglas globales (NO negociables)
 
-1. **Paleta de colores**: todos los colores se referencian con `var(--color-...)`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres de color). Arquitectura:
-   - **Valores runtime**: `config.json → paleta_light / paleta_dark` (23 vars c/u). `base.html` los inyecta en `<style>` en el `<head>` como `:root { ... }` y `html[data-theme="dark"] { ... }`.
-   - **Fallbacks**: `static/style.css → :root` define los mismos valores por si `config.json` no carga.
-   - **Excepciones documentadas** (hardcode intencional): `login.html` (página standalone sin acceso a config); el **favicon** de `base.html` y `login.html` (SVG dentro de un `data:` URI — un data-URI no puede leer `var(--color-...)`; lleva el acento y el blanco a mano, con `%23` en lugar de `#`); los **íconos PNG de la PWA** (`static/img/icon-*.png`, mismo motivo: un binario no lee `var(--color-...)`; se regeneran desde la paleta con `python TempScripts/generar_iconos_pwa.py` si cambia el acento — el `theme_color` del manifest sí sigue la paleta en caliente porque es una ruta); `.dash-toggle-btn.activo { color: #ffffff }` (blanco intencional: mejor contraste que `var(--color-superficie)` en dark mode, 4.47:1 vs 3.27:1); el tema cálido de Lactancia (bloque scoped `body.lac-body`, redefine las mismas vars con su propia paleta); el tema de Rutina (bloque scoped `body.rut-body`) redefine `--color-texto-muted` **derivándolo con `color-mix` de otras vars** — no es hardcode, es contraste sobre tarjetas translúcidas, ver `CONTEXT_FRONTEND.md`; y `--color-rut-p4`..`p8` en el bloque scoped `.rut-wrap, .home-card--rutina` (identificadores de miembro para familias de más de 3 — no son colores de marca, la paleta configurable sigue siendo de 23 vars).
-   - Definición y leyenda en página Settings → Paleta.
+1. **Paleta de colores**: todo color → `var(--color-...)`. **Cero hardcode** (`#fff`, `rgb(...)`, nombres de color).
 2. **Verificación**: tras cualquier cambio en dev, ingresar a `http://localhost:5050/` y confirmar que la app no se rompe. El dominio ngrok (`https://miller-unventured-courtly.ngrok-free.dev/`) es SOLO producción — no probar cambios de dev ahí. Cambios de rutas requieren reiniciar `python app.py`. Detalle en `docs/CONTEXT_DEPLOY.md`.
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.
-5. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. **Tras mergear, borrar la rama local Y la remota** (regla 2026-07-26) — lo más simple es `gh pr merge <N> --merge --delete-branch`, que hace las dos. **Cualquier rama (local o remota) ya mergeada a main que se encuentre suelta se borra directo, sin preguntar** (regla 2026-08-07: el pruning ya está pre-autorizado por esta misma regla) — **salvo que sea la base de un PR abierto** (regla 2026-08-16): estar mergeada NO alcanza como criterio, hay que mirar antes si algún PR cuelga de ella. Detalle y trampa de los PRs encadenados en `docs/METODOLOGIA.md` §5.
-6. **Merge a main SOLO con permiso del usuario** (regla 2026-07-13): los agentes pueden crear ramas, commitear y abrir PRs, pero **NUNCA mergear un PR a main** sin que el usuario lo autorice explícitamente. Flujo: implementar → verificar en DEV → abrir PR → **avisar al usuario y esperar su OK** → recién ahí mergear. La verificación en DEV no reemplaza la aprobación del usuario.
-7. **El Inicio no se toca sin pedido explícito** (regla 2026-09-21): la pantalla `/` es una vitrina de módulos y **no scrollea** (está calibrada para un iPhone SE). Ningún agente agrega, mueve ni amplía una tarjeta, barra o sección del Inicio (`templates/index.html`, `static/home.js`, bloque `.home-*` de `style.css`) por iniciativa propia: hace falta que el usuario lo pida o lo confirme. Lo nuevo va **en su módulo** (una lista de tareas es de Rutina, un saldo es de Gastos). Nació de la barra "✓ Tareas de hoy", que un agente metió en el Inicio de prestado y se quitó el 2026-09-21: las tareas viven solo en `/rutina`.
+5. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. **Tras mergear, borrar la rama local Y la remota**  — lo más simple es `gh pr merge <N> --merge --delete-branch`, que hace las dos. **Cualquier rama (local o remota) ya mergeada a main que se encuentre suelta se borra directo, sin preguntar** (el pruning ya está pre-autorizado por esta misma regla) — **salvo que sea la base de un PR abierto**: estar mergeada NO alcanza como criterio, hay que mirar antes si algún PR cuelga de ella. Detalle y trampa de los PRs encadenados en `docs/METODOLOGIA.md` §5.
+6. **Merge a main SOLO con permiso del usuario**: los agentes pueden crear ramas, commitear y abrir PRs, pero **NUNCA mergear un PR a main** sin que el usuario lo autorice explícitamente. Flujo: implementar → verificar en DEV → abrir PR → **avisar al usuario y esperar su OK** → recién ahí mergear. La verificación en DEV no reemplaza la aprobación del usuario.
+7. **El Inicio no se toca sin pedido explícito**: ningún agente agrega, mueve ni amplía nada del Inicio (`/`) por iniciativa propia; lo nuevo va **en su módulo**.
 
-8. **Todo aviso va por el estándar de notificaciones** (regla 2026-09-23): cuando un módulo —cualquiera, nuevo o existente— tenga que avisar algo (un vencimiento, un pendiente, algo que hay que mirar), se hace con un **provider** registrado en `NOTIF_PROVIDERS`, siguiendo `docs/CONTEXT_NOTIFICATIONS.md` §3. **Ningún módulo escribe su propia campana, su propio badge, su propio contador en el nav ni su propio banner de aviso.** Las notificaciones son de **Núcleo**: que hoy los únicos providers sean los de Lactancia es circunstancial, no la arquitectura. Nació del `lac_badge` viejo, que obligaba a tocar el header cada vez que un módulo quería avisar algo. Si un aviso además tiene que sonar en el teléfono, es una decisión aparte y explícita (`PUSH_AVISOS`, ver `docs/CONTEXT_PUSH_MOTOR.md`).
+8. **Todo aviso va por el estándar de notificaciones**: cuando un módulo tenga que avisar algo (un vencimiento, un pendiente, algo que hay que mirar), se hace con un **provider** registrado en `NOTIF_PROVIDERS`, siguiendo `docs/CONTEXT_NOTIFICATIONS.md` §3. **Ningún módulo escribe su propia campana, su propio badge, su propio contador en el nav ni su propio banner de aviso.** Las notificaciones son de **Núcleo**. Si un aviso además tiene que sonar en el teléfono, es una decisión aparte y explícita (`PUSH_AVISOS`, ver `docs/CONTEXT_PUSH_MOTOR.md`).
 
-9. **Seguridad** (regla 2026-10-02, auditoría integral): **no hay app web sin login** (sin credenciales o con `config.json` ilegible, falla CERRADA); `config.json` se escribe solo con `config.guardar_config`; toda entrada se valida en el servidor y toda salida se escapa (`| tojson` hacia `<script>`, `escHtml`/`esc` antes de `innerHTML`); **ningún script inline sin `nonce="{{ csp_nonce }}"` y ningún `onclick=`/`on*=` inline**; **librerías de terceros solo en `static/vendor/`, nunca un CDN**; backups solo en disco local. Detalle, mapa de tests y pendientes fuera del código: `docs/CONTEXT_SEGURIDAD.md`.
+9. **Seguridad**: **no hay app web sin login** (sin credenciales o con `config.json` ilegible, falla CERRADA); `config.json` se escribe solo con `config.guardar_config`; toda entrada se valida en el servidor y toda salida se escapa; scripts inline con `nonce`, ningún `on*=` inline, librerías sin CDN; backups solo en disco local. Detalle, mapa de tests y pendientes fuera del código: `docs/CONTEXT_SEGURIDAD.md`.
 
 ---
 
@@ -106,26 +101,11 @@ Checklist obligatorio post-cambio:
 
 - ¿Modifiqué una **ruta o endpoint** en `app.py`? → actualizar `docs/CONTEXT_BACKEND.md` (sección rutas).
 - ¿Modifiqué el **esquema** o agregué una columna en `database.py`? → actualizar `docs/CONTEXT_DB.md` (sección esquema).
-- ¿Cambié la **paleta** o agregué variable de color? → actualizar `docs/CONTEXT_FRONTEND.md` (sección paleta) y página Settings.
 - ¿Agregué un **archivo nuevo** o moví uno? → actualizar tabla del punto 2 de este `CLAUDE.md`.
 - ¿Agregué una **regla nueva** acordada con el usuario? → punto 4 de este `CLAUDE.md` o el `CONTEXT_*.md` del dominio.
 - ¿Agregué un **flujo o ruta del frontend**? → actualizar `docs/CONTEXT_FRONTEND.md` (sección templates).
 - ¿Agregué dependencia? → actualizar `requirements.txt` y `docs/CONTEXT_DEPLOY.md`.
 
-**Cómo actualizar**: editar el `.md` correspondiente en la sección que ya existe. Mantener cada `CONTEXT_*.md` por debajo de 150 líneas. Si crece más, partir en sub-secciones.
-
-**Auditoría rápida**: `grep -rn "TODO contexto" docs/` debe estar vacío.
-
----
-
-## 6. Sub-agentes disponibles
-
-Ver `agents/`. Cada agente tiene:
-- Lista cerrada de archivos/carpetas que puede leer.
-- Misión específica.
-- Instrucción de actualizar el `CONTEXT_*.md` que le corresponde al terminar.
-
-Lista actual: `frontend-dev`, `backend-dev`, `db-engineer`, `cotizacion-maintainer`, `auth-maintainer`, `verifier`, `compactador` (texto viejo → telegráfico, `docs/METODOLOGIA.md` §2b).
 
 ---
 
