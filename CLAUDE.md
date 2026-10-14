@@ -80,13 +80,13 @@
 2. **Verificación**: tras cualquier cambio en dev, ingresar a `http://localhost:5050/` y confirmar que la app no se rompe. El dominio ngrok (`https://miller-unventured-courtly.ngrok-free.dev/`) es SOLO producción — no probar cambios de dev ahí. Cambios de rutas requieren reiniciar `python app.py`. Detalle en `docs/CONTEXT_DEPLOY.md`.
 3. **Scripts one-shot** (backfills, migraciones manuales, utilidades) → carpeta `TempScripts/`, nunca en raíz ni en `scripts/`.
 4. **Estilo de respuesta** (preferencia del usuario): frases 3-6 palabras, sin filler, sin artículos, español básico.
-5. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. **Tras mergear, borrar la rama local Y la remota** (regla 2026-07-26) — lo más simple es `gh pr merge <N> --merge --delete-branch`, que hace las dos. **Cualquier rama (local o remota) ya mergeada a main que se encuentre suelta se borra directo, sin preguntar** (regla 2026-08-07: el pruning ya está pre-autorizado por esta misma regla) — **salvo que sea la base de un PR abierto** (regla 2026-08-16): estar mergeada NO alcanza como criterio, hay que mirar antes si algún PR cuelga de ella. Detalle y trampa de los PRs encadenados en `docs/METODOLOGIA.md` §5.
-6. **Merge a main SOLO con permiso del usuario** (regla 2026-07-13): los agentes pueden crear ramas, commitear y abrir PRs, pero **NUNCA mergear un PR a main** sin que el usuario lo autorice explícitamente. Flujo: implementar → verificar en DEV → abrir PR → **avisar al usuario y esperar su OK** → recién ahí mergear. La verificación en DEV no reemplaza la aprobación del usuario.
-7. **El Inicio no se toca sin pedido explícito** (regla 2026-09-21): ningún agente agrega, mueve ni amplía nada del Inicio (`/`) por iniciativa propia; lo nuevo va **en su módulo**.
+5. **Higiene de git**: worktree limpio al empezar y al terminar; `git pull` de main SIEMPRE antes de abrir rama; si `origin/main` avanzó, mergearlo en la rama antes de mergear el PR. **Tras mergear, borrar la rama local Y la remota**  — lo más simple es `gh pr merge <N> --merge --delete-branch`, que hace las dos. **Cualquier rama (local o remota) ya mergeada a main que se encuentre suelta se borra directo, sin preguntar** (el pruning ya está pre-autorizado por esta misma regla) — **salvo que sea la base de un PR abierto**: estar mergeada NO alcanza como criterio, hay que mirar antes si algún PR cuelga de ella. Detalle y trampa de los PRs encadenados en `docs/METODOLOGIA.md` §5.
+6. **Merge a main SOLO con permiso del usuario**: los agentes pueden crear ramas, commitear y abrir PRs, pero **NUNCA mergear un PR a main** sin que el usuario lo autorice explícitamente. Flujo: implementar → verificar en DEV → abrir PR → **avisar al usuario y esperar su OK** → recién ahí mergear. La verificación en DEV no reemplaza la aprobación del usuario.
+7. **El Inicio no se toca sin pedido explícito**: ningún agente agrega, mueve ni amplía nada del Inicio (`/`) por iniciativa propia; lo nuevo va **en su módulo**.
 
-8. **Todo aviso va por el estándar de notificaciones** (regla 2026-09-23): cuando un módulo —cualquiera, nuevo o existente— tenga que avisar algo (un vencimiento, un pendiente, algo que hay que mirar), se hace con un **provider** registrado en `NOTIF_PROVIDERS`, siguiendo `docs/CONTEXT_NOTIFICATIONS.md` §3. **Ningún módulo escribe su propia campana, su propio badge, su propio contador en el nav ni su propio banner de aviso.** Las notificaciones son de **Núcleo**: que hoy los únicos providers sean los de Lactancia es circunstancial, no la arquitectura. Nació del `lac_badge` viejo, que obligaba a tocar el header cada vez que un módulo quería avisar algo. Si un aviso además tiene que sonar en el teléfono, es una decisión aparte y explícita (`PUSH_AVISOS`, ver `docs/CONTEXT_PUSH_MOTOR.md`).
+8. **Todo aviso va por el estándar de notificaciones**: cuando un módulo tenga que avisar algo (un vencimiento, un pendiente, algo que hay que mirar), se hace con un **provider** registrado en `NOTIF_PROVIDERS`, siguiendo `docs/CONTEXT_NOTIFICATIONS.md` §3. **Ningún módulo escribe su propia campana, su propio badge, su propio contador en el nav ni su propio banner de aviso.** Las notificaciones son de **Núcleo**. Si un aviso además tiene que sonar en el teléfono, es una decisión aparte y explícita (`PUSH_AVISOS`, ver `docs/CONTEXT_PUSH_MOTOR.md`).
 
-9. **Seguridad** (regla 2026-10-02, auditoría integral): **no hay app web sin login** (sin credenciales o con `config.json` ilegible, falla CERRADA); `config.json` se escribe solo con `config.guardar_config`; toda entrada se valida en el servidor y toda salida se escapa; scripts inline con `nonce`, ningún `on*=` inline, librerías sin CDN; backups solo en disco local. Detalle, mapa de tests y pendientes fuera del código: `docs/CONTEXT_SEGURIDAD.md`.
+9. **Seguridad**: **no hay app web sin login** (sin credenciales o con `config.json` ilegible, falla CERRADA); `config.json` se escribe solo con `config.guardar_config`; toda entrada se valida en el servidor y toda salida se escapa; scripts inline con `nonce`, ningún `on*=` inline, librerías sin CDN; backups solo en disco local. Detalle, mapa de tests y pendientes fuera del código: `docs/CONTEXT_SEGURIDAD.md`.
 
 ---
 
@@ -106,16 +106,6 @@ Checklist obligatorio post-cambio:
 - ¿Agregué un **flujo o ruta del frontend**? → actualizar `docs/CONTEXT_FRONTEND.md` (sección templates).
 - ¿Agregué dependencia? → actualizar `requirements.txt` y `docs/CONTEXT_DEPLOY.md`.
 
----
-
-## 6. Sub-agentes disponibles
-
-Ver `agents/`. Cada agente tiene:
-- Lista cerrada de archivos/carpetas que puede leer.
-- Misión específica.
-- Instrucción de actualizar el `CONTEXT_*.md` que le corresponde al terminar.
-
-Lista actual: `frontend-dev`, `backend-dev`, `db-engineer`, `cotizacion-maintainer`, `auth-maintainer`, `verifier`, `compactador` (texto viejo → telegráfico, `docs/METODOLOGIA.md` §2b).
 
 ---
 
